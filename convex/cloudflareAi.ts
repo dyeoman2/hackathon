@@ -18,13 +18,15 @@ function estimateTokens(text: string): number {
 }
 
 // Helper function to get and validate environment variables
+// Note: We don't log warnings here to avoid log spam. The error thrown contains
+// helpful messages that will be shown to users/developers via the UI or API responses.
 function getCloudflareConfig() {
   const CLOUDFLARE_API_TOKEN = process.env.CLOUDFLARE_API_TOKEN;
   const CLOUDFLARE_ACCOUNT_ID = process.env.CLOUDFLARE_ACCOUNT_ID;
 
   if (!CLOUDFLARE_API_TOKEN || !CLOUDFLARE_ACCOUNT_ID) {
     throw new Error(
-      'Missing required Cloudflare AI environment variables: CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID. Please set them in your Convex environment variables.',
+      'Missing required Cloudflare AI environment variables: CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID. Please set them in your Convex environment variables. See docs/CLOUDFLARE_AI_SETUP.md for setup instructions.',
     );
   }
 
@@ -898,10 +900,12 @@ export const testGatewayConnectivity = action({
     const config = getCloudflareConfig();
 
     if (!config.gatewayId) {
+      // Note: We don't log warnings here to avoid log spam. The error response contains
+      // helpful messages that will be shown to users/developers via the UI or API responses.
       await releaseReservation();
       return {
         success: false,
-        error: 'CLOUDFLARE_GATEWAY_ID not configured',
+        error: 'CLOUDFLARE_GATEWAY_ID not configured. Set it in Convex environment variables to enable Cloudflare Gateway. See docs/CLOUDFLARE_AI_SETUP.md for setup instructions.',
         gatewayUrl: null,
       };
     }

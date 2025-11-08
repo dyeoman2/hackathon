@@ -12,7 +12,9 @@ function getFirecrawlApiKey(): string {
 }
 
 // Helper to return graceful error response when Firecrawl is not configured
-function getNotConfiguredError(url: string) {
+// Note: We don't log warnings here to avoid log spam. The error response contains
+// helpful messages that will be shown to users/developers via the UI or API responses.
+function getNotConfiguredError(url: string, warnType: 'missing' | 'invalid' = 'missing') {
   return {
     success: false as const,
     url,
@@ -46,10 +48,7 @@ export const extractWithFirecrawl = action({
     const apiKey = getFirecrawlApiKey();
 
     if (!apiKey || apiKey.length === 0) {
-      console.warn(
-        '[Firecrawl] API key is not configured. Set FIRECRAWL_API_KEY in Convex environment variables to enable Firecrawl web scraping. See docs/FIRECRAWL_SETUP.md for setup instructions.',
-      );
-      return getNotConfiguredError(args.url);
+      return getNotConfiguredError(args.url, 'missing');
     }
 
     try {
@@ -90,10 +89,7 @@ export const extractWithFirecrawl = action({
         errorMessage.includes('authentication') ||
         errorMessage.includes('401')
       ) {
-        console.warn(
-          '[Firecrawl] API key may be invalid. Check FIRECRAWL_API_KEY in Convex environment variables.',
-        );
-        return getNotConfiguredError(args.url);
+        return getNotConfiguredError(args.url, 'invalid');
       }
 
       throw new Error(errorMessage);

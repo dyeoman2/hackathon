@@ -29,7 +29,7 @@
   ],
   "scripts": {
     "dev": "concurrently -n vite,convex -c blue,green \"NODE_OPTIONS='--import ./instrument.server.mjs' vite dev\" \"npx convex dev\"",
-    "dev:full": "npx tsx scripts/dev-full.ts",
+    "dev:full": "tsx scripts/dev-full.ts",
     "build": "vite build && mkdir -p .output/server && cp instrument.server.mjs .output/server",
     "start": "node --import ./.output/server/instrument.server.mjs ./.output/server/index.mjs",
     "typecheck": "tsc --noEmit",
@@ -40,14 +40,14 @@
     "knip": "knip",
     "knip:prod": "knip --production",
     "setup:env": "npx tsx scripts/setup-env.ts",
-    "setup:convex": "npx tsx scripts/setup-convex.ts",
-    "setup:dev": "npx tsx scripts/setup-dev.ts",
-    "setup:prod": "npx tsx scripts/setup-prod.ts",
+    "setup:convex": "tsx scripts/setup-convex.ts",
+    "setup:dev": "tsx scripts/setup-dev.ts",
+    "setup:prod": "tsx scripts/setup-prod.ts",
     "precommit": "biome check --write",
     "updates": "npx npm-check-updates",
     "analyze": "pnpm build && npx vite-bundle-analyzer dist/client/assets/*.js",
-    "infra:deploy": "npx tsx infra/storage.ts",
-    "infra:preview": "npx tsx infra/storage.ts --preview"
+    "infra:deploy": "tsx infra/storage.ts",
+    "infra:preview": "tsx infra/storage.ts --preview"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.927.0",

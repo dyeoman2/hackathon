@@ -47,12 +47,9 @@ export const autumn = new Autumn(components.autumn, {
 const autumnApi = autumn.api();
 
 // Helper to return graceful error response when Autumn is not configured
-function getNotConfiguredError(shouldWarn: boolean = true) {
-  if (shouldWarn) {
-    console.warn(
-      '[Autumn] Action called but Autumn secret key is not configured. Set AUTUMN_SECRET_KEY in Convex environment variables to enable Autumn billing. See docs/AUTUMN_SETUP.md for setup instructions.',
-    );
-  }
+// Note: We don't log warnings here to avoid log spam. The error response contains
+// helpful messages that will be shown to users/developers via the UI or API responses.
+function getNotConfiguredError(functionName: 'listProducts' | 'createCustomer', shouldWarn: boolean = true) {
   return {
     error: {
       message: `Autumn billing is not configured. Please set AUTUMN_SECRET_KEY in your Convex environment variables to use this feature. See docs/AUTUMN_SETUP.md for setup instructions.`,
@@ -87,7 +84,7 @@ export const createCustomer = action({
     // This ensures we get the current value even if it was set after module load
     const secretKey = getAutumnSecretKey();
     if (!secretKey || secretKey.length === 0) {
-      return getNotConfiguredError(true);
+      return getNotConfiguredError('createCustomer', true);
     }
     // When configured, the component action registered by Autumn will handle the call.
     // We can't call it directly here, but by exporting this wrapper with the same name,
@@ -95,7 +92,7 @@ export const createCustomer = action({
     // When configured, the component action takes precedence, but this provides a fallback.
     // If we reach here and the key is configured, the component action should have handled it.
     // Return an error without warning since this shouldn't normally happen.
-    return getNotConfiguredError(false);
+    return getNotConfiguredError('createCustomer', false);
   },
 });
 
@@ -106,7 +103,7 @@ export const listProducts = action({
     // This ensures we get the current value even if it was set after module load
     const secretKey = getAutumnSecretKey();
     if (!secretKey || secretKey.length === 0) {
-      return getNotConfiguredError(true);
+      return getNotConfiguredError('listProducts', true);
     }
     // When configured, the component action registered by Autumn will handle the call.
     // We can't call it directly here, but by exporting this wrapper with the same name,
@@ -114,7 +111,7 @@ export const listProducts = action({
     // When configured, the component action takes precedence, but this provides a fallback.
     // If we reach here and the key is configured, the component action should have handled it.
     // Return an error without warning since this shouldn't normally happen.
-    return getNotConfiguredError(false);
+    return getNotConfiguredError('listProducts', false);
   },
 });
 
