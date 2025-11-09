@@ -14,7 +14,7 @@ function getFirecrawlApiKey(): string {
 // Helper to return graceful error response when Firecrawl is not configured
 // Note: We don't log warnings here to avoid log spam. The error response contains
 // helpful messages that will be shown to users/developers via the UI or API responses.
-function getNotConfiguredError(url: string, warnType: 'missing' | 'invalid' = 'missing') {
+function getNotConfiguredError(url: string, _warnType: 'missing' | 'invalid' = 'missing') {
   return {
     success: false as const,
     url,

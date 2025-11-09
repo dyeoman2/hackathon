@@ -49,7 +49,7 @@ const autumnApi = autumn.api();
 // Helper to return graceful error response when Autumn is not configured
 // Note: We don't log warnings here to avoid log spam. The error response contains
 // helpful messages that will be shown to users/developers via the UI or API responses.
-function getNotConfiguredError(functionName: 'listProducts' | 'createCustomer', shouldWarn: boolean = true) {
+function getNotConfiguredError(_functionName: 'listProducts' | 'createCustomer', _shouldWarn: boolean = true) {
   return {
     error: {
       message: `Autumn billing is not configured. Please set AUTUMN_SECRET_KEY in your Convex environment variables to use this feature. See docs/AUTUMN_SETUP.md for setup instructions.`,
