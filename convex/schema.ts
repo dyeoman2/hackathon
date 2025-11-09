@@ -92,4 +92,69 @@ export default defineSchema({
   })
     .index('by_userId_createdAt', ['userId', 'createdAt'])
     .index('by_requestKey', ['requestKey']),
+
+  hackathons: defineTable({
+    ownerUserId: v.string(),
+    title: v.string(),
+    description: v.optional(v.string()),
+    dates: v.optional(
+      v.object({
+        start: v.optional(v.number()),
+        end: v.optional(v.number()),
+      }),
+    ),
+    rubric: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index('by_ownerUserId', ['ownerUserId']),
+
+  memberships: defineTable({
+    hackathonId: v.id('hackathons'),
+    userId: v.optional(v.string()),
+    invitedEmail: v.optional(v.string()),
+    role: v.union(v.literal('owner'), v.literal('admin'), v.literal('judge')),
+    status: v.union(v.literal('invited'), v.literal('active')),
+    tokenHash: v.optional(v.string()),
+    tokenExpiresAt: v.optional(v.number()),
+    invitedByUserId: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index('by_hackathonId', ['hackathonId'])
+    .index('by_userId', ['userId'])
+    .index('by_tokenHash', ['tokenHash'])
+    .index('by_invitedEmail', ['invitedEmail']),
+
+  submissions: defineTable({
+    hackathonId: v.id('hackathons'),
+    title: v.string(),
+    team: v.string(),
+    repoUrl: v.string(),
+    siteUrl: v.optional(v.string()),
+    status: v.union(
+      v.literal('submitted'),
+      v.literal('review'),
+      v.literal('shortlist'),
+      v.literal('winner'),
+    ),
+    source: v.optional(
+      v.object({
+        r2Key: v.optional(v.string()),
+        uploadedAt: v.optional(v.number()),
+        aiSummary: v.optional(v.string()),
+        summarizedAt: v.optional(v.number()),
+      }),
+    ),
+    ai: v.optional(
+      v.object({
+        summary: v.optional(v.string()),
+        score: v.optional(v.number()),
+        lastReviewedAt: v.optional(v.number()),
+        inFlight: v.optional(v.boolean()),
+      }),
+    ),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_hackathonId', ['hackathonId'])
+    .index('by_hackathonId_status', ['hackathonId', 'status']),
 });

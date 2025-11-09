@@ -19,7 +19,13 @@ export type Capability =
   | 'profile.write'
   | 'util.firstUserCheck'
   | 'util.emailServiceStatus'
-  | 'dashboard.read';
+  | 'dashboard.read'
+  | 'hackathon.read'
+  | 'hackathon.write'
+  | 'hackathon.manageJudges'
+  | 'submission.read'
+  | 'submission.write'
+  | 'submission.review';
 
 export const Caps = {
   'route:/app': ['user', 'admin'],
@@ -34,6 +40,12 @@ export const Caps = {
   'util.firstUserCheck': ['public', 'user', 'admin'],
   'util.emailServiceStatus': ['public', 'user', 'admin'],
   'dashboard.read': ['admin'], // Admin dashboard data
+  'hackathon.read': ['owner', 'admin', 'judge'], // Hackathon capabilities mapped to hackathon roles
+  'hackathon.write': ['owner', 'admin'],
+  'hackathon.manageJudges': ['owner', 'admin'],
+  'submission.read': ['owner', 'admin', 'judge'],
+  'submission.write': ['owner', 'admin', 'judge'],
+  'submission.review': ['owner', 'admin', 'judge'],
 } as const;
 
 export const PublicCaps = new Set<Capability>([

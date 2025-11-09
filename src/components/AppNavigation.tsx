@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate, useRouter } from '@tanstack/react-router';
-import { LogOut, Shield, User } from 'lucide-react';
+import { LogOut, Shield, Trophy, User } from 'lucide-react';
 import { MobileNavigation } from '~/components/MobileNavigation';
 import { ThemeToggle } from '~/components/theme-toggle';
 import {
@@ -162,6 +162,13 @@ export function AppNavigation() {
                   activeOptions={{ exact: true }}
                 >
                   Dashboard
+                </Link>
+                <Link
+                  to="/app/h"
+                  preload="intent"
+                  className={cn(navigationMenuTriggerStyle(), 'no-underline')}
+                >
+                  Hackathons
                 </Link>
                 <Link
                   to="/app/ai-playground"

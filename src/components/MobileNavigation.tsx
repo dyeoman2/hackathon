@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate } from '@tanstack/react-router';
-import { Cloud, LogOut, type LucideIcon, Menu, Shield, User } from 'lucide-react';
+import { Cloud, LogOut, type LucideIcon, Menu, Shield, Trophy, User } from 'lucide-react';
 import { useState } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '~/components/ui/sheet';
 import { signOut } from '~/features/auth/auth-client';
@@ -30,6 +30,7 @@ export function MobileNavigation() {
   const navItems: NavItem[] = isAuthenticated
     ? [
         { to: '/app', label: 'Dashboard', exact: true },
+        { to: '/app/h', label: 'Hackathons', icon: Trophy },
         { to: '/app/ai-playground', label: 'AI Playground', icon: Cloud },
       ]
     : [];

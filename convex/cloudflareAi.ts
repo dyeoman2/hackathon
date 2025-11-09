@@ -905,7 +905,8 @@ export const testGatewayConnectivity = action({
       await releaseReservation();
       return {
         success: false,
-        error: 'CLOUDFLARE_GATEWAY_ID not configured. Set it in Convex environment variables to enable Cloudflare Gateway. See docs/CLOUDFLARE_AI_SETUP.md for setup instructions.',
+        error:
+          'CLOUDFLARE_GATEWAY_ID not configured. Set it in Convex environment variables to enable Cloudflare Gateway. See docs/CLOUDFLARE_AI_SETUP.md for setup instructions.',
         gatewayUrl: null,
       };
     }
