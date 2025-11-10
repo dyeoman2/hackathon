@@ -220,7 +220,7 @@ export const updateSubmission = mutation({
     // Trigger screenshot capture if siteUrl was added or updated
     // Note: If repo upload is in progress, screenshot will also be captured during upload
     // This ensures we capture even if repo was already uploaded
-    if (args.siteUrl !== undefined && args.siteUrl.trim()) {
+    if (args.siteUrl?.trim()) {
       ctx.scheduler
         .runAfter(0, internal.submissionsActions.screenshot.captureScreenshotInternal, {
           submissionId: args.submissionId,
@@ -512,6 +512,67 @@ export const addScreenshot = internalMutation({
 
     await ctx.db.patch(args.submissionId, {
       screenshots,
+      updatedAt: Date.now(),
+    });
+
+    return { success: true };
+  },
+});
+
+/**
+ * Remove screenshot from submission (public mutation for optimistic updates)
+ */
+export const removeScreenshot = mutation({
+  args: {
+    submissionId: v.id('submissions'),
+    r2Key: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const submission = await ctx.db.get(args.submissionId);
+    if (!submission) {
+      throw new Error('Submission not found');
+    }
+
+    // Check membership - only owners, admins, and judges can delete screenshots
+    await requireHackathonRole(ctx, submission.hackathonId, ['owner', 'admin', 'judge']);
+
+    // Verify the screenshot exists
+    const screenshots = submission.screenshots || [];
+    const screenshot = screenshots.find((s) => s.r2Key === args.r2Key);
+    if (!screenshot) {
+      throw new Error('Screenshot not found');
+    }
+
+    const filteredScreenshots = screenshots.filter((s) => s.r2Key !== args.r2Key);
+
+    await ctx.db.patch(args.submissionId, {
+      screenshots: filteredScreenshots,
+      updatedAt: Date.now(),
+    });
+
+    return { success: true };
+  },
+});
+
+/**
+ * Remove screenshot from submission (internal mutation - kept for backward compatibility)
+ */
+export const removeScreenshotInternal = internalMutation({
+  args: {
+    submissionId: v.id('submissions'),
+    r2Key: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const submission = await ctx.db.get(args.submissionId);
+    if (!submission) {
+      throw new Error('Submission not found');
+    }
+
+    const screenshots = submission.screenshots || [];
+    const filteredScreenshots = screenshots.filter((s) => s.r2Key !== args.r2Key);
+
+    await ctx.db.patch(args.submissionId, {
+      screenshots: filteredScreenshots,
       updatedAt: Date.now(),
     });
 

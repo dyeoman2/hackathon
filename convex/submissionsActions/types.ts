@@ -37,6 +37,11 @@ export type GetSubmissionInternalRef = FunctionReference<
       scoreGenerationCompletedAt?: number;
       inFlight?: boolean;
     };
+    screenshots?: Array<{
+      r2Key: string;
+      url: string;
+      capturedAt: number;
+    }>;
     createdAt: number;
     updatedAt: number;
   } | null

@@ -112,6 +112,7 @@ function Carousel({
         canScrollNext,
       }}
     >
+      {/* biome-ignore lint/a11y/useSemanticElements: Carousel requires div for layout, role="region" provides semantic meaning */}
       <div
         onKeyDownCapture={handleKeyDown}
         className={cn('relative', className)}
@@ -143,6 +144,7 @@ function CarouselItem({ className, ...props }: React.ComponentProps<'div'>) {
   const { orientation } = useCarousel();
 
   return (
+    // biome-ignore lint/a11y/useSemanticElements: Carousel item requires div for layout, role="group" provides semantic meaning
     <div
       role="group"
       aria-roledescription="slide"

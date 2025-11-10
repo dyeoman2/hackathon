@@ -1,11 +1,16 @@
 'use node';
 
-import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import {
+  DeleteObjectCommand,
+  GetObjectCommand,
+  PutObjectCommand,
+  S3Client,
+} from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import Firecrawl from '@mendable/firecrawl-js';
 import { v } from 'convex/values';
+import { assertUserId } from '../../src/lib/shared/user-id';
 import { internal } from '../_generated/api';
-import type { Id } from '../_generated/dataModel';
 import type { ActionCtx } from '../_generated/server';
 import { action, internalAction } from '../_generated/server';
 import { authComponent } from '../auth';
@@ -81,16 +86,15 @@ export const captureScreenshot = action({
       // Use Firecrawl's scrape method with screenshot format
       // According to Firecrawl docs: https://docs.firecrawl.dev/features/scrape
       // Screenshots are returned as URLs pointing to Firecrawl's storage
-      // Using simple string format: formats: ['screenshot']
-      // Screenshot options (fullPage, quality, viewport) may be supported via separate options
+      // Using object format with fullPage: true to capture full-page scrolling screenshots
       const result: unknown = await firecrawl.scrape(submission.siteUrl, {
-        formats: ['screenshot'],
+        formats: [{ type: 'screenshot', fullPage: true }],
       });
 
       // Handle Firecrawl response format
       // SDK returns data directly, but structure may vary: result.screenshot or result.data?.screenshot
       let screenshotUrl: string | undefined;
-      
+
       // Check if result is a string URL first
       if (typeof result === 'string' && result.startsWith('http')) {
         screenshotUrl = result;
@@ -175,7 +179,7 @@ export const captureScreenshot = action({
 
       // Record screenshot capture completion time
       const screenshotCaptureCompletedAt = Date.now();
-      
+
       // Update submission with screenshot metadata
       await ctx.runMutation(internal.submissions.addScreenshot, {
         submissionId: args.submissionId,
@@ -211,8 +215,7 @@ export const captureScreenshot = action({
         );
       }
 
-      const errorMessage =
-        error instanceof Error ? error.message : 'Failed to capture screenshot';
+      const errorMessage = error instanceof Error ? error.message : 'Failed to capture screenshot';
       console.error('Failed to capture screenshot:', error);
       throw new Error(errorMessage);
     }
@@ -264,13 +267,14 @@ export const captureScreenshotInternal = internalAction({
 
       // Use Firecrawl's scrape method with screenshot format
       // Screenshots are returned as URLs pointing to Firecrawl's storage
+      // Using object format with fullPage: true to capture full-page scrolling screenshots
       const result: unknown = await firecrawl.scrape(submission.siteUrl, {
-        formats: ['screenshot'],
+        formats: [{ type: 'screenshot', fullPage: true }],
       });
 
       // Handle Firecrawl response format
       let screenshotUrl: string | undefined;
-      
+
       // Check if result is a string URL first
       if (typeof result === 'string' && result.startsWith('http')) {
         screenshotUrl = result;
@@ -350,7 +354,7 @@ export const captureScreenshotInternal = internalAction({
 
       // Record screenshot capture completion time
       const screenshotCaptureCompletedAt = Date.now();
-      
+
       // Update submission with screenshot metadata and completion timestamp
       await ctx.runMutation(internal.submissions.addScreenshot, {
         submissionId: args.submissionId,
@@ -389,11 +393,144 @@ export const captureScreenshotInternal = internalAction({
         };
       }
 
-      const errorMessage =
-        error instanceof Error ? error.message : 'Failed to capture screenshot';
+      const errorMessage = error instanceof Error ? error.message : 'Failed to capture screenshot';
       console.error('Failed to capture screenshot:', error);
       throw new Error(errorMessage);
     }
   },
 });
 
+/**
+ * Delete screenshot from R2 storage only (used after optimistic DB deletion)
+ */
+export const deleteScreenshotFromR2 = action({
+  args: {
+    submissionId: v.id('submissions'),
+    r2Key: v.string(),
+  },
+  handler: async (_ctx: ActionCtx, args) => {
+    // Get R2 credentials
+    const r2BucketName = process.env.CLOUDFLARE_R2_BUCKET_NAME;
+    const r2AccessKeyId = process.env.CLOUDFLARE_R2_ACCESS_KEY_ID;
+    const r2SecretAccessKey = process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY;
+    const r2AccountId = process.env.CLOUDFLARE_ACCOUNT_ID;
+
+    // Delete from R2 if configured
+    if (r2BucketName && r2AccessKeyId && r2SecretAccessKey && r2AccountId) {
+      try {
+        const s3Client = new S3Client({
+          region: 'auto',
+          endpoint: `https://${r2AccountId}.r2.cloudflarestorage.com`,
+          credentials: {
+            accessKeyId: r2AccessKeyId,
+            secretAccessKey: r2SecretAccessKey,
+          },
+        });
+
+        await s3Client.send(
+          new DeleteObjectCommand({
+            Bucket: r2BucketName,
+            Key: args.r2Key,
+          }),
+        );
+      } catch (error) {
+        // Log error but don't fail - R2 cleanup is best effort
+        console.error('Failed to delete screenshot from R2:', error);
+      }
+    }
+
+    return { success: true };
+  },
+});
+
+/**
+ * Delete a screenshot from a submission (legacy - kept for backward compatibility)
+ * Note: Prefer using removeScreenshot mutation + deleteScreenshotFromR2 action for better UX
+ */
+export const deleteScreenshot = action({
+  args: {
+    submissionId: v.id('submissions'),
+    r2Key: v.string(),
+  },
+  handler: async (ctx: ActionCtx, args) => {
+    const authUser = await authComponent.getAuthUser(ctx);
+    if (!authUser) {
+      throw new Error('Authentication required');
+    }
+
+    // Get submission to verify access
+    const submission = await ctx.runQuery(
+      (internal.submissions as unknown as { getSubmissionInternal: GetSubmissionInternalRef })
+        .getSubmissionInternal,
+      {
+        submissionId: args.submissionId,
+      },
+    );
+
+    if (!submission) {
+      throw new Error('Submission not found');
+    }
+
+    // Check if user has write access to this submission's hackathon
+    // Since we're in an action, we need to check membership via a query
+    const userId = assertUserId(authUser, 'User ID not found');
+    const membership = await ctx.runQuery(internal.hackathons.getMembershipInternal, {
+      hackathonId: submission.hackathonId,
+      userId,
+    });
+
+    if (!membership || membership.status !== 'active') {
+      throw new Error('Not a member of this hackathon');
+    }
+
+    const allowedRoles: Array<'owner' | 'admin' | 'judge'> = ['owner', 'admin', 'judge'];
+    if (!allowedRoles.includes(membership.role)) {
+      throw new Error(`Insufficient permissions. Required: ${allowedRoles.join(' or ')}`);
+    }
+
+    // Verify the screenshot exists
+    const screenshots = submission.screenshots || [];
+    const screenshot = screenshots.find((s) => s.r2Key === args.r2Key);
+    if (!screenshot) {
+      throw new Error('Screenshot not found');
+    }
+
+    // Get R2 credentials
+    const r2BucketName = process.env.CLOUDFLARE_R2_BUCKET_NAME;
+    const r2AccessKeyId = process.env.CLOUDFLARE_R2_ACCESS_KEY_ID;
+    const r2SecretAccessKey = process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY;
+    const r2AccountId = process.env.CLOUDFLARE_ACCOUNT_ID;
+
+    // Delete from R2 if configured
+    if (r2BucketName && r2AccessKeyId && r2SecretAccessKey && r2AccountId) {
+      try {
+        const s3Client = new S3Client({
+          region: 'auto',
+          endpoint: `https://${r2AccountId}.r2.cloudflarestorage.com`,
+          credentials: {
+            accessKeyId: r2AccessKeyId,
+            secretAccessKey: r2SecretAccessKey,
+          },
+        });
+
+        await s3Client.send(
+          new DeleteObjectCommand({
+            Bucket: r2BucketName,
+            Key: args.r2Key,
+          }),
+        );
+      } catch (error) {
+        // Log error but don't fail if R2 deletion fails (file might already be deleted)
+        console.error('Failed to delete screenshot from R2:', error);
+      }
+    }
+
+    // Remove from database (using internal mutation since we already checked permissions)
+    await ctx.runMutation(internal.submissions.removeScreenshotInternal, {
+      submissionId: args.submissionId,
+      r2Key: args.r2Key,
+    });
+
+    return { success: true };
+  },
+});

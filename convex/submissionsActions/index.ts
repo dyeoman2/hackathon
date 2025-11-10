@@ -11,6 +11,7 @@ export {
 } from './r2Cleanup';
 // Re-export all actions and helpers from the split modules
 export { downloadAndUploadRepo, downloadAndUploadRepoHelper } from './repoProcessing';
+export { captureScreenshot, deleteScreenshot, deleteScreenshotFromR2 } from './screenshot';
 export type {
   CheckIndexingAndGenerateSummaryRef,
   GetSubmissionInternalRef,

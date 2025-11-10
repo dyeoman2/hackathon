@@ -596,6 +596,25 @@ export const acceptInvite = mutation({
 /**
  * Internal query to get hackathon (no auth check)
  */
+/**
+ * Get membership for a user and hackathon (internal query for use in actions)
+ */
+export const getMembershipInternal = internalQuery({
+  args: {
+    hackathonId: v.id('hackathons'),
+    userId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const membership = await ctx.db
+      .query('memberships')
+      .withIndex('by_hackathonId', (q) => q.eq('hackathonId', args.hackathonId))
+      .filter((q) => q.eq(q.field('userId'), args.userId))
+      .first();
+
+    return membership;
+  },
+});
+
 export const getHackathonInternal = internalQuery({
   args: {
     hackathonId: v.id('hackathons'),
