@@ -54,11 +54,6 @@ function normalizeUrl(url: string): string {
   }
 }
 
-// Helper function to check if two URLs are equivalent (normalized comparison)
-function urlsAreEquivalent(url1: string, url2: string): boolean {
-  return normalizeUrl(url1) === normalizeUrl(url2);
-}
-
 /**
  * Capture screenshot of a URL using Firecrawl and save to R2
  */

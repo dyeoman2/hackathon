@@ -3,21 +3,6 @@ import type { Doc } from '@convex/_generated/dataModel';
 import { useAction } from 'convex/react';
 import { Camera, ChevronLeft, ChevronRight, Loader2, Trash2, X } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
-import { useOptimisticMutation } from '~/features/admin/hooks/useOptimisticUpdates';
-import { useToast } from '~/components/ui/toast';
-import {
-  Carousel,
-  CarouselContent,
-  CarouselItem,
-  CarouselNext,
-  CarouselPrevious,
-} from '~/components/ui/carousel';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~/components/ui/card';
-import { Button } from '~/components/ui/button';
-import {
-  Dialog,
-  DialogContent,
-} from '~/components/ui/dialog';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -28,6 +13,18 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '~/components/ui/alert-dialog';
+import { Button } from '~/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~/components/ui/card';
+import {
+  Carousel,
+  CarouselContent,
+  CarouselItem,
+  CarouselNext,
+  CarouselPrevious,
+} from '~/components/ui/carousel';
+import { Dialog, DialogContent } from '~/components/ui/dialog';
+import { useToast } from '~/components/ui/toast';
+import { useOptimisticMutation } from '~/features/admin/hooks/useOptimisticUpdates';
 
 interface SubmissionScreenshotsProps {
   submission: Doc<'submissions'>;
@@ -40,7 +37,7 @@ export function SubmissionScreenshots({ submission, canEdit = false }: Submissio
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deletingR2Key, setDeletingR2Key] = useState<string | null>(null);
   const [isCapturingScreenshot, setIsCapturingScreenshot] = useState(false);
-  
+
   const toast = useToast();
   const captureScreenshot = useAction(api.submissionsActions.screenshot.captureScreenshot);
 
@@ -77,7 +74,7 @@ export function SubmissionScreenshots({ submission, canEdit = false }: Submissio
       setIsCapturingScreenshot(false);
     }
   }, [submission.siteUrl, submission._id, captureScreenshot, toast]);
-  
+
   // Use optimistic mutation for instant UI updates - Convex handles rollback on error
   const removeScreenshotOptimistic = useOptimisticMutation(api.submissions.removeScreenshot, {
     onSuccess: () => {
@@ -97,7 +94,9 @@ export function SubmissionScreenshots({ submission, canEdit = false }: Submissio
   });
 
   // Action to clean up R2 storage (fire and forget - doesn't block UI)
-  const deleteScreenshotFromR2 = useAction(api.submissionsActions.screenshot.deleteScreenshotFromR2);
+  const deleteScreenshotFromR2 = useAction(
+    api.submissionsActions.screenshot.deleteScreenshotFromR2,
+  );
 
   // Keyboard navigation for modal
   useEffect(() => {
@@ -202,7 +201,9 @@ export function SubmissionScreenshots({ submission, canEdit = false }: Submissio
                         {screenshot.pageUrl ? (
                           <>
                             <div className="font-medium truncate">
-                              {screenshot.pageName || new URL(screenshot.pageUrl).pathname || 'Page'}
+                              {screenshot.pageName ||
+                                new URL(screenshot.pageUrl).pathname ||
+                                'Page'}
                             </div>
                             <a
                               href={screenshot.pageUrl}
@@ -239,9 +240,12 @@ export function SubmissionScreenshots({ submission, canEdit = false }: Submissio
       </CardContent>
 
       {/* Full-size image modal */}
-      <Dialog open={openIndex !== null && screenshots[openIndex] !== undefined} onOpenChange={(open) => !open && setOpenIndex(null)}>
+      <Dialog
+        open={openIndex !== null && screenshots[openIndex] !== undefined}
+        onOpenChange={(open) => !open && setOpenIndex(null)}
+      >
         {openIndex !== null && screenshots[openIndex] && (
-          <DialogContent 
+          <DialogContent
             className="!max-w-[98vw] !w-[98vw] max-h-[98vh] h-[98vh] p-2 bg-black/95 border-none"
             showCloseButton={false}
           >
@@ -318,7 +322,9 @@ export function SubmissionScreenshots({ submission, canEdit = false }: Submissio
                 {screenshots[openIndex].pageUrl ? (
                   <>
                     <div className="font-medium text-center mb-1">
-                      {screenshots[openIndex].pageName || new URL(screenshots[openIndex].pageUrl).pathname || `Page ${openIndex + 1}`}
+                      {screenshots[openIndex].pageName ||
+                        new URL(screenshots[openIndex].pageUrl).pathname ||
+                        `Page ${openIndex + 1}`}
                     </div>
                     <a
                       href={screenshots[openIndex].pageUrl}
@@ -351,12 +357,12 @@ export function SubmissionScreenshots({ submission, canEdit = false }: Submissio
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Screenshot?</AlertDialogTitle>
             <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete the screenshot from both the
-              submission and storage.
+              This action cannot be undone. This will permanently delete the screenshot from both
+              the submission and storage.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel 
+            <AlertDialogCancel
               onClick={() => {
                 setDeletingR2Key(null);
                 setDeleteConfirmOpen(false);
@@ -370,7 +376,8 @@ export function SubmissionScreenshots({ submission, canEdit = false }: Submissio
                 if (!deletingR2Key) return;
 
                 // Check if we're deleting the currently open screenshot BEFORE the mutation
-                const isDeletingCurrentScreenshot = openIndex !== null && screenshots[openIndex]?.r2Key === deletingR2Key;
+                const isDeletingCurrentScreenshot =
+                  openIndex !== null && screenshots[openIndex]?.r2Key === deletingR2Key;
 
                 // Close confirmation dialog immediately
                 setDeleteConfirmOpen(false);
@@ -412,4 +419,3 @@ export function SubmissionScreenshots({ submission, canEdit = false }: Submissio
     </Card>
   );
 }
-

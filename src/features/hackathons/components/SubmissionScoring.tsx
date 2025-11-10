@@ -19,8 +19,8 @@ export function SubmissionScoring({ score }: SubmissionScoringProps) {
           </Badge>
         ) : (
           <p className="text-sm text-muted-foreground">
-            The score will automatically be generated when the repository finished up uploading to R2
-            and being indexed in AI Search.
+            The score will automatically be generated when the repository finished up uploading to
+            R2 and being indexed in AI Search.
           </p>
         )}
       </CardContent>

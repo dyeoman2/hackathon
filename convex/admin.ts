@@ -12,7 +12,9 @@ import { guarded } from './authz/guardFactory';
 type BetterAuthUser = BetterAuthAdapterUserDoc;
 
 // Helper function to fetch all Better Auth users with proper pagination
-async function fetchAllBetterAuthUsers(ctx: QueryCtx | MutationCtx | ActionCtx): Promise<BetterAuthUser[]> {
+async function fetchAllBetterAuthUsers(
+  ctx: QueryCtx | MutationCtx | ActionCtx,
+): Promise<BetterAuthUser[]> {
   const allUsers: BetterAuthUser[] = [];
   let cursor: string | null = null;
 
