@@ -7,7 +7,7 @@ import { assertUserId } from '../src/lib/shared/user-id';
 import { api, internal } from './_generated/api';
 import type { Id } from './_generated/dataModel';
 import type { ActionCtx } from './_generated/server';
-import { action } from './_generated/server';
+import { action, internalAction } from './_generated/server';
 import { authComponent } from './auth';
 import { isAutumnConfigured } from './autumn';
 
@@ -1275,20 +1275,54 @@ export const compareInferenceMethods = action({
   },
 });
 
-export const generateSubmissionReview = action({
+/**
+ * Helper function to generate review (extracted for reuse)
+ * Can be called with or without auth/reservation
+ */
+async function generateReviewHelper(
+  ctx: ActionCtx,
   args: {
-    submissionId: v.id('submissions'),
-    submissionTitle: v.string(),
-    team: v.string(),
-    repoUrl: v.string(),
-    siteUrl: v.optional(v.string()),
-    repoSummary: v.string(),
-    rubric: v.string(),
+    submissionTitle: string;
+    team: string;
+    repoUrl: string;
+    siteUrl?: string;
+    repoSummary: string;
+    rubric: string;
   },
-  handler: async (ctx, args) => {
-    await ensureAuthenticatedUser(ctx);
+  skipReservation = false,
+): Promise<{
+  score: number | null;
+  summary: string;
+  rawResponse?: string;
+  provider?: string;
+  model?: string;
+  usage?: unknown;
+}> {
+  let reservation: {
+    allowed: boolean;
+    mode?: 'free' | 'paid';
+    requiresUpgrade?: boolean;
+    reason?: string;
+    errorMessage?: string;
+    freeLimit?: number;
+    usage?: { freeMessagesRemaining?: number };
+  } | null = null;
+  let usageFinalized = false;
 
-    const reservation = await ctx.runAction(api.ai.reserveAiMessage, {
+  const releaseReservation = async () => {
+    if (usageFinalized || !reservation || skipReservation) {
+      return;
+    }
+    usageFinalized = true;
+    try {
+      await ctx.runAction(api.ai.releaseAiMessage, {});
+    } catch (releaseError) {
+      console.error('[AI] Failed to release AI reservation', releaseError);
+    }
+  };
+
+  if (!skipReservation) {
+    reservation = await ctx.runAction(api.ai.reserveAiMessage, {
       metadata: {
         provider: 'cloudflare-gateway-workers-ai',
         model: '@cf/meta/llama-3.1-8b-instruct',
@@ -1296,31 +1330,28 @@ export const generateSubmissionReview = action({
     });
 
     if (!reservation.allowed) {
-      throw buildReservationError(reservation);
+      throw buildReservationError(
+        reservation as {
+          requiresUpgrade?: boolean;
+          reason?: string;
+          errorMessage?: string;
+          freeLimit: number;
+          usage: { freeMessagesRemaining: number };
+        },
+      );
     }
+  }
 
-    let usageFinalized = false;
-    const releaseReservation = async () => {
-      if (usageFinalized) {
-        return;
-      }
-      usageFinalized = true;
-      try {
-        await ctx.runAction(api.ai.releaseAiMessage, {});
-      } catch (releaseError) {
-        console.error('[AI] Failed to release AI reservation', releaseError);
-      }
-    };
+  const prompt = `You are an expert hackathon judge. Evaluate the submission using the rubric and respond with JSON.\n\nSubmission Details:\n- Title: ${args.submissionTitle}\n- Team: ${args.team}\n- Repository: ${args.repoUrl}\n${args.siteUrl ? `- Live Site: ${args.siteUrl}\n` : ''}\nRepository Summary:\n${args.repoSummary}\n\nRubric:\n${args.rubric}\n\nReturn JSON with this shape:\n{\n  "score": number // 0-10 with one decimal place,\n  "summary": string // 2-3 paragraphs referencing rubric categories,\n  "strengths": string[],\n  "risks": string[]\n}\n\nOnly respond with valid JSON.`;
 
-    const prompt = `You are an expert hackathon judge. Evaluate the submission using the rubric and respond with JSON.\n\nSubmission Details:\n- Title: ${args.submissionTitle}\n- Team: ${args.team}\n- Repository: ${args.repoUrl}\n${args.siteUrl ? `- Live Site: ${args.siteUrl}\n` : ''}\nRepository Summary:\n${args.repoSummary}\n\nRubric:\n${args.rubric}\n\nReturn JSON with this shape:\n{\n  "score": number // 0-10 with one decimal place,\n  "summary": string // 2-3 paragraphs referencing rubric categories,\n  "strengths": string[],\n  "risks": string[]\n}\n\nOnly respond with valid JSON.`;
+  try {
+    const gatewayResult = await fetchGatewayCompletion(prompt);
+    const parsed = parseReviewResponse(gatewayResult.text);
 
-    try {
-      const gatewayResult = await fetchGatewayCompletion(prompt);
-      const parsed = parseReviewResponse(gatewayResult.text);
-
+    if (!skipReservation && reservation && reservation.mode) {
       try {
         const completion = await ctx.runAction(api.ai.completeAiMessage, {
-          mode: reservation.mode,
+          mode: reservation.mode as 'free' | 'paid',
           metadata: extractUsageMetadata(
             gatewayResult.usage,
             gatewayResult.provider,
@@ -1337,19 +1368,55 @@ export const generateSubmissionReview = action({
           ? completionError
           : new Error('Failed to finalize AI usage.');
       }
-
-      return {
-        score: parsed.score,
-        summary: parsed.summary,
-        rawResponse: gatewayResult.text,
-        provider: gatewayResult.provider,
-        model: gatewayResult.model,
-        usage: gatewayResult.usage,
-      };
-    } catch (error) {
-      await releaseReservation();
-      throw error;
     }
+
+    return {
+      score: parsed.score,
+      summary: parsed.summary,
+      rawResponse: gatewayResult.text,
+      provider: gatewayResult.provider,
+      model: gatewayResult.model,
+      usage: gatewayResult.usage,
+    };
+  } catch (error) {
+    await releaseReservation();
+    throw error;
+  }
+}
+
+export const generateSubmissionReview = action({
+  args: {
+    submissionId: v.id('submissions'),
+    submissionTitle: v.string(),
+    team: v.string(),
+    repoUrl: v.string(),
+    siteUrl: v.optional(v.string()),
+    repoSummary: v.string(),
+    rubric: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await ensureAuthenticatedUser(ctx);
+    return await generateReviewHelper(ctx, args, false);
+  },
+});
+
+/**
+ * Internal action to generate review without auth (for automated processes)
+ */
+export const generateSubmissionReviewInternal = internalAction({
+  args: {
+    submissionId: v.id('submissions'),
+    submissionTitle: v.string(),
+    team: v.string(),
+    repoUrl: v.string(),
+    siteUrl: v.optional(v.string()),
+    repoSummary: v.string(),
+    rubric: v.string(),
+  },
+  handler: async (ctx, args) => {
+    // Skip reservation for automated processes - AI calls will still work
+    // but usage won't be tracked (this is acceptable for automated reviews)
+    return await generateReviewHelper(ctx, args, true);
   },
 });
 

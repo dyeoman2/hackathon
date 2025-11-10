@@ -141,8 +141,24 @@ export default defineSchema({
       v.object({
         r2Key: v.optional(v.string()),
         uploadedAt: v.optional(v.number()),
+        uploadStartedAt: v.optional(v.number()),
+        uploadCompletedAt: v.optional(v.number()),
+        aiSearchSyncStartedAt: v.optional(v.number()),
+        aiSearchSyncCompletedAt: v.optional(v.number()),
+        aiSearchSyncJobId: v.optional(v.string()),
         aiSummary: v.optional(v.string()),
         summarizedAt: v.optional(v.number()),
+        summaryGenerationStartedAt: v.optional(v.number()),
+        summaryGenerationCompletedAt: v.optional(v.number()),
+        processingState: v.optional(
+          v.union(
+            v.literal('downloading'),
+            v.literal('uploading'),
+            v.literal('indexing'),
+            v.literal('generating'),
+            v.literal('complete'),
+          ),
+        ),
       }),
     ),
     ai: v.optional(
@@ -150,6 +166,8 @@ export default defineSchema({
         summary: v.optional(v.string()),
         score: v.optional(v.number()),
         lastReviewedAt: v.optional(v.number()),
+        scoreGenerationStartedAt: v.optional(v.number()),
+        scoreGenerationCompletedAt: v.optional(v.number()),
         inFlight: v.optional(v.boolean()),
       }),
     ),

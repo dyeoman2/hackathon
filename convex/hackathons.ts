@@ -7,7 +7,7 @@ import { assertUserId } from '../src/lib/shared/user-id';
 import { components, internal } from './_generated/api';
 import type { Id } from './_generated/dataModel';
 import type { MutationCtx, QueryCtx } from './_generated/server';
-import { mutation, query } from './_generated/server';
+import { internalQuery, mutation, query } from './_generated/server';
 import { authComponent } from './auth';
 
 type HackathonRole = 'owner' | 'admin' | 'judge';
@@ -590,5 +590,17 @@ export const acceptInvite = mutation({
     });
 
     return { hackathonId: membership.hackathonId };
+  },
+});
+
+/**
+ * Internal query to get hackathon (no auth check)
+ */
+export const getHackathonInternal = internalQuery({
+  args: {
+    hackathonId: v.id('hackathons'),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.hackathonId);
   },
 });

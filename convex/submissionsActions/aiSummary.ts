@@ -5,10 +5,13 @@ import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import type { ActionCtx } from '../_generated/server';
 import { action, internalAction } from '../_generated/server';
-import { downloadAndUploadRepoHelper } from './repoProcessing';
+import { checkAISearchJobStatus, downloadAndUploadRepoHelper } from './repoProcessing';
 import type {
   CheckIndexingAndGenerateSummaryRef,
+  GenerateSubmissionReviewInternalRef,
+  GetHackathonInternalRef,
   GetSubmissionInternalRef,
+  UpdateSubmissionAIInternalRef,
   UpdateSubmissionSourceInternalRef,
 } from './types';
 
@@ -24,8 +27,9 @@ export const checkIndexingAndGenerateSummary = internalAction({
   },
   handler: async (ctx, args) => {
     try {
-      const maxAttempts = 30; // Maximum 30 attempts
-      const pollIntervalMs = 2000; // Check every 2 seconds
+      const maxAttempts = 60; // Maximum 60 attempts (2 minutes total)
+      // Exponential backoff: start with 3 seconds, increase gradually
+      const pollIntervalMs = Math.min(3000 + args.attempt * 500, 10000); // 3s to 10s max
 
       // Get submission
       const submission = await ctx.runQuery(
@@ -40,18 +44,65 @@ export const checkIndexingAndGenerateSummary = internalAction({
         throw new Error('Submission not found');
       }
 
+      // Early exit: If summary and score already exist, we're done
+      // Check if processing is already complete to avoid unnecessary retries
+      // This prevents the function from continuing to retry after completion
+      const hasSummary = !!submission.source?.aiSummary;
+      const hasScore = submission.ai?.score !== undefined;
+      const isComplete = submission.source?.processingState === 'complete';
+
+      if (hasSummary && hasScore && isComplete) {
+        console.log(
+          `[AI Search] Submission ${args.submissionId} already has summary and score - skipping (attempt ${args.attempt})`,
+        );
+        return; // Already complete, don't reschedule
+      }
+
+      // Also check if we have summary but are still in generating state
+      // This can happen if score generation failed but summary succeeded
+      // In this case, we should still try to generate the score, but not re-generate the summary
+      if (hasSummary && !hasScore && isComplete) {
+        console.log(
+          `[AI Search] Submission ${args.submissionId} has summary but no score - will attempt score generation`,
+        );
+        // Continue to score generation section below
+      } else if (hasSummary && hasScore && !isComplete) {
+        // Summary and score exist but state isn't marked complete - fix the state
+        console.log(
+          `[AI Search] Submission ${args.submissionId} has summary and score but state not complete - fixing state`,
+        );
+        await ctx.runMutation(
+          (
+            internal.submissions as unknown as {
+              updateSubmissionSourceInternal: UpdateSubmissionSourceInternalRef;
+            }
+          ).updateSubmissionSourceInternal,
+          {
+            submissionId: args.submissionId,
+            processingState: 'complete',
+          },
+        );
+        return; // State fixed, we're done
+      } else if (hasSummary && !hasScore && !isComplete) {
+        // Has summary but no score and not complete - continue to generate score
+        console.log(
+          `[AI Search] Submission ${args.submissionId} has summary but no score - will generate score`,
+        );
+        // Continue to score generation section below
+      }
+
       // If repo hasn't been uploaded, do it now (same file, can call helper directly)
       if (!submission.source?.r2Key) {
         await downloadAndUploadRepoHelper(ctx, {
           submissionId: args.submissionId,
         });
 
-        // After upload, wait a moment for files to be available, then continue
-        // We'll check indexing on the next attempt (or immediately if attempt is 0)
+        // After upload, wait longer for files to be indexed by Cloudflare AI Search
+        // AI Search indexing can take 10-30 seconds after R2 upload
         if (args.attempt === 0) {
-          // First attempt after upload, reschedule immediately to check indexing
+          // First attempt after upload, wait longer before checking indexing
           await ctx.scheduler.runAfter(
-            1000, // Wait 1 second for files to be available
+            15000, // Wait 15 seconds for files to be indexed
             (
               internal.submissionsActions.aiSummary as unknown as {
                 checkIndexingAndGenerateSummary: CheckIndexingAndGenerateSummaryRef;
@@ -59,7 +110,7 @@ export const checkIndexingAndGenerateSummary = internalAction({
             ).checkIndexingAndGenerateSummary,
             {
               submissionId: args.submissionId,
-              attempt: 0, // Reset attempt counter after upload
+              attempt: 1, // Start at attempt 1 after initial wait
             },
           );
           return;
@@ -84,88 +135,255 @@ export const checkIndexingAndGenerateSummary = internalAction({
       // R2 path prefix for this submission (e.g., "repos/{submissionId}/files/")
       // We've already checked that source.r2Key exists above
       const r2PathPrefix = submission.source.r2Key;
+      const uploadedAt = submission.source?.uploadedAt || 0;
+      const timeSinceUpload = Date.now() - uploadedAt;
 
-      // Check if files are indexed by trying a test query
-      let indexed = false;
-      try {
-        // Correct endpoint format: /autorag/rags/{instance_name}/ai-search
-        const testQueryUrl = `https://api.cloudflare.com/client/v4/accounts/${accountId}/autorag/rags/${aiSearchInstanceId}/ai-search`;
+      // Log timing information for debugging
+      console.log(
+        `[AI Search] Checking indexing for submission ${args.submissionId}, attempt ${args.attempt}/${maxAttempts}`,
+      );
+      console.log(
+        `[AI Search] Files uploaded ${Math.round(timeSinceUpload / 1000)}s ago, path prefix: ${r2PathPrefix}`,
+      );
 
-        // Note: Cloudflare AI Search API doesn't support filters parameter
-        // We'll filter results client-side by checking the path attribute
-        const testResponse = await fetch(testQueryUrl, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${apiToken}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            query: `files in ${r2PathPrefix}`,
-            max_num_results: 10, // Get more results to account for client-side filtering
-          }),
-        });
-
-        if (!testResponse.ok) {
-          const errorText = await testResponse.text();
-          console.error(`[AI Search] Test query failed: ${testResponse.status} - ${errorText}`);
-
-          // If it's a routing error, this is a configuration issue, not an indexing issue
-          if (
-            testResponse.status === 400 &&
-            (errorText.includes('Could not route') || errorText.includes('No route for that URI'))
-          ) {
-            console.error(
-              `[AI Search] CRITICAL: API routing error - instance "${aiSearchInstanceId}" not found or endpoint incorrect`,
-            );
-            // Don't reschedule - this is a configuration error that won't fix itself
-            throw new Error(
-              `AI Search instance routing error: The instance "${aiSearchInstanceId}" may not exist or the API endpoint is incorrect. Check CLOUDFLARE_AI_SEARCH_INSTANCE_ID. Error: ${errorText}`,
-            );
-          }
-
-          // For other errors, assume indexing might not be ready yet
-          return; // Will reschedule below
-        }
-
-        const testData = await testResponse.json();
-        const testDocs = testData.data || testData.result?.data || [];
-
-        // Check if any returned documents actually match the path prefix
-        const matchingDocs = testDocs.filter(
-          (doc: { filename?: string; attributes?: { path?: string } }) => {
-            const docPath = doc.attributes?.path || doc.filename || '';
-            return docPath.startsWith(r2PathPrefix);
+      // If files were just uploaded (less than 20 seconds ago), wait longer
+      // Cloudflare AI Search indexing can take 20-60 seconds after R2 upload
+      if (timeSinceUpload > 0 && timeSinceUpload < 20000 && args.attempt < 5) {
+        console.log(
+          `[AI Search] Files uploaded recently (${Math.round(timeSinceUpload / 1000)}s ago), waiting longer before checking indexing...`,
+        );
+        await ctx.scheduler.runAfter(
+          Math.max(20000 - timeSinceUpload, 5000), // Wait until at least 20s have passed
+          (
+            internal.submissionsActions.aiSummary as unknown as {
+              checkIndexingAndGenerateSummary: CheckIndexingAndGenerateSummaryRef;
+            }
+          ).checkIndexingAndGenerateSummary,
+          {
+            submissionId: args.submissionId,
+            attempt: args.attempt + 1,
           },
         );
+        return;
+      }
 
-        if (matchingDocs.length > 0 || testDocs.length === 0) {
-          // Either we have matching docs, or no docs returned (which could mean not indexed yet)
-          // If we have docs but none match, that's a problem but we'll proceed anyway
+      // Set processing state to indexing if not already set
+      if (submission.source?.processingState !== 'indexing') {
+        await ctx.runMutation(
+          (
+            internal.submissions as unknown as {
+              updateSubmissionSourceInternal: UpdateSubmissionSourceInternalRef;
+            }
+          ).updateSubmissionSourceInternal,
+          {
+            submissionId: args.submissionId,
+            processingState: 'indexing',
+          },
+        );
+      }
+
+      // Check if files are indexed by checking job status first, then falling back to querying documents
+      let indexed = false;
+
+      // First, try to check job status if we have a job_id
+      if (submission.source?.aiSearchSyncJobId) {
+        const jobStatus = await checkAISearchJobStatus(ctx, submission.source.aiSearchSyncJobId);
+        console.log(
+          `[AI Search] Job ${submission.source.aiSearchSyncJobId} status: ${jobStatus || 'unknown'}`,
+        );
+
+        if (jobStatus === 'completed') {
+          console.log(`[AI Search] Sync job completed - files should be indexed`);
+          indexed = true;
+          // Record sync completion time
+          await ctx.runMutation(
+            (
+              internal.submissions as unknown as {
+                updateSubmissionSourceInternal: UpdateSubmissionSourceInternalRef;
+              }
+            ).updateSubmissionSourceInternal,
+            {
+              submissionId: args.submissionId,
+              aiSearchSyncCompletedAt: Date.now(),
+            },
+          );
+        } else if (jobStatus === 'failed') {
+          console.warn(`[AI Search] Sync job failed - will try querying documents as fallback`);
+          // Continue to document query fallback below
+        } else if (jobStatus === 'running' || jobStatus === 'pending') {
+          console.log(
+            `[AI Search] Sync job still ${jobStatus} - waiting for completion (attempt ${args.attempt})`,
+          );
+          // Job is still running, don't mark as indexed yet
+          indexed = false;
+        } else {
+          // Job not found or status unknown - fall back to document query
+          console.log(
+            `[AI Search] Job status unknown or not found - falling back to document query`,
+          );
+        }
+      }
+
+      // If job status check didn't confirm indexing, fall back to querying documents
+      // This handles cases where:
+      // - No job_id was stored (older submissions)
+      // - Job status check failed
+      // - Job completed but we want to verify documents are actually indexed
+      if (!indexed) {
+        // If enough time has passed since upload (5+ minutes), assume indexing is complete
+        // This handles cases where AI Search is indexed but our query detection isn't working
+        const MIN_TIME_FOR_INDEXING = 5 * 60 * 1000; // 5 minutes
+        if (timeSinceUpload > MIN_TIME_FOR_INDEXING && args.attempt >= 10) {
+          console.log(
+            `[AI Search] Files uploaded ${Math.round(timeSinceUpload / 1000)}s ago (${Math.round(timeSinceUpload / 60000)} minutes). Assuming indexing is complete and proceeding.`,
+          );
           indexed = true;
         } else {
-          console.warn(
-            `[AI Search] Test query returned ${testDocs.length} documents but none match path prefix ${r2PathPrefix}`,
-          );
-          console.warn(
-            `  Sample paths:`,
-            testDocs
-              .slice(0, 3)
-              .map(
-                (d: { filename?: string; attributes?: { path?: string } }) =>
-                  d.attributes?.path || d.filename || 'Unknown',
-              ),
-          );
-          // Still mark as indexed so we can proceed and see what happens
-          indexed = true;
-        }
-      } catch (error) {
-        // If query fails with routing error, throw it (don't retry)
-        if (error instanceof Error && error.message.includes('routing error')) {
-          throw error;
-        }
+          try {
+            // Correct endpoint format: /autorag/rags/{instance_name}/ai-search
+            const testQueryUrl = `https://api.cloudflare.com/client/v4/accounts/${accountId}/autorag/rags/${aiSearchInstanceId}/ai-search`;
 
-        // For other errors, indexing might not be ready yet
-        // Silently continue - will retry on next attempt
+            // First, try a query WITHOUT filters to see what paths are actually stored
+            // This helps diagnose if the filter format is wrong or paths are stored differently
+            const testResponseWithoutFilter = await fetch(testQueryUrl, {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${apiToken}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                query: `files in ${r2PathPrefix}`,
+                max_num_results: 100, // Get more results to check paths
+              }),
+            });
+
+            if (testResponseWithoutFilter.ok) {
+              const testDataNoFilter = await testResponseWithoutFilter.json();
+              const testDocsNoFilter = testDataNoFilter.data || testDataNoFilter.result?.data || [];
+
+              // Log sample paths for debugging
+              if (testDocsNoFilter.length > 0) {
+                const samplePaths = testDocsNoFilter
+                  .slice(0, 10)
+                  .map(
+                    (d: { filename?: string; attributes?: { path?: string }; path?: string }) => {
+                      return {
+                        path: d.attributes?.path || d.path || d.filename || 'Unknown',
+                        fullDoc: d,
+                      };
+                    },
+                  );
+                console.log(
+                  `[AI Search] Sample paths from unfiltered query (${testDocsNoFilter.length} total docs):`,
+                  samplePaths.map((p: { path: string }) => p.path),
+                );
+              }
+
+              // Check if any documents match our path prefix
+              const matchingDocsNoFilter = testDocsNoFilter.filter(
+                (doc: { filename?: string; attributes?: { path?: string }; path?: string }) => {
+                  const docPath = doc.attributes?.path || doc.path || doc.filename || '';
+                  return docPath.startsWith(r2PathPrefix);
+                },
+              );
+
+              if (matchingDocsNoFilter.length > 0) {
+                console.log(
+                  `[AI Search] Found ${matchingDocsNoFilter.length} matching documents (out of ${testDocsNoFilter.length} total) for path prefix ${r2PathPrefix}`,
+                );
+                indexed = true;
+              } else if (testDocsNoFilter.length > 0) {
+                // Documents exist but none match - log for debugging
+                console.warn(
+                  `[AI Search] Query returned ${testDocsNoFilter.length} documents but none match path prefix ${r2PathPrefix}`,
+                );
+                console.warn(
+                  `  Sample paths:`,
+                  testDocsNoFilter
+                    .slice(0, 5)
+                    .map(
+                      (d: { filename?: string; attributes?: { path?: string }; path?: string }) =>
+                        d.attributes?.path || d.path || d.filename || 'Unknown',
+                    ),
+                );
+
+                // If enough time has passed, proceed anyway (files might be indexed but path format differs)
+                if (timeSinceUpload > 3 * 60 * 1000) {
+                  // 3 minutes
+                  console.log(
+                    `[AI Search] Files uploaded ${Math.round(timeSinceUpload / 1000)}s ago. Proceeding despite path mismatch - files may be indexed with different path format.`,
+                  );
+                  indexed = true;
+                }
+              }
+            }
+
+            // Also try with filters (in case they work)
+            if (!indexed) {
+              const testResponse = await fetch(testQueryUrl, {
+                method: 'POST',
+                headers: {
+                  Authorization: `Bearer ${apiToken}`,
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  query: `files in path ${r2PathPrefix} submission ${args.submissionId}`,
+                  max_num_results: 50,
+                  filters: {
+                    key: 'path',
+                    type: 'gte',
+                    value: r2PathPrefix,
+                  },
+                }),
+              });
+
+              if (testResponse.ok) {
+                const testData = await testResponse.json();
+                const testDocs = testData.data || testData.result?.data || [];
+                const matchingDocs = testDocs.filter(
+                  (doc: { filename?: string; attributes?: { path?: string }; path?: string }) => {
+                    const docPath = doc.attributes?.path || doc.path || doc.filename || '';
+                    return docPath.startsWith(r2PathPrefix);
+                  },
+                );
+
+                if (matchingDocs.length > 0) {
+                  indexed = true;
+                }
+              } else {
+                const errorText = await testResponse.text();
+                console.error(
+                  `[AI Search] Filtered query failed: ${testResponse.status} - ${errorText}`,
+                );
+
+                // If it's a routing error, this is a configuration issue
+                if (
+                  testResponse.status === 400 &&
+                  (errorText.includes('Could not route') ||
+                    errorText.includes('No route for that URI'))
+                ) {
+                  console.error(
+                    `[AI Search] CRITICAL: API routing error - instance "${aiSearchInstanceId}" not found or endpoint incorrect`,
+                  );
+                  throw new Error(
+                    `AI Search instance routing error: The instance "${aiSearchInstanceId}" may not exist or the API endpoint is incorrect. Check CLOUDFLARE_AI_SEARCH_INSTANCE_ID. Error: ${errorText}`,
+                  );
+                }
+              }
+            }
+          } catch (error) {
+            // If query fails with routing error, throw it (don't retry)
+            if (error instanceof Error && error.message.includes('routing error')) {
+              throw error;
+            }
+
+            // For other errors, log but continue
+            console.warn(
+              `[AI Search] Query error (attempt ${args.attempt}):`,
+              error instanceof Error ? error.message : String(error),
+            );
+          }
+        }
       }
 
       if (!indexed) {
@@ -189,21 +407,180 @@ export const checkIndexingAndGenerateSummary = internalAction({
           console.warn(
             `Indexing status unclear for submission ${args.submissionId} after ${maxAttempts} attempts. Proceeding with summary generation.`,
           );
+          // Mark sync as completed even though we're not sure - at least we tried
+          await ctx.runMutation(
+            (
+              internal.submissions as unknown as {
+                updateSubmissionSourceInternal: UpdateSubmissionSourceInternalRef;
+              }
+            ).updateSubmissionSourceInternal,
+            {
+              submissionId: args.submissionId,
+              aiSearchSyncCompletedAt: Date.now(),
+            },
+          );
         }
+      } else {
+        // Files are indexed - record sync completion time
+        await ctx.runMutation(
+          (
+            internal.submissions as unknown as {
+              updateSubmissionSourceInternal: UpdateSubmissionSourceInternalRef;
+            }
+          ).updateSubmissionSourceInternal,
+          {
+            submissionId: args.submissionId,
+            aiSearchSyncCompletedAt: Date.now(),
+          },
+        );
       }
 
       // Files are indexed (or we've given up waiting) - proceed with summary generation
-      const summary = await generateSummaryOnceReady(
-        ctx,
-        args.submissionId,
-        r2PathPrefix,
-        aiSearchInstanceId,
-        accountId,
-        apiToken,
-        submission.title,
-      );
+      // Only generate summary if it doesn't already exist
+      let summary: string;
+      if (hasSummary && submission.source?.aiSummary) {
+        // Summary already exists, use it
+        summary = submission.source.aiSummary;
+        console.log(
+          `[AI Search] Submission ${args.submissionId} already has summary - skipping generation`,
+        );
+      } else {
+        // Set processing state to generating and record summary generation start time
+        const summaryGenerationStartedAt = Date.now();
+        await ctx.runMutation(
+          (
+            internal.submissions as unknown as {
+              updateSubmissionSourceInternal: UpdateSubmissionSourceInternalRef;
+            }
+          ).updateSubmissionSourceInternal,
+          {
+            submissionId: args.submissionId,
+            processingState: 'generating',
+            summaryGenerationStartedAt,
+          },
+        );
 
-      // Update submission with summary
+        summary = await generateSummaryOnceReady(
+          ctx,
+          args.submissionId,
+          r2PathPrefix,
+          aiSearchInstanceId,
+          accountId,
+          apiToken,
+          submission.title,
+        );
+
+        // Update submission with summary and record completion time
+        const summaryGenerationCompletedAt = Date.now();
+        await ctx.runMutation(
+          (
+            internal.submissions as unknown as {
+              updateSubmissionSourceInternal: UpdateSubmissionSourceInternalRef;
+            }
+          ).updateSubmissionSourceInternal,
+          {
+            submissionId: args.submissionId,
+            aiSummary: summary,
+            summarizedAt: summaryGenerationCompletedAt,
+            summaryGenerationCompletedAt,
+            processingState: 'generating', // Keep as generating while we generate the review
+          },
+        );
+      }
+
+      // Automatically generate AI review (score) after summary is complete
+      // Only generate score if it doesn't already exist
+      if (!hasScore) {
+        try {
+          // Get hackathon to get rubric
+          const hackathon = await ctx.runQuery(
+            (internal.hackathons as unknown as { getHackathonInternal: GetHackathonInternalRef })
+              .getHackathonInternal,
+            {
+              hackathonId: submission.hackathonId,
+            },
+          );
+
+          if (hackathon) {
+            // Automatically generate AI review (score) after summary is complete
+            // Call the review generation action - it will handle AI reservation
+            // Note: This requires auth, but for automated processes we'll handle errors gracefully
+            const scoreGenerationStartedAt = Date.now();
+            try {
+              // Record score generation start time
+              await ctx.runMutation(
+                (
+                  internal.submissions as unknown as {
+                    updateSubmissionAIInternal: UpdateSubmissionAIInternalRef;
+                  }
+                ).updateSubmissionAIInternal,
+                {
+                  submissionId: args.submissionId,
+                  scoreGenerationStartedAt,
+                },
+              );
+
+              const reviewResult = await ctx.runAction(
+                (
+                  internal.cloudflareAi as unknown as {
+                    generateSubmissionReviewInternal: GenerateSubmissionReviewInternalRef;
+                  }
+                ).generateSubmissionReviewInternal,
+                {
+                  submissionId: args.submissionId,
+                  submissionTitle: submission.title,
+                  team: submission.team,
+                  repoUrl: submission.repoUrl,
+                  siteUrl: submission.siteUrl ?? undefined,
+                  repoSummary: summary,
+                  rubric: hackathon.rubric ?? 'No rubric provided',
+                },
+              );
+
+              // Update submission with review results and record completion time
+              const scoreGenerationCompletedAt = Date.now();
+              await ctx.runMutation(
+                (
+                  internal.submissions as unknown as {
+                    updateSubmissionAIInternal: UpdateSubmissionAIInternalRef;
+                  }
+                ).updateSubmissionAIInternal,
+                {
+                  submissionId: args.submissionId,
+                  summary: reviewResult.summary,
+                  score: reviewResult.score ?? undefined,
+                  scoreGenerationCompletedAt,
+                },
+              );
+            } catch (reviewError) {
+              // If review generation fails (e.g., auth issues), log but don't fail the whole process
+              // The review can be generated manually later via the UI
+              console.warn(
+                `[AI Review] Could not auto-generate review for submission ${args.submissionId}. Error:`,
+                reviewError instanceof Error ? reviewError.message : String(reviewError),
+              );
+            }
+          } else {
+            console.log(
+              `[AI Review] Hackathon not found for submission ${args.submissionId} - skipping score generation`,
+            );
+          }
+        } catch (reviewError) {
+          // Log error but don't fail the whole process
+          // The review can be generated manually later via the UI
+          console.warn(
+            `[AI Review] Error getting hackathon or generating review for submission ${args.submissionId}:`,
+            reviewError instanceof Error ? reviewError.message : String(reviewError),
+          );
+          // Continue to mark as complete even if review generation failed
+        }
+      } else {
+        console.log(
+          `[AI Review] Submission ${args.submissionId} already has score - skipping generation`,
+        );
+      }
+
+      // Set processing state to complete
       await ctx.runMutation(
         (
           internal.submissions as unknown as {
@@ -212,8 +589,7 @@ export const checkIndexingAndGenerateSummary = internalAction({
         ).updateSubmissionSourceInternal,
         {
           submissionId: args.submissionId,
-          aiSummary: summary,
-          summarizedAt: Date.now(),
+          processingState: 'complete',
         },
       );
     } catch (error) {
@@ -282,8 +658,9 @@ IMPORTANT: If you see files from other repositories (like "tanstack-start-templa
 Keep it concise but informative (500-1000 words).`;
 
   // Query the AI Search endpoint to generate summary
-  // Note: Cloudflare AI Search API doesn't support filters parameter
-  // We'll filter results client-side by checking the path attribute
+  // Use server-side filters to only query documents from this submission's folder
+  // API docs: https://developers.cloudflare.com/api/resources/autorag/
+  // Filters format: { key: "path", type: "gte", value: "path/prefix/" }
   let queryResponse: Response;
   try {
     queryResponse = await fetch(queryUrl, {
@@ -295,9 +672,13 @@ Keep it concise but informative (500-1000 words).`;
       body: JSON.stringify({
         query: summaryQuery,
         model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast', // Optional: specify model for generation
-        max_num_results: 50, // Get more documents to account for client-side filtering
+        max_num_results: 50,
         rewrite_query: false, // Don't rewrite query
-        // No filters - Cloudflare API doesn't support them, we filter client-side
+        filters: {
+          key: 'path', // Filter by path attribute
+          type: 'gte', // Greater than or equal (matches paths starting with prefix)
+          value: r2PathPrefix, // Only include documents from this submission's folder
+        },
       }),
     });
   } catch (error) {
@@ -336,22 +717,46 @@ Keep it concise but informative (500-1000 words).`;
       );
     }
 
-    // If filtering by path isn't supported, try without filter
+    // If filtering fails, try alternative filter formats or without filter as fallback
     if (queryResponse.status === 400) {
-      // Retry without filter - we'll filter results manually if needed
-      const retryResponse = await fetch(queryUrl, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${apiToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          query: summaryQuery,
-          model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
-          max_num_results: 50, // Get more to account for filtering
-          rewrite_query: false,
-        }),
-      });
+      // Try alternative filter format: using "attributes.path" instead of "path"
+      let retryResponse: Response;
+      try {
+        retryResponse = await fetch(queryUrl, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${apiToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            query: summaryQuery,
+            model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+            max_num_results: 50,
+            rewrite_query: false,
+            filters: {
+              key: 'attributes.path', // Try attributes.path if path doesn't work
+              type: 'gte',
+              value: r2PathPrefix,
+            },
+          }),
+        });
+      } catch {
+        // If that fails, try without filter as last resort (fallback to client-side filtering)
+        retryResponse = await fetch(queryUrl, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${apiToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            query: summaryQuery,
+            model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+            max_num_results: 50,
+            rewrite_query: false,
+            // No filters - fallback to client-side filtering
+          }),
+        });
+      }
 
       if (!retryResponse.ok) {
         const retryErrorText = await retryResponse.text();
@@ -555,6 +960,7 @@ export const diagnoseAISearchPaths = internalAction({
     const queryUrl = `https://api.cloudflare.com/client/v4/accounts/${accountId}/autorag/rags/${aiSearchInstanceId}/ai-search`;
 
     // Make a test query to see what paths are returned
+    // Use server-side filters per API docs: https://developers.cloudflare.com/api/resources/autorag/
     const testResponse: Response = await fetch(queryUrl, {
       method: 'POST',
       headers: {
@@ -565,9 +971,9 @@ export const diagnoseAISearchPaths = internalAction({
         query: `files in ${r2PathPrefix}`,
         max_num_results: 10,
         filters: {
-          path: {
-            prefix: r2PathPrefix,
-          },
+          key: 'path', // Filter by path attribute per API docs
+          type: 'gte', // Greater than or equal (matches paths starting with prefix)
+          value: r2PathPrefix, // Only include documents from this submission's folder
         },
       }),
     });

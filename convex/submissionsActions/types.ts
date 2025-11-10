@@ -18,13 +18,23 @@ export type GetSubmissionInternalRef = FunctionReference<
     source?: {
       r2Key?: string;
       uploadedAt?: number;
+      uploadStartedAt?: number;
+      uploadCompletedAt?: number;
+      aiSearchSyncStartedAt?: number;
+      aiSearchSyncCompletedAt?: number;
+      aiSearchSyncJobId?: string;
       aiSummary?: string;
       summarizedAt?: number;
+      summaryGenerationStartedAt?: number;
+      summaryGenerationCompletedAt?: number;
+      processingState?: 'downloading' | 'uploading' | 'indexing' | 'generating' | 'complete';
     };
     ai?: {
       summary?: string;
       score?: number;
       lastReviewedAt?: number;
+      scoreGenerationStartedAt?: number;
+      scoreGenerationCompletedAt?: number;
       inFlight?: boolean;
     };
     createdAt: number;
@@ -39,8 +49,16 @@ export type UpdateSubmissionSourceInternalRef = FunctionReference<
     submissionId: Id<'submissions'>;
     r2Key?: string;
     uploadedAt?: number;
+    uploadStartedAt?: number;
+    uploadCompletedAt?: number;
+    aiSearchSyncStartedAt?: number;
+    aiSearchSyncCompletedAt?: number;
+    aiSearchSyncJobId?: string;
     aiSummary?: string;
     summarizedAt?: number;
+    summaryGenerationStartedAt?: number;
+    summaryGenerationCompletedAt?: number;
+    processingState?: 'downloading' | 'uploading' | 'indexing' | 'generating' | 'complete';
   },
   { success: boolean }
 >;
@@ -50,4 +68,78 @@ export type CheckIndexingAndGenerateSummaryRef = FunctionReference<
   'internal',
   { submissionId: Id<'submissions'>; attempt: number },
   void
+>;
+
+export type GetHackathonInternalRef = FunctionReference<
+  'query',
+  'internal',
+  { hackathonId: Id<'hackathons'> },
+  {
+    _id: Id<'hackathons'>;
+    ownerUserId: string;
+    title: string;
+    description?: string;
+    dates?: { start?: number; end?: number };
+    rubric: string;
+    createdAt: number;
+    updatedAt: number;
+  } | null
+>;
+
+export type UpdateSubmissionAIInternalRef = FunctionReference<
+  'mutation',
+  'internal',
+  {
+    submissionId: Id<'submissions'>;
+    summary?: string;
+    score?: number;
+    scoreGenerationStartedAt?: number;
+    scoreGenerationCompletedAt?: number;
+    inFlight?: boolean;
+  },
+  { success: boolean }
+>;
+
+export type GenerateSubmissionReviewRef = FunctionReference<
+  'action',
+  'public',
+  {
+    submissionId: Id<'submissions'>;
+    submissionTitle: string;
+    team: string;
+    repoUrl: string;
+    siteUrl?: string;
+    repoSummary: string;
+    rubric: string;
+  },
+  {
+    score: number | null;
+    summary: string;
+    rawResponse?: string;
+    provider?: string;
+    model?: string;
+    usage?: unknown;
+  }
+>;
+
+export type GenerateSubmissionReviewInternalRef = FunctionReference<
+  'action',
+  'internal',
+  {
+    submissionId: Id<'submissions'>;
+    submissionTitle: string;
+    team: string;
+    repoUrl: string;
+    siteUrl?: string;
+    repoSummary: string;
+    rubric: string;
+  },
+  {
+    score: number | null;
+    summary: string;
+    rawResponse?: string;
+    provider?: string;
+    model?: string;
+    usage?: unknown;
+  }
 >;

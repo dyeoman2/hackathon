@@ -46,7 +46,8 @@ export function NewHackathonModal({ open, onClose }: NewHackathonModalProps) {
     defaultValues: {
       title: '',
       description: '',
-      rubric: '',
+      rubric:
+        'Build something that shows what TanStack Start can really do with rich interactivity, live updates, server streaming, collaborative tools, full-stack routing, and RPCs with Convex, CodeRabbit, Netlify, Firecrawl, Sentry, Autumn, and Cloudflare.',
     },
     onSubmit: async ({ value }) => {
       setIsSubmitting(true);

@@ -12,6 +12,154 @@ import { action } from '../_generated/server';
 import type { GetSubmissionInternalRef, UpdateSubmissionSourceInternalRef } from './types';
 
 /**
+ * Trigger Cloudflare AI Search sync to index new R2 files immediately
+ * API endpoint: PATCH /accounts/{account_id}/autorag/rags/{instance_name}/sync
+ * Reference: https://developers.cloudflare.com/api/resources/autorag/
+ *
+ * Note: This sync scans the entire R2 bucket, but Cloudflare AI Search only processes
+ * new or modified files during the sync (incremental indexing). The sync is rate-limited
+ * to once every 30 seconds, so multiple rapid uploads will share the same sync job.
+ *
+ * Returns the job_id if sync was triggered successfully, null otherwise.
+ */
+async function triggerAISearchSync(_ctx: ActionCtx): Promise<string | null> {
+  const aiSearchInstanceId = process.env.CLOUDFLARE_AI_SEARCH_INSTANCE_ID;
+  const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
+  const apiToken = process.env.CLOUDFLARE_API_TOKEN;
+
+  if (!aiSearchInstanceId || !accountId || !apiToken) {
+    throw new Error('Cloudflare AI Search not configured');
+  }
+
+  // API endpoint to trigger sync: PATCH /accounts/{account_id}/autorag/rags/{instance_name}/sync
+  // According to Cloudflare API docs: https://developers.cloudflare.com/api/resources/autorag/
+  const syncUrl = `https://api.cloudflare.com/client/v4/accounts/${accountId}/autorag/rags/${aiSearchInstanceId}/sync`;
+
+  const response = await fetch(syncUrl, {
+    method: 'PATCH', // PATCH per API documentation: https://developers.cloudflare.com/api/resources/autorag/methods/sync/
+    headers: {
+      Authorization: `Bearer ${apiToken}`,
+      // No Content-Type needed - PATCH sync endpoint doesn't require a request body
+    },
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+
+    // Log detailed error for debugging
+    console.error(`[AI Search] Sync trigger failed: ${response.status} ${response.statusText}`);
+    console.error(`[AI Search] Endpoint: ${syncUrl}`);
+    console.error(`[AI Search] Error response: ${errorText}`);
+
+    // If sync was triggered recently (within 30 seconds), that's okay
+    // Cloudflare rate-limits syncs to prevent abuse - this is expected behavior
+    // Multiple uploads within 30 seconds will share the same sync job
+    if (
+      response.status === 429 ||
+      errorText.includes('rate limit') ||
+      errorText.includes('too frequent')
+    ) {
+      console.log(
+        '[AI Search] Sync already triggered recently (within 30s), new files will be included in existing sync',
+      );
+      return null;
+    }
+
+    // For 404, check if instance ID is correct
+    if (response.status === 404) {
+      console.error(
+        `[AI Search] Instance not found. Verify CLOUDFLARE_AI_SEARCH_INSTANCE_ID="${aiSearchInstanceId}" is correct.`,
+      );
+    }
+
+    // For other errors, log but don't throw - sync will happen automatically
+    console.warn(`[AI Search] Sync trigger failed: ${response.status} - ${errorText}`);
+    return null;
+  }
+
+  const syncResponse = await response.json();
+  // Response format: Envelope<{ job_id }> per API docs
+  const jobId = syncResponse?.result?.job_id || syncResponse?.job_id;
+  console.log(
+    `[AI Search] Sync triggered successfully (job_id: ${jobId || 'unknown'}) - will scan bucket and index new/modified files`,
+  );
+  return jobId || null;
+}
+
+/**
+ * Check Cloudflare AI Search sync job status
+ * API endpoint: GET /accounts/{account_id}/autorag/rags/{instance_name}/jobs/{job_id}
+ * Reference: https://developers.cloudflare.com/api/resources/autorag/methods/ai_search/
+ *
+ * Returns job status: 'pending' | 'running' | 'completed' | 'failed' | null (if job not found)
+ */
+export async function checkAISearchJobStatus(
+  _ctx: ActionCtx,
+  jobId: string,
+): Promise<'pending' | 'running' | 'completed' | 'failed' | null> {
+  const aiSearchInstanceId = process.env.CLOUDFLARE_AI_SEARCH_INSTANCE_ID;
+  const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
+  const apiToken = process.env.CLOUDFLARE_API_TOKEN;
+
+  if (!aiSearchInstanceId || !accountId || !apiToken) {
+    throw new Error('Cloudflare AI Search not configured');
+  }
+
+  // API endpoint to check job status: GET /accounts/{account_id}/autorag/rags/{instance_name}/jobs/{job_id}
+  const jobStatusUrl = `https://api.cloudflare.com/client/v4/accounts/${accountId}/autorag/rags/${aiSearchInstanceId}/jobs/${jobId}`;
+
+  try {
+    const response = await fetch(jobStatusUrl, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${apiToken}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      if (response.status === 404) {
+        // Job not found - might have been cleaned up or never existed
+        console.warn(`[AI Search] Job ${jobId} not found (404)`);
+        return null;
+      }
+      const errorText = await response.text();
+      console.error(`[AI Search] Job status check failed: ${response.status} - ${errorText}`);
+      return null;
+    }
+
+    const jobData = await response.json();
+    // Response format: Envelope<{ id, source, end_reason, ended_at, last_seen_at, started_at }>
+    // Reference: https://developers.cloudflare.com/api/resources/autorag/methods/sync/
+    const job = jobData.result || jobData;
+
+    // Determine job status based on API response fields:
+    // - If ended_at exists, job is finished (check end_reason for success/failure)
+    // - If started_at exists but no ended_at, job is running
+    // - Otherwise, job is pending
+    if (job.ended_at) {
+      // Job has ended - check end_reason to determine if completed or failed
+      // end_reason might be "completed", "success", "failed", "error", etc.
+      const endReason = (job.end_reason || '').toLowerCase();
+      if (endReason.includes('fail') || endReason.includes('error')) {
+        return 'failed';
+      }
+      // If ended_at exists, assume completed (even if end_reason is empty or unknown)
+      return 'completed';
+    }
+    if (job.started_at) {
+      // Job has started but not ended yet - it's running
+      return 'running';
+    }
+    // Job exists but hasn't started yet - it's pending
+    return 'pending';
+  } catch (error) {
+    console.error(`[AI Search] Error checking job status:`, error);
+    return null;
+  }
+}
+
+/**
  * Helper function to download and upload repo to R2
  * Extracted so it can be called from both downloadAndUploadRepo and generateRepoSummary
  */
@@ -35,6 +183,19 @@ export async function downloadAndUploadRepoHelper(
   if (!submission.repoUrl) {
     throw new Error('Repository URL not provided');
   }
+
+  // Set processing state to downloading
+  await ctx.runMutation(
+    (
+      internal.submissions as unknown as {
+        updateSubmissionSourceInternal: UpdateSubmissionSourceInternalRef;
+      }
+    ).updateSubmissionSourceInternal,
+    {
+      submissionId: args.submissionId,
+      processingState: 'downloading',
+    },
+  );
 
   // Parse GitHub URL
   const githubUrl = submission.repoUrl.trim();
@@ -195,6 +356,21 @@ export async function downloadAndUploadRepoHelper(
 
     collectFiles(repoRootDir);
 
+    // Set processing state to uploading and record upload start time
+    const uploadStartedAt = Date.now();
+    await ctx.runMutation(
+      (
+        internal.submissions as unknown as {
+          updateSubmissionSourceInternal: UpdateSubmissionSourceInternalRef;
+        }
+      ).updateSubmissionSourceInternal,
+      {
+        submissionId: args.submissionId,
+        processingState: 'uploading',
+        uploadStartedAt,
+      },
+    );
+
     // Upload filtered files to R2 (S3-compatible)
     const s3Client = new S3Client({
       region: 'auto',
@@ -222,7 +398,8 @@ export async function downloadAndUploadRepoHelper(
       );
     }
 
-    // Update submission with R2 path prefix
+    // Update submission with R2 path prefix, record upload completion, and set state to indexing
+    const uploadCompletedAt = Date.now();
     await ctx.runMutation(
       (
         internal.submissions as unknown as {
@@ -232,7 +409,41 @@ export async function downloadAndUploadRepoHelper(
       {
         submissionId: args.submissionId,
         r2Key: r2PathPrefix, // Store path prefix instead of single ZIP key
-        uploadedAt: Date.now(),
+        uploadedAt: uploadCompletedAt,
+        uploadCompletedAt,
+        processingState: 'indexing', // Next step is indexing
+      },
+    );
+
+    // Trigger Cloudflare AI Search sync immediately after upload
+    // This ensures new files are indexed right away instead of waiting for the 6-hour cycle
+    const aiSearchSyncStartedAt = Date.now();
+    let jobId: string | null = null;
+
+    try {
+      jobId = await triggerAISearchSync(ctx);
+      console.log(
+        `[R2 Upload] Triggered AI Search sync for submission ${args.submissionId}${jobId ? ` (job_id: ${jobId})` : ''}`,
+      );
+    } catch (syncError) {
+      // Log but don't fail - sync will happen automatically eventually
+      console.warn(
+        `[R2 Upload] Failed to trigger AI Search sync for submission ${args.submissionId}:`,
+        syncError instanceof Error ? syncError.message : String(syncError),
+      );
+    }
+
+    // Record sync start time and job_id
+    await ctx.runMutation(
+      (
+        internal.submissions as unknown as {
+          updateSubmissionSourceInternal: UpdateSubmissionSourceInternalRef;
+        }
+      ).updateSubmissionSourceInternal,
+      {
+        submissionId: args.submissionId,
+        aiSearchSyncStartedAt,
+        aiSearchSyncJobId: jobId ?? undefined,
       },
     );
 

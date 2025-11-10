@@ -21,38 +21,73 @@ export function SubmissionTimeline({ submission }: SubmissionTimelineProps) {
     color: 'bg-primary',
   });
 
-  // R2 Upload Started - inferred from creation (upload starts automatically)
-  events.push({
-    timestamp: submission.createdAt,
-    label: 'Started syncing to R2 and AI Search',
-    color: 'bg-amber-500',
-  });
-
-  // R2 Upload Completed
-  if (submission.source?.uploadedAt) {
+  // Upload Started - use specific timestamp if available, otherwise infer from creation
+  const uploadStartedAt =
+    submission.source?.uploadStartedAt ?? submission.source?.uploadedAt ?? submission.createdAt;
+  if (submission.source?.uploadStartedAt || submission.source?.uploadedAt) {
     events.push({
-      timestamp: submission.source.uploadedAt,
-      label: 'Completed syncing to R2 and AI Search',
+      timestamp: uploadStartedAt,
+      label: 'Started uploading repository to Cloudflare R2',
+      color: 'bg-amber-500',
+    });
+  }
+
+  // Upload Completed
+  if (submission.source?.uploadCompletedAt || submission.source?.uploadedAt) {
+    events.push({
+      timestamp: submission.source?.uploadCompletedAt ?? submission.source?.uploadedAt ?? 0,
+      label: 'Finished uploading repository to Cloudflare R2',
       color: 'bg-green-500',
     });
   }
 
-  // AI Reviewed
-  if (submission.ai?.lastReviewedAt) {
+  // AI Search Sync Started
+  if (submission.source?.aiSearchSyncStartedAt) {
     events.push({
-      timestamp: submission.ai.lastReviewedAt,
-      label: 'AI Summary and Score Generated',
+      timestamp: submission.source.aiSearchSyncStartedAt,
+      label: 'Started indexing repository files in Cloudflare AI Search',
       color: 'bg-blue-500',
     });
   }
 
-  // Last Updated - Show if different from created
-  if (submission.updatedAt !== submission.createdAt) {
+  // AI Search Sync Finished
+  if (submission.source?.aiSearchSyncCompletedAt) {
     events.push({
-      timestamp: submission.updatedAt,
-      label: 'Last Updated',
-      color: 'bg-muted-foreground',
-      details: submission.status !== 'submitted' ? `Status: ${submission.status}` : undefined,
+      timestamp: submission.source.aiSearchSyncCompletedAt,
+      label: 'Finished indexing repository files in Cloudflare AI Search',
+      color: 'bg-blue-600',
+    });
+  }
+
+  // Summary Generation Started
+  if (submission.source?.summaryGenerationStartedAt) {
+    events.push({
+      timestamp: submission.source.summaryGenerationStartedAt,
+      label: 'Started generating AI summary and score',
+      color: 'bg-purple-500',
+    });
+  }
+
+  // Summary Generation Finished
+  if (submission.source?.summaryGenerationCompletedAt || submission.source?.summarizedAt) {
+    events.push({
+      timestamp:
+        submission.source?.summaryGenerationCompletedAt ?? submission.source?.summarizedAt ?? 0,
+      label: 'Finished generating AI summary and score',
+      color: 'bg-purple-600',
+    });
+  }
+
+  // Fallback: AI Reviewed (for backwards compatibility with old data)
+  if (
+    submission.ai?.lastReviewedAt &&
+    !submission.source?.summaryGenerationCompletedAt &&
+    !submission.ai?.scoreGenerationCompletedAt
+  ) {
+    events.push({
+      timestamp: submission.ai.lastReviewedAt,
+      label: 'AI Summary and Score Generated',
+      color: 'bg-blue-500',
     });
   }
 
@@ -63,6 +98,29 @@ export function SubmissionTimeline({ submission }: SubmissionTimelineProps) {
     }
     return a.label.localeCompare(b.label);
   });
+
+  // Last Updated - Show if different from created and not already covered by other events
+  if (submission.updatedAt !== submission.createdAt) {
+    // Only show if it's significantly different from the last event
+    const lastEventTimestamp =
+      events.length > 0 ? events[events.length - 1]?.timestamp : submission.createdAt;
+    if (Math.abs(submission.updatedAt - lastEventTimestamp) > 1000) {
+      // Only show if more than 1 second different
+      events.push({
+        timestamp: submission.updatedAt,
+        label: 'Last Updated',
+        color: 'bg-muted-foreground',
+        details: submission.status !== 'submitted' ? `Status: ${submission.status}` : undefined,
+      });
+      // Re-sort after adding Last Updated
+      events.sort((a, b) => {
+        if (a.timestamp !== b.timestamp) {
+          return a.timestamp - b.timestamp;
+        }
+        return a.label.localeCompare(b.label);
+      });
+    }
+  }
 
   // Deduplicate events at the same timestamp (keep first occurrence)
   const uniqueEvents: typeof events = [];

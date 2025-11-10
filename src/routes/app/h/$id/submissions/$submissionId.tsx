@@ -283,6 +283,7 @@ function SubmissionDetailComponent() {
           inFlight={submission.ai?.inFlight}
           error={error}
           rateLimitRetryAfter={rateLimitRetryAfter}
+          processingState={submission.source?.processingState}
         />
 
         <SubmissionScoring score={submission.ai?.score} />

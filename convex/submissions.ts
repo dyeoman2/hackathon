@@ -118,6 +118,9 @@ export const createSubmission = mutation({
       repoUrl: args.repoUrl.trim(),
       siteUrl: args.siteUrl?.trim(),
       status: 'submitted',
+      source: {
+        processingState: 'downloading', // Start with downloading state
+      },
       createdAt: now,
       updatedAt: now,
     });
@@ -321,6 +324,45 @@ export const updateSubmissionAI = mutation({
 });
 
 /**
+ * Internal mutation to update AI review results (no auth check)
+ */
+export const updateSubmissionAIInternal = internalMutation({
+  args: {
+    submissionId: v.id('submissions'),
+    summary: v.optional(v.string()),
+    score: v.optional(v.number()),
+    scoreGenerationStartedAt: v.optional(v.number()),
+    scoreGenerationCompletedAt: v.optional(v.number()),
+    inFlight: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const submission = await ctx.db.get(args.submissionId);
+    if (!submission) {
+      throw new Error('Submission not found');
+    }
+
+    const aiData = {
+      ...submission.ai,
+      summary: args.summary ?? submission.ai?.summary,
+      score: args.score ?? submission.ai?.score,
+      scoreGenerationStartedAt:
+        args.scoreGenerationStartedAt ?? submission.ai?.scoreGenerationStartedAt,
+      scoreGenerationCompletedAt:
+        args.scoreGenerationCompletedAt ?? submission.ai?.scoreGenerationCompletedAt,
+      lastReviewedAt: args.summary || args.score ? Date.now() : submission.ai?.lastReviewedAt,
+      inFlight: args.inFlight ?? false,
+    };
+
+    await ctx.db.patch(args.submissionId, {
+      ai: aiData,
+      updatedAt: Date.now(),
+    });
+
+    return { success: true };
+  },
+});
+
+/**
  * Update submission source (R2 key, upload status, AI summary)
  */
 export const updateSubmissionSource = mutation({
@@ -374,8 +416,24 @@ export const updateSubmissionSourceInternal = internalMutation({
     submissionId: v.id('submissions'),
     r2Key: v.optional(v.string()),
     uploadedAt: v.optional(v.number()),
+    uploadStartedAt: v.optional(v.number()),
+    uploadCompletedAt: v.optional(v.number()),
+    aiSearchSyncStartedAt: v.optional(v.number()),
+    aiSearchSyncCompletedAt: v.optional(v.number()),
+    aiSearchSyncJobId: v.optional(v.string()),
     aiSummary: v.optional(v.string()),
     summarizedAt: v.optional(v.number()),
+    summaryGenerationStartedAt: v.optional(v.number()),
+    summaryGenerationCompletedAt: v.optional(v.number()),
+    processingState: v.optional(
+      v.union(
+        v.literal('downloading'),
+        v.literal('uploading'),
+        v.literal('indexing'),
+        v.literal('generating'),
+        v.literal('complete'),
+      ),
+    ),
   },
   handler: async (ctx, args) => {
     const submission = await ctx.db.get(args.submissionId);
@@ -387,8 +445,19 @@ export const updateSubmissionSourceInternal = internalMutation({
       ...submission.source,
       r2Key: args.r2Key ?? submission.source?.r2Key,
       uploadedAt: args.uploadedAt ?? submission.source?.uploadedAt,
+      uploadStartedAt: args.uploadStartedAt ?? submission.source?.uploadStartedAt,
+      uploadCompletedAt: args.uploadCompletedAt ?? submission.source?.uploadCompletedAt,
+      aiSearchSyncStartedAt: args.aiSearchSyncStartedAt ?? submission.source?.aiSearchSyncStartedAt,
+      aiSearchSyncCompletedAt:
+        args.aiSearchSyncCompletedAt ?? submission.source?.aiSearchSyncCompletedAt,
+      aiSearchSyncJobId: args.aiSearchSyncJobId ?? submission.source?.aiSearchSyncJobId,
       aiSummary: args.aiSummary ?? submission.source?.aiSummary,
       summarizedAt: args.summarizedAt ?? submission.source?.summarizedAt,
+      summaryGenerationStartedAt:
+        args.summaryGenerationStartedAt ?? submission.source?.summaryGenerationStartedAt,
+      summaryGenerationCompletedAt:
+        args.summaryGenerationCompletedAt ?? submission.source?.summaryGenerationCompletedAt,
+      processingState: args.processingState ?? submission.source?.processingState,
     };
 
     await ctx.db.patch(args.submissionId, {

@@ -48,10 +48,10 @@ export function NewSubmissionModal({ hackathonId, open, onClose }: NewSubmission
 
   const form = useForm({
     defaultValues: {
-      title: '',
-      team: '',
-      repoUrl: '',
-      siteUrl: '',
+      title: 'My Awesome Project',
+      team: 'Team Awesome',
+      repoUrl: 'https://github.com/dyeoman2/tanstack-start-template',
+      siteUrl: 'https://tanstack-start-convex.netlify.app/',
     },
     onSubmit: async ({ value }) => {
       setIsSubmitting(true);
