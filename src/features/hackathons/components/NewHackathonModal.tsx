@@ -1,7 +1,6 @@
 import { api } from '@convex/_generated/api';
 import { useForm } from '@tanstack/react-form';
 import { useRouter } from '@tanstack/react-router';
-import { useMutation } from 'convex/react';
 import { useState } from 'react';
 import { z } from 'zod';
 import { Button } from '~/components/ui/button';
@@ -16,6 +15,7 @@ import {
 import { Field, FieldLabel } from '~/components/ui/field';
 import { Input } from '~/components/ui/input';
 import { Textarea } from '~/components/ui/textarea';
+import { useOptimisticMutation } from '~/features/admin/hooks/useOptimisticUpdates';
 
 const hackathonSchema = z.object({
   title: z.string().min(1, 'Title is required').max(255, 'Title is too long'),
@@ -30,7 +30,15 @@ interface NewHackathonModalProps {
 
 export function NewHackathonModal({ open, onClose }: NewHackathonModalProps) {
   const router = useRouter();
-  const createHackathon = useMutation(api.hackathons.createHackathon);
+
+  // Use optimistic mutation for better UX - Convex automatically handles cache updates
+  const createHackathonOptimistic = useOptimisticMutation(api.hackathons.createHackathon, {
+    onError: (error) => {
+      console.error('Failed to create hackathon:', error);
+      setSubmitError(error instanceof Error ? error.message : 'Failed to create hackathon');
+    },
+  });
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -45,7 +53,8 @@ export function NewHackathonModal({ open, onClose }: NewHackathonModalProps) {
       setSubmitError(null);
 
       try {
-        const result = await createHackathon({
+        // Optimistic mutation - Convex automatically updates cache
+        const result = await createHackathonOptimistic({
           title: value.title,
           description: value.description?.trim() || undefined,
           rubric: value.rubric,
@@ -59,9 +68,8 @@ export function NewHackathonModal({ open, onClose }: NewHackathonModalProps) {
 
         onClose();
         form.reset();
-      } catch (error) {
-        console.error('Failed to create hackathon:', error);
-        setSubmitError(error instanceof Error ? error.message : 'Failed to create hackathon');
+      } catch {
+        // Error handling is done in the onError callback
       } finally {
         setIsSubmitting(false);
       }

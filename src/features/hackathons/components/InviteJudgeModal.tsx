@@ -1,7 +1,6 @@
 import { api } from '@convex/_generated/api';
 import type { Id } from '@convex/_generated/dataModel';
 import { useForm } from '@tanstack/react-form';
-import { useMutation } from 'convex/react';
 import { useState } from 'react';
 import { z } from 'zod';
 import { Button } from '~/components/ui/button';
@@ -23,6 +22,7 @@ import {
   SelectValue,
 } from '~/components/ui/select';
 import { useToast } from '~/components/ui/toast';
+import { useOptimisticMutation } from '~/features/admin/hooks/useOptimisticUpdates';
 
 const inviteSchema = z.object({
   email: z.string().email('Invalid email address'),
@@ -37,7 +37,15 @@ interface InviteJudgeModalProps {
 
 export function InviteJudgeModal({ hackathonId, open, onClose }: InviteJudgeModalProps) {
   const toast = useToast();
-  const inviteJudge = useMutation(api.hackathons.inviteJudge);
+
+  // Use optimistic mutation for better UX - Convex automatically handles cache updates
+  const inviteJudgeOptimistic = useOptimisticMutation(api.hackathons.inviteJudge, {
+    onError: (error) => {
+      console.error('Failed to invite judge:', error);
+      setSubmitError(error instanceof Error ? error.message : 'Failed to send invite');
+    },
+  });
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -51,7 +59,8 @@ export function InviteJudgeModal({ hackathonId, open, onClose }: InviteJudgeModa
       setSubmitError(null);
 
       try {
-        await inviteJudge({
+        // Optimistic mutation - Convex automatically updates cache
+        await inviteJudgeOptimistic({
           hackathonId,
           email: value.email.trim().toLowerCase(),
           role: value.role,
@@ -60,9 +69,8 @@ export function InviteJudgeModal({ hackathonId, open, onClose }: InviteJudgeModa
         toast.showToast('Judge invite sent successfully!', 'success');
         onClose();
         form.reset();
-      } catch (error) {
-        console.error('Failed to invite judge:', error);
-        setSubmitError(error instanceof Error ? error.message : 'Failed to send invite');
+      } catch {
+        // Error handling is done in the onError callback
       } finally {
         setIsSubmitting(false);
       }

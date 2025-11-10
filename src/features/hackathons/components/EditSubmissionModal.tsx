@@ -1,7 +1,6 @@
 import { api } from '@convex/_generated/api';
-import type { Doc, Id } from '@convex/_generated/dataModel';
+import type { Doc } from '@convex/_generated/dataModel';
 import { useForm } from '@tanstack/react-form';
-import { useMutation } from 'convex/react';
 import { useState } from 'react';
 import { z } from 'zod';
 import { Button } from '~/components/ui/button';
@@ -16,6 +15,7 @@ import {
 import { Field, FieldLabel } from '~/components/ui/field';
 import { Input } from '~/components/ui/input';
 import { useToast } from '~/components/ui/toast';
+import { useOptimisticMutation } from '~/features/admin/hooks/useOptimisticUpdates';
 
 const submissionSchema = z.object({
   title: z.string().min(1, 'Title is required').max(255, 'Title is too long'),
@@ -32,7 +32,19 @@ interface EditSubmissionModalProps {
 
 export function EditSubmissionModal({ submission, open, onClose }: EditSubmissionModalProps) {
   const toast = useToast();
-  const updateSubmission = useMutation(api.submissions.updateSubmission);
+
+  // Use optimistic mutation for better UX - Convex automatically handles cache updates and rollback
+  const updateSubmissionOptimistic = useOptimisticMutation(api.submissions.updateSubmission, {
+    onSuccess: () => {
+      toast.showToast('Submission updated successfully!', 'success');
+      onClose();
+    },
+    onError: (error) => {
+      console.error('Failed to update submission:', error);
+      setSubmitError(error instanceof Error ? error.message : 'Failed to update submission');
+    },
+  });
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -48,19 +60,17 @@ export function EditSubmissionModal({ submission, open, onClose }: EditSubmissio
       setSubmitError(null);
 
       try {
-        await updateSubmission({
+        // Optimistic mutation - Convex automatically updates cache and handles rollback on error
+        await updateSubmissionOptimistic({
           submissionId: submission._id,
           title: value.title,
           team: value.team,
           repoUrl: value.repoUrl,
           siteUrl: value.siteUrl?.trim() || undefined,
         });
-
-        toast.showToast('Submission updated successfully!', 'success');
-        onClose();
-      } catch (error) {
-        console.error('Failed to update submission:', error);
-        setSubmitError(error instanceof Error ? error.message : 'Failed to update submission');
+        // Modal close is handled in the onSuccess callback
+      } catch {
+        // Error handling is done in the onError callback
       } finally {
         setIsSubmitting(false);
       }
@@ -193,4 +203,3 @@ export function EditSubmissionModal({ submission, open, onClose }: EditSubmissio
     </Dialog>
   );
 }
-

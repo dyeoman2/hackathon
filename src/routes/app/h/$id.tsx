@@ -3,9 +3,10 @@ import type { Id } from '@convex/_generated/dataModel';
 import { createFileRoute, Outlet, useLocation, useRouter } from '@tanstack/react-router';
 import { useQuery } from 'convex/react';
 import { Settings, Users } from 'lucide-react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { NotFound } from '~/components/NotFound';
 import { PageHeader } from '~/components/PageHeader';
+import { DashboardErrorBoundary } from '~/components/RouteErrorBoundaries';
 import { Button } from '~/components/ui/button';
 import { Skeleton } from '~/components/ui/skeleton';
 import { HackathonSettingsModal } from '~/features/hackathons/components/HackathonSettingsModal';
@@ -14,6 +15,7 @@ import { usePerformanceMonitoring } from '~/hooks/use-performance-monitoring';
 
 export const Route = createFileRoute('/app/h/$id')({
   component: HackathonWorkspaceComponent,
+  errorComponent: DashboardErrorBoundary,
 });
 
 function HackathonWorkspaceComponent() {
@@ -24,8 +26,17 @@ function HackathonWorkspaceComponent() {
   const hackathon = useQuery(api.hackathons.getHackathon, { hackathonId: id as Id<'hackathons'> });
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
 
-  // Check if we're on a nested route (like /judges)
-  const isNestedRoute = location.pathname !== `/app/h/${id}`;
+  // Check if we're on a nested route (like /judges) - must be called before early returns
+  const isNestedRoute = useMemo(
+    () => location.pathname !== `/app/h/${id}`,
+    [location.pathname, id],
+  );
+
+  // Memoize permission check to avoid recalculation on every render - must be called before early returns
+  const canManageJudges = useMemo(
+    () => hackathon?.role === 'owner' || hackathon?.role === 'admin',
+    [hackathon?.role],
+  );
 
   if (hackathon === undefined) {
     return (
@@ -39,8 +50,6 @@ function HackathonWorkspaceComponent() {
   if (hackathon === null) {
     return <NotFound />;
   }
-
-  const canManageJudges = hackathon.role === 'owner' || hackathon.role === 'admin';
 
   return (
     <div className="space-y-6">

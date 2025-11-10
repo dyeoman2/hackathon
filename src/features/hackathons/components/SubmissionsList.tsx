@@ -1,9 +1,9 @@
 import { api } from '@convex/_generated/api';
 import type { Id } from '@convex/_generated/dataModel';
-import { useMutation, useQuery } from 'convex/react';
 import { useRouter } from '@tanstack/react-router';
+import { useQuery } from 'convex/react';
 import { Plus, Trash2 } from 'lucide-react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Badge } from '~/components/ui/badge';
 import { Button } from '~/components/ui/button';
 import { DeleteConfirmationDialog } from '~/components/ui/delete-confirmation-dialog';
@@ -24,6 +24,7 @@ import {
   TableRow,
 } from '~/components/ui/table';
 import { useToast } from '~/components/ui/toast';
+import { useOptimisticMutation } from '~/features/admin/hooks/useOptimisticUpdates';
 import { NewSubmissionModal } from './NewSubmissionModal';
 
 interface SubmissionsListProps {
@@ -35,8 +36,31 @@ export function SubmissionsList({ hackathonId }: SubmissionsListProps) {
   const router = useRouter();
   const hackathon = useQuery(api.hackathons.getHackathon, { hackathonId });
   const submissions = useQuery(api.submissions.listByHackathon, { hackathonId });
-  const updateStatus = useMutation(api.submissions.updateSubmissionStatus);
-  const deleteSubmission = useMutation(api.submissions.deleteSubmission);
+
+  // Use optimistic mutations for better UX - Convex automatically handles cache updates and rollback
+  const updateStatusOptimistic = useOptimisticMutation(api.submissions.updateSubmissionStatus, {
+    onSuccess: () => {
+      toast.showToast('Submission status has been updated successfully.', 'success');
+    },
+    onError: (error) => {
+      console.error('Failed to update status:', error);
+      toast.showToast(error instanceof Error ? error.message : 'Failed to update status', 'error');
+    },
+  });
+
+  const deleteSubmissionOptimistic = useOptimisticMutation(api.submissions.deleteSubmission, {
+    onSuccess: () => {
+      toast.showToast('Submission deleted successfully', 'success');
+    },
+    onError: (error) => {
+      console.error('Failed to delete submission:', error);
+      toast.showToast(
+        error instanceof Error ? error.message : 'Failed to delete submission',
+        'error',
+      );
+    },
+  });
+
   const [isUpdatingStatus, setIsUpdatingStatus] = useState<string | null>(null);
   const [isNewSubmissionModalOpen, setIsNewSubmissionModalOpen] = useState(false);
   const [submissionToDelete, setSubmissionToDelete] = useState<Id<'submissions'> | null>(null);
@@ -55,11 +79,10 @@ export function SubmissionsList({ hackathonId }: SubmissionsListProps) {
   ) => {
     setIsUpdatingStatus(submissionId);
     try {
-      await updateStatus({ submissionId, status: newStatus });
-      toast.showToast('Submission status has been updated successfully.', 'success');
-    } catch (error) {
-      console.error('Failed to update status:', error);
-      toast.showToast(error instanceof Error ? error.message : 'Failed to update status', 'error');
+      // Optimistic mutation - Convex automatically updates cache and handles rollback on error
+      await updateStatusOptimistic({ submissionId, status: newStatus });
+    } catch {
+      // Error handling is done in the onError callback
     } finally {
       setIsUpdatingStatus(null);
     }
@@ -82,22 +105,22 @@ export function SubmissionsList({ hackathonId }: SubmissionsListProps) {
     }
   };
 
-  const canDelete = hackathon?.role === 'owner' || hackathon?.role === 'admin';
+  // Memoize permission check to avoid recalculation on every render
+  const canDelete = useMemo(
+    () => hackathon?.role === 'owner' || hackathon?.role === 'admin',
+    [hackathon?.role],
+  );
 
   const handleDelete = async () => {
     if (!submissionToDelete) return;
 
     setIsDeleting(true);
     try {
-      await deleteSubmission({ submissionId: submissionToDelete });
-      toast.showToast('Submission deleted successfully', 'success');
+      // Optimistic mutation - Convex automatically removes from cache and handles rollback on error
+      await deleteSubmissionOptimistic({ submissionId: submissionToDelete });
       setSubmissionToDelete(null);
-    } catch (error) {
-      console.error('Failed to delete submission:', error);
-      toast.showToast(
-        error instanceof Error ? error.message : 'Failed to delete submission',
-        'error',
-      );
+    } catch {
+      // Error handling is done in the onError callback
     } finally {
       setIsDeleting(false);
     }
@@ -154,7 +177,18 @@ export function SubmissionsList({ hackathonId }: SubmissionsListProps) {
                 <TableRow
                   key={submission._id}
                   className="cursor-pointer"
-                  onClick={() => handleViewSubmission(submission._id)}
+                  onClick={(e) => {
+                    // Don't navigate if clicking on the Select or its children
+                    if (
+                      e.target instanceof HTMLElement &&
+                      (e.target.closest('[role="combobox"]') ||
+                        e.target.closest('[role="listbox"]') ||
+                        e.target.closest('[role="option"]'))
+                    ) {
+                      return;
+                    }
+                    handleViewSubmission(submission._id);
+                  }}
                 >
                   <TableCell className="font-medium">{submission.title}</TableCell>
                   <TableCell>{submission.team}</TableCell>
@@ -168,7 +202,6 @@ export function SubmissionsList({ hackathonId }: SubmissionsListProps) {
                         );
                       }}
                       disabled={isUpdatingStatus === submission._id}
-                      onClick={(e) => e.stopPropagation()}
                     >
                       <SelectTrigger className="w-32">
                         <SelectValue />

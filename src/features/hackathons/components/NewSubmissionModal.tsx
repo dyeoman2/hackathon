@@ -2,7 +2,6 @@ import { api } from '@convex/_generated/api';
 import type { Id } from '@convex/_generated/dataModel';
 import { useForm } from '@tanstack/react-form';
 import { useRouter } from '@tanstack/react-router';
-import { useMutation } from 'convex/react';
 import { useState } from 'react';
 import { z } from 'zod';
 import { Button } from '~/components/ui/button';
@@ -17,6 +16,7 @@ import {
 import { Field, FieldLabel } from '~/components/ui/field';
 import { Input } from '~/components/ui/input';
 import { useToast } from '~/components/ui/toast';
+import { useOptimisticMutation } from '~/features/admin/hooks/useOptimisticUpdates';
 
 const submissionSchema = z.object({
   title: z.string().min(1, 'Title is required').max(255, 'Title is too long'),
@@ -34,7 +34,15 @@ interface NewSubmissionModalProps {
 export function NewSubmissionModal({ hackathonId, open, onClose }: NewSubmissionModalProps) {
   const router = useRouter();
   const toast = useToast();
-  const createSubmission = useMutation(api.submissions.createSubmission);
+
+  // Use optimistic mutation for better UX - Convex automatically handles cache updates
+  const createSubmissionOptimistic = useOptimisticMutation(api.submissions.createSubmission, {
+    onError: (error) => {
+      console.error('Failed to create submission:', error);
+      setSubmitError(error instanceof Error ? error.message : 'Failed to create submission');
+    },
+  });
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -50,7 +58,8 @@ export function NewSubmissionModal({ hackathonId, open, onClose }: NewSubmission
       setSubmitError(null);
 
       try {
-        const result = await createSubmission({
+        // Optimistic mutation - Convex automatically updates cache
+        const result = await createSubmissionOptimistic({
           hackathonId,
           title: value.title,
           team: value.team,
@@ -59,17 +68,16 @@ export function NewSubmissionModal({ hackathonId, open, onClose }: NewSubmission
         });
 
         toast.showToast('Submission created successfully!', 'success');
-        onClose();
         form.reset();
+        onClose();
 
         // Navigate to the new submission detail page
         await router.navigate({
           to: '/app/h/$id/submissions/$submissionId',
           params: { id: hackathonId, submissionId: result.submissionId },
         });
-      } catch (error) {
-        console.error('Failed to create submission:', error);
-        setSubmitError(error instanceof Error ? error.message : 'Failed to create submission');
+      } catch {
+        // Error handling is done in the onError callback
       } finally {
         setIsSubmitting(false);
       }

@@ -119,7 +119,7 @@ export const listProducts = action({
 });
 
 // Export other component API functions for use by AutumnProvider and hooks
-export const {
+const {
   track,
   check,
   checkout,
@@ -135,6 +135,22 @@ export const {
   getEntity,
 } = autumnApi;
 
+// Export all functions except checkout (we'll export checkoutAutumn instead)
+export {
+  track,
+  check,
+  attach,
+  cancel,
+  query,
+  usage,
+  setupPayment,
+  billingPortal,
+  createReferralCode,
+  redeemReferralCode,
+  createEntity,
+  getEntity,
+};
+
 export function isAutumnConfigured(): boolean {
   // Read directly from process.env to get the current value
   // This ensures we detect the key even if it was set after module load
@@ -147,7 +163,7 @@ export function ensureAutumnConfigured(): void {
   }
 }
 
-// Re-export checkout with a custom name for backward compatibility with CreditPurchase component
+// Export checkout with a custom name for backward compatibility with CreditPurchase component
 export const checkoutAutumn = checkout;
 
 export const isAutumnReady = action({

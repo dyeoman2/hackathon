@@ -1,9 +1,10 @@
 import { api } from '@convex/_generated/api';
 import type { Id } from '@convex/_generated/dataModel';
 import { useForm } from '@tanstack/react-form';
-import { useMutation, useQuery } from 'convex/react';
+import { useRouter } from '@tanstack/react-router';
+import { useQuery } from 'convex/react';
 import { AlertTriangle } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { z } from 'zod';
 import { Alert, AlertDescription } from '~/components/ui/alert';
 import { Button } from '~/components/ui/button';
@@ -19,6 +20,7 @@ import { Field, FieldLabel } from '~/components/ui/field';
 import { Input } from '~/components/ui/input';
 import { Textarea } from '~/components/ui/textarea';
 import { useToast } from '~/components/ui/toast';
+import { useOptimisticMutation } from '~/features/admin/hooks/useOptimisticUpdates';
 
 const settingsSchema = z.object({
   title: z.string().min(1, 'Title is required').max(255, 'Title is too long'),
@@ -38,13 +40,41 @@ export function HackathonSettingsModal({
   onClose,
 }: HackathonSettingsModalProps) {
   const toast = useToast();
+  const router = useRouter();
   const hackathon = useQuery(api.hackathons.getHackathon, { hackathonId });
-  const updateHackathon = useMutation(api.hackathons.updateHackathon);
-  const deleteHackathon = useMutation(api.hackathons.deleteHackathon);
+
+  // Use optimistic mutations for better UX - Convex automatically handles cache updates and rollback
+  const updateHackathonOptimistic = useOptimisticMutation(api.hackathons.updateHackathon, {
+    onSuccess: () => {
+      toast.showToast('Hackathon settings updated successfully!', 'success');
+      onClose();
+    },
+    onError: (error) => {
+      console.error('Failed to update hackathon:', error);
+      setSubmitError(error instanceof Error ? error.message : 'Failed to update hackathon');
+    },
+  });
+
+  const deleteHackathonOptimistic = useOptimisticMutation(api.hackathons.deleteHackathon, {
+    onSuccess: () => {
+      toast.showToast('Hackathon deleted successfully', 'success');
+      onClose();
+      // Navigate away using router instead of window.location
+      void router.navigate({ to: '/app/h' });
+    },
+    onError: (error) => {
+      console.error('Failed to delete hackathon:', error);
+      setSubmitError(error instanceof Error ? error.message : 'Failed to delete hackathon');
+    },
+  });
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  // Memoize permission check to avoid recalculation on every render - must be called before early returns
+  const canDelete = useMemo(() => hackathon?.role === 'owner', [hackathon?.role]);
 
   const form = useForm({
     defaultValues: {
@@ -57,18 +87,16 @@ export function HackathonSettingsModal({
       setSubmitError(null);
 
       try {
-        await updateHackathon({
+        // Optimistic mutation - Convex automatically updates cache and handles rollback on error
+        await updateHackathonOptimistic({
           hackathonId,
           title: value.title,
           description: value.description?.trim() || undefined,
           rubric: value.rubric,
         });
-
-        toast.showToast('Hackathon settings updated successfully!', 'success');
-        onClose();
-      } catch (error) {
-        console.error('Failed to update hackathon:', error);
-        setSubmitError(error instanceof Error ? error.message : 'Failed to update hackathon');
+        // Modal close is handled in the onSuccess callback
+      } catch {
+        // Error handling is done in the onError callback
       } finally {
         setIsSubmitting(false);
       }
@@ -89,14 +117,11 @@ export function HackathonSettingsModal({
     setSubmitError(null);
 
     try {
-      await deleteHackathon({ hackathonId });
-      toast.showToast('Hackathon deleted successfully', 'success');
-      onClose();
-      // Navigate away - the parent component should handle this
-      window.location.href = '/app/h';
-    } catch (error) {
-      console.error('Failed to delete hackathon:', error);
-      setSubmitError(error instanceof Error ? error.message : 'Failed to delete hackathon');
+      // Optimistic mutation - Convex automatically removes from cache and handles rollback on error
+      await deleteHackathonOptimistic({ hackathonId });
+      // Navigation is handled in the onSuccess callback
+    } catch {
+      // Error handling is done in the onError callback
     } finally {
       setIsDeleting(false);
       setShowDeleteConfirm(false);
@@ -106,8 +131,6 @@ export function HackathonSettingsModal({
   if (hackathon === undefined) {
     return null; // Don't show modal while loading
   }
-
-  const canDelete = hackathon?.role === 'owner';
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
