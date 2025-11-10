@@ -16,7 +16,7 @@ import { requireHackathonRole } from './hackathons';
 type SubmissionStatus = 'submitted' | 'review' | 'shortlist' | 'winner';
 
 // Type definition for action reference (until Convex regenerates types)
-// generateRepoSummary is defined in submissionsActions.ts
+// generateRepoSummary is defined in submissionsActions/aiSummary.ts
 type GenerateRepoSummaryActionRef = FunctionReference<
   'action',
   'public',
@@ -158,10 +158,12 @@ export const processSubmission = internalAction({
       const generateRepoSummaryAction = (
         api as unknown as {
           submissionsActions: {
-            generateRepoSummary: GenerateRepoSummaryActionRef;
+            aiSummary: {
+              generateRepoSummary: GenerateRepoSummaryActionRef;
+            };
           };
         }
-      ).submissionsActions.generateRepoSummary;
+      ).submissionsActions.aiSummary.generateRepoSummary;
 
       await ctx.runAction(generateRepoSummaryAction, {
         submissionId: args.submissionId,
@@ -283,7 +285,7 @@ export const deleteSubmission = mutation({
     const r2PathPrefix = submission.source?.r2Key;
     if (r2PathPrefix) {
       // Schedule R2 deletion to run immediately after mutation completes
-      await ctx.scheduler.runAfter(0, internal.submissionsActions.deleteSubmissionR2FilesAction, {
+      await ctx.scheduler.runAfter(0, internal.submissionsActions.r2Cleanup.deleteSubmissionR2FilesAction, {
         r2PathPrefix,
       });
     }

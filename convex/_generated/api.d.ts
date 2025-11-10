@@ -23,7 +23,11 @@ import type * as hackathons from "../hackathons.js";
 import type * as health from "../health.js";
 import type * as http from "../http.js";
 import type * as submissions from "../submissions.js";
-import type * as submissionsActions from "../submissionsActions.js";
+import type * as submissionsActions_aiSummary from "../submissionsActions/aiSummary.js";
+import type * as submissionsActions_index from "../submissionsActions/index.js";
+import type * as submissionsActions_r2Cleanup from "../submissionsActions/r2Cleanup.js";
+import type * as submissionsActions_repoProcessing from "../submissionsActions/repoProcessing.js";
+import type * as submissionsActions_types from "../submissionsActions/types.js";
 import type * as users from "../users.js";
 
 import type {
@@ -56,7 +60,11 @@ declare const fullApi: ApiFromModules<{
   health: typeof health;
   http: typeof http;
   submissions: typeof submissions;
-  submissionsActions: typeof submissionsActions;
+  "submissionsActions/aiSummary": typeof submissionsActions_aiSummary;
+  "submissionsActions/index": typeof submissionsActions_index;
+  "submissionsActions/r2Cleanup": typeof submissionsActions_r2Cleanup;
+  "submissionsActions/repoProcessing": typeof submissionsActions_repoProcessing;
+  "submissionsActions/types": typeof submissionsActions_types;
   users: typeof users;
 }>;
 declare const fullApiWithMounts: typeof fullApi;

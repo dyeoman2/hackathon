@@ -139,7 +139,7 @@ export const Route = createFileRoute('/app/api/ai/review')({
             if (!submission.source?.r2Key) {
               await fetchAction(
                 (
-                  api.submissionsActions as unknown as {
+                  api.submissionsActions.repoProcessing as unknown as {
                     downloadAndUploadRepo: DownloadAndUploadRepoRef;
                   }
                 ).downloadAndUploadRepo,
@@ -156,7 +156,7 @@ export const Route = createFileRoute('/app/api/ai/review')({
             );
             await fetchAction(
               (
-                api.submissionsActions as unknown as {
+                api.submissionsActions.aiSummary as unknown as {
                   generateRepoSummary: GenerateRepoSummaryRef;
                 }
               ).generateRepoSummary,

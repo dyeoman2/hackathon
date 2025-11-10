@@ -395,7 +395,7 @@ export const deleteHackathon = mutation({
       const r2PathPrefix = submission.source?.r2Key;
       if (r2PathPrefix) {
         // Schedule R2 deletion to run immediately after mutation completes
-        await ctx.scheduler.runAfter(0, internal.submissionsActions.deleteSubmissionR2FilesAction, {
+        await ctx.scheduler.runAfter(0, internal.submissionsActions.r2Cleanup.deleteSubmissionR2FilesAction, {
           r2PathPrefix,
         });
       }
