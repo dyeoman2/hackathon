@@ -53,6 +53,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.927.0",
+    "@aws-sdk/s3-request-presigner": "^3.928.0",
     "@convex-dev/better-auth": "^0.9.7",
     "@convex-dev/rate-limiter": "^0.2.14",
     "@convex-dev/resend": "^0.1.13",
@@ -83,6 +84,7 @@
     "clsx": "^2.1.1",
     "convex": "^1.28.2",
     "date-fns": "^4.1.0",
+    "embla-carousel-react": "^8.6.0",
     "lucide-react": "^0.553.0",
     "next-themes": "^0.4.6",
     "npm-check-updates": "^19.1.2",

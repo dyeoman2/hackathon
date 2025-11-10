@@ -27,6 +27,7 @@ import type * as submissionsActions_aiSummary from "../submissionsActions/aiSumm
 import type * as submissionsActions_index from "../submissionsActions/index.js";
 import type * as submissionsActions_r2Cleanup from "../submissionsActions/r2Cleanup.js";
 import type * as submissionsActions_repoProcessing from "../submissionsActions/repoProcessing.js";
+import type * as submissionsActions_screenshot from "../submissionsActions/screenshot.js";
 import type * as submissionsActions_types from "../submissionsActions/types.js";
 import type * as users from "../users.js";
 
@@ -64,6 +65,7 @@ declare const fullApi: ApiFromModules<{
   "submissionsActions/index": typeof submissionsActions_index;
   "submissionsActions/r2Cleanup": typeof submissionsActions_r2Cleanup;
   "submissionsActions/repoProcessing": typeof submissionsActions_repoProcessing;
+  "submissionsActions/screenshot": typeof submissionsActions_screenshot;
   "submissionsActions/types": typeof submissionsActions_types;
   users: typeof users;
 }>;

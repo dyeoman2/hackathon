@@ -1,7 +1,7 @@
 import { api } from '@convex/_generated/api';
 import type { Id } from '@convex/_generated/dataModel';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
-import { useQuery } from 'convex/react';
+import { useAction, useQuery } from 'convex/react';
 import { ExternalLink } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { SiGithub } from 'react-icons/si';
@@ -18,6 +18,7 @@ import { SubmissionActionsMenu } from '~/features/hackathons/components/Submissi
 import { SubmissionAIReview } from '~/features/hackathons/components/SubmissionAIReview';
 import { SubmissionNavigation } from '~/features/hackathons/components/SubmissionNavigation';
 import { SubmissionScoring } from '~/features/hackathons/components/SubmissionScoring';
+import { SubmissionScreenshots } from '~/features/hackathons/components/SubmissionScreenshots';
 import {
   type SubmissionStatus,
   SubmissionStatusBadge,
@@ -48,6 +49,8 @@ function SubmissionDetailComponent() {
   const { review, isReviewing, error, rateLimitRetryAfter } = useAIReply(
     submissionId as Id<'submissions'>,
   );
+
+  const [isCapturingScreenshot, setIsCapturingScreenshot] = useState(false);
 
   // Use optimistic mutations for better UX - Convex automatically handles cache updates and rollback
   const deleteSubmissionOptimistic = useOptimisticMutation(api.submissions.deleteSubmission, {
@@ -125,6 +128,29 @@ function SubmissionDetailComponent() {
   const handleRunReview = useCallback(async () => {
     await review();
   }, [review]);
+
+  const captureScreenshot = useAction(api.submissionsActions.screenshot.captureScreenshot);
+
+  const handleCaptureScreenshot = useCallback(async () => {
+    if (!submission?.siteUrl) {
+      toast.showToast('No live URL available for this submission', 'error');
+      return;
+    }
+
+    setIsCapturingScreenshot(true);
+    try {
+      await captureScreenshot({ submissionId: submissionId as Id<'submissions'> });
+      toast.showToast('Screenshot captured successfully', 'success');
+    } catch (error) {
+      console.error('Failed to capture screenshot:', error);
+      toast.showToast(
+        error instanceof Error ? error.message : 'Failed to capture screenshot',
+        'error',
+      );
+    } finally {
+      setIsCapturingScreenshot(false);
+    }
+  }, [submission?.siteUrl, captureScreenshot, submissionId, toast]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -268,9 +294,12 @@ function SubmissionDetailComponent() {
               isReviewing={isReviewing}
               inFlight={submission.ai?.inFlight}
               rateLimitRetryAfter={rateLimitRetryAfter}
+              hasSiteUrl={!!submission.siteUrl}
+              isCapturingScreenshot={isCapturingScreenshot}
               onEdit={() => setIsEditModalOpen(true)}
               onDelete={() => setIsDeleteDialogOpen(true)}
               onRunReview={handleRunReview}
+              onCaptureScreenshot={handleCaptureScreenshot}
             />
           </div>
         }
@@ -287,6 +316,8 @@ function SubmissionDetailComponent() {
         />
 
         <SubmissionScoring score={submission.ai?.score} />
+
+        <SubmissionScreenshots submission={submission} />
 
         <SubmissionTimeline submission={submission} />
       </div>

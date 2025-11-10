@@ -1,4 +1,4 @@
-import { Edit, Loader2, MoreVertical, Play, Trash2 } from 'lucide-react';
+import { Camera, Edit, Loader2, MoreVertical, Play, Trash2 } from 'lucide-react';
 import { Button } from '~/components/ui/button';
 import {
   DropdownMenu,
@@ -15,9 +15,12 @@ interface SubmissionActionsMenuProps {
   isReviewing: boolean;
   inFlight: boolean | undefined;
   rateLimitRetryAfter: number | null;
+  hasSiteUrl: boolean;
+  isCapturingScreenshot: boolean;
   onEdit: () => void;
   onDelete: () => void;
   onRunReview: () => void;
+  onCaptureScreenshot: () => void;
 }
 
 export function SubmissionActionsMenu({
@@ -27,9 +30,12 @@ export function SubmissionActionsMenu({
   isReviewing,
   inFlight,
   rateLimitRetryAfter,
+  hasSiteUrl,
+  isCapturingScreenshot,
   onEdit,
   onDelete,
   onRunReview,
+  onCaptureScreenshot,
 }: SubmissionActionsMenuProps) {
   const isProcessing = isReviewing || !!inFlight;
 
@@ -56,6 +62,16 @@ export function SubmissionActionsMenu({
           )}
           {isProcessing ? 'Running Review...' : 'Run AI Review'}
         </DropdownMenuItem>
+        {hasSiteUrl && (
+          <DropdownMenuItem onClick={onCaptureScreenshot} disabled={isCapturingScreenshot}>
+            {isCapturingScreenshot ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Camera className="mr-2 h-4 w-4" />
+            )}
+            {isCapturingScreenshot ? 'Capturing...' : 'Capture Screenshot'}
+          </DropdownMenuItem>
+        )}
         {canDelete && (
           <>
             <DropdownMenuSeparator />

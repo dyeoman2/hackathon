@@ -1,4 +1,5 @@
 import type { Doc } from '@convex/_generated/dataModel';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~/components/ui/card';
 import { Field } from '~/components/ui/field';
 
 interface SubmissionTimelineProps {
@@ -78,6 +79,24 @@ export function SubmissionTimeline({ submission }: SubmissionTimelineProps) {
     });
   }
 
+  // Screenshot Capture Started
+  if (submission.source?.screenshotCaptureStartedAt) {
+    events.push({
+      timestamp: submission.source.screenshotCaptureStartedAt,
+      label: 'Started capturing screenshot with Firecrawl',
+      color: 'bg-indigo-500',
+    });
+  }
+
+  // Screenshot Capture Completed
+  if (submission.source?.screenshotCaptureCompletedAt) {
+    events.push({
+      timestamp: submission.source.screenshotCaptureCompletedAt,
+      label: 'Finished capturing screenshot with Firecrawl',
+      color: 'bg-indigo-600',
+    });
+  }
+
   // Fallback: AI Reviewed (for backwards compatibility with old data)
   if (
     submission.ai?.lastReviewedAt &&
@@ -134,35 +153,37 @@ export function SubmissionTimeline({ submission }: SubmissionTimelineProps) {
   }
 
   return (
-    <div className="pt-6 border-t space-y-4">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <h3 className="text-lg font-semibold">Timeline</h3>
-      </div>
-
-      <Field>
-        <div className="text-sm space-y-2">
-          {uniqueEvents.map((event, index) => {
-            const isLast = index === uniqueEvents.length - 1;
-            return (
-              <div key={`${event.timestamp}-${event.label}`} className="flex items-start gap-3">
-                <div className="flex flex-col items-center shrink-0">
-                  <div className={`h-2 w-2 rounded-full ${event.color} mt-1.5`} />
-                  {!isLast && <div className="h-full w-px bg-border mt-1 min-h-4" />}
+    <Card>
+      <CardHeader>
+        <CardTitle>Timeline</CardTitle>
+        <CardDescription>Processing history and status updates</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Field>
+          <div className="text-sm space-y-2">
+            {uniqueEvents.map((event, index) => {
+              const isLast = index === uniqueEvents.length - 1;
+              return (
+                <div key={`${event.timestamp}-${event.label}`} className="flex items-start gap-3">
+                  <div className="flex flex-col items-center shrink-0">
+                    <div className={`h-2 w-2 rounded-full ${event.color} mt-1.5`} />
+                    {!isLast && <div className="h-full w-px bg-border mt-1 min-h-4" />}
+                  </div>
+                  <div className={`flex-1 ${!isLast ? 'pb-4' : ''}`}>
+                    <p className="font-medium leading-tight">{event.label}</p>
+                    <p className="text-muted-foreground text-xs mt-0.5">
+                      {new Date(event.timestamp).toLocaleString()}
+                    </p>
+                    {event.details && (
+                      <p className="text-muted-foreground text-xs mt-1">{event.details}</p>
+                    )}
+                  </div>
                 </div>
-                <div className={`flex-1 ${!isLast ? 'pb-4' : ''}`}>
-                  <p className="font-medium leading-tight">{event.label}</p>
-                  <p className="text-muted-foreground text-xs mt-0.5">
-                    {new Date(event.timestamp).toLocaleString()}
-                  </p>
-                  {event.details && (
-                    <p className="text-muted-foreground text-xs mt-1">{event.details}</p>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </Field>
-    </div>
+              );
+            })}
+          </div>
+        </Field>
+      </CardContent>
+    </Card>
   );
 }

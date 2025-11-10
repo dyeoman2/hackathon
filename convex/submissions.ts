@@ -129,6 +129,7 @@ export const createSubmission = mutation({
     // This runs asynchronously, so we don't wait for it
     // Note: We schedule processSubmission which will handle the processing
     // processSubmission is an internal action that can be scheduled
+    // Screenshot capture will be triggered during repo upload (in downloadAndUploadRepoHelper)
     ctx.scheduler
       .runAfter(0, internal.submissions.processSubmission, {
         submissionId,
@@ -215,6 +216,19 @@ export const updateSubmission = mutation({
     }
 
     await ctx.db.patch(args.submissionId, updateData);
+
+    // Trigger screenshot capture if siteUrl was added or updated
+    // Note: If repo upload is in progress, screenshot will also be captured during upload
+    // This ensures we capture even if repo was already uploaded
+    if (args.siteUrl !== undefined && args.siteUrl.trim()) {
+      ctx.scheduler
+        .runAfter(0, internal.submissionsActions.screenshot.captureScreenshotInternal, {
+          submissionId: args.submissionId,
+        })
+        .catch((error) => {
+          console.error('Failed to schedule screenshot capture:', error);
+        });
+    }
 
     return { success: true };
   },
@@ -425,6 +439,8 @@ export const updateSubmissionSourceInternal = internalMutation({
     summarizedAt: v.optional(v.number()),
     summaryGenerationStartedAt: v.optional(v.number()),
     summaryGenerationCompletedAt: v.optional(v.number()),
+    screenshotCaptureStartedAt: v.optional(v.number()),
+    screenshotCaptureCompletedAt: v.optional(v.number()),
     processingState: v.optional(
       v.union(
         v.literal('downloading'),
@@ -457,11 +473,45 @@ export const updateSubmissionSourceInternal = internalMutation({
         args.summaryGenerationStartedAt ?? submission.source?.summaryGenerationStartedAt,
       summaryGenerationCompletedAt:
         args.summaryGenerationCompletedAt ?? submission.source?.summaryGenerationCompletedAt,
+      screenshotCaptureStartedAt:
+        args.screenshotCaptureStartedAt ?? submission.source?.screenshotCaptureStartedAt,
+      screenshotCaptureCompletedAt:
+        args.screenshotCaptureCompletedAt ?? submission.source?.screenshotCaptureCompletedAt,
       processingState: args.processingState ?? submission.source?.processingState,
     };
 
     await ctx.db.patch(args.submissionId, {
       source: sourceData,
+      updatedAt: Date.now(),
+    });
+
+    return { success: true };
+  },
+});
+
+/**
+ * Add screenshot to submission (internal mutation)
+ */
+export const addScreenshot = internalMutation({
+  args: {
+    submissionId: v.id('submissions'),
+    screenshot: v.object({
+      r2Key: v.string(),
+      url: v.string(),
+      capturedAt: v.number(),
+    }),
+  },
+  handler: async (ctx, args) => {
+    const submission = await ctx.db.get(args.submissionId);
+    if (!submission) {
+      throw new Error('Submission not found');
+    }
+
+    const screenshots = submission.screenshots || [];
+    screenshots.push(args.screenshot);
+
+    await ctx.db.patch(args.submissionId, {
+      screenshots,
       updatedAt: Date.now(),
     });
 

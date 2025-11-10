@@ -150,6 +150,8 @@ export default defineSchema({
         summarizedAt: v.optional(v.number()),
         summaryGenerationStartedAt: v.optional(v.number()),
         summaryGenerationCompletedAt: v.optional(v.number()),
+        screenshotCaptureStartedAt: v.optional(v.number()),
+        screenshotCaptureCompletedAt: v.optional(v.number()),
         processingState: v.optional(
           v.union(
             v.literal('downloading'),
@@ -170,6 +172,15 @@ export default defineSchema({
         scoreGenerationCompletedAt: v.optional(v.number()),
         inFlight: v.optional(v.boolean()),
       }),
+    ),
+    screenshots: v.optional(
+      v.array(
+        v.object({
+          r2Key: v.string(),
+          url: v.string(),
+          capturedAt: v.number(),
+        }),
+      ),
     ),
     createdAt: v.number(),
     updatedAt: v.number(),
