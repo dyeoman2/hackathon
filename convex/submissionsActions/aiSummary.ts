@@ -90,7 +90,7 @@ export const checkIndexingAndGenerateSummary = internalAction({
       try {
         // Correct endpoint format: /autorag/rags/{instance_name}/ai-search
         const testQueryUrl = `https://api.cloudflare.com/client/v4/accounts/${accountId}/autorag/rags/${aiSearchInstanceId}/ai-search`;
-        
+
         // Note: Cloudflare AI Search API doesn't support filters parameter
         // We'll filter results client-side by checking the path attribute
         const testResponse = await fetch(testQueryUrl, {
@@ -108,26 +108,28 @@ export const checkIndexingAndGenerateSummary = internalAction({
         if (!testResponse.ok) {
           const errorText = await testResponse.text();
           console.error(`[AI Search] Test query failed: ${testResponse.status} - ${errorText}`);
-          
+
           // If it's a routing error, this is a configuration issue, not an indexing issue
           if (
             testResponse.status === 400 &&
             (errorText.includes('Could not route') || errorText.includes('No route for that URI'))
           ) {
-            console.error(`[AI Search] CRITICAL: API routing error - instance "${aiSearchInstanceId}" not found or endpoint incorrect`);
+            console.error(
+              `[AI Search] CRITICAL: API routing error - instance "${aiSearchInstanceId}" not found or endpoint incorrect`,
+            );
             // Don't reschedule - this is a configuration error that won't fix itself
             throw new Error(
               `AI Search instance routing error: The instance "${aiSearchInstanceId}" may not exist or the API endpoint is incorrect. Check CLOUDFLARE_AI_SEARCH_INSTANCE_ID. Error: ${errorText}`,
             );
           }
-          
+
           // For other errors, assume indexing might not be ready yet
           return; // Will reschedule below
         }
 
         const testData = await testResponse.json();
         const testDocs = testData.data || testData.result?.data || [];
-        
+
         // Check if any returned documents actually match the path prefix
         const matchingDocs = testDocs.filter(
           (doc: { filename?: string; attributes?: { path?: string } }) => {
@@ -161,7 +163,7 @@ export const checkIndexingAndGenerateSummary = internalAction({
         if (error instanceof Error && error.message.includes('routing error')) {
           throw error;
         }
-        
+
         // For other errors, indexing might not be ready yet
         // Silently continue - will retry on next attempt
       }
@@ -217,8 +219,11 @@ export const checkIndexingAndGenerateSummary = internalAction({
     } catch (error) {
       // Log error details
       const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error(`[AI Search] Error generating summary for submission ${args.submissionId}:`, errorMessage);
-      
+      console.error(
+        `[AI Search] Error generating summary for submission ${args.submissionId}:`,
+        errorMessage,
+      );
+
       // Re-throw so Convex logs it properly
       throw error;
     }
@@ -402,7 +407,9 @@ Keep it concise but informative (500-1000 words).`;
             (d: { filename?: string; attributes?: { path?: string } }, idx: number) =>
               `${idx + 1}. ${d.attributes?.path || d.filename || 'Unknown'}`,
           )
-          .join('\n')}\n\n**This means**: The AI summary is being generated from files in OTHER repositories, not from this submission.\n\n**Solution**: Cloudflare AI Search path filtering is not working correctly. Check Convex logs for details.`;
+          .join(
+            '\n',
+          )}\n\n**This means**: The AI summary is being generated from files in OTHER repositories, not from this submission.\n\n**Solution**: Cloudflare AI Search path filtering is not working correctly. Check Convex logs for details.`;
       }
 
       const summary = generatedSummary
@@ -464,7 +471,9 @@ Keep it concise but informative (500-1000 words).`;
         (d: { filename?: string; attributes?: { path?: string }; path?: string }, idx: number) =>
           `${idx + 1}. ${d.attributes?.path || d.path || d.filename || 'Unknown'}`,
       )
-      .join('\n')}\n\n**This means**: The AI summary you might have seen was generated from files in OTHER repositories (possibly the hackathon app itself), not from the submission repository.\n\n**Next Steps**:\n1. Check Convex logs for detailed debugging information\n2. Verify Cloudflare AI Search path filtering is working\n3. Check if files are indexed with correct path prefixes\n4. Consider using the diagnostic function: \`diagnoseAISearchPaths\``;
+      .join(
+        '\n',
+      )}\n\n**This means**: The AI summary you might have seen was generated from files in OTHER repositories (possibly the hackathon app itself), not from the submission repository.\n\n**Next Steps**:\n1. Check Convex logs for detailed debugging information\n2. Verify Cloudflare AI Search path filtering is working\n3. Check if files are indexed with correct path prefixes\n4. Consider using the diagnostic function: \`diagnoseAISearchPaths\``;
   }
 
   // If we have NO documents at all, files might not be indexed yet
@@ -543,7 +552,7 @@ export const diagnoseAISearchPaths = internalAction({
     }
 
     // Correct endpoint format: /autorag/rags/{instance_name}/ai-search
-  const queryUrl = `https://api.cloudflare.com/client/v4/accounts/${accountId}/autorag/rags/${aiSearchInstanceId}/ai-search`;
+    const queryUrl = `https://api.cloudflare.com/client/v4/accounts/${accountId}/autorag/rags/${aiSearchInstanceId}/ai-search`;
 
     // Make a test query to see what paths are returned
     const testResponse: Response = await fetch(queryUrl, {
@@ -717,4 +726,3 @@ export const generateRepoSummary = action({
     return await generateRepoSummaryHelper(ctx, { submissionId: args.submissionId });
   },
 });
-

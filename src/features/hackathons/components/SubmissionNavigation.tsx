@@ -1,5 +1,5 @@
-import { ArrowLeft, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { Id } from '@convex/_generated/dataModel';
+import { ArrowLeft, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '~/components/ui/button';
 import { Kbd } from '~/components/ui/kbd';
 import { SimpleTooltip } from '~/components/ui/simple-tooltip';
@@ -79,4 +79,3 @@ export function SubmissionNavigation({
     </div>
   );
 }
-

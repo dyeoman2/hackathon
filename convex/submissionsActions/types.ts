@@ -51,4 +51,3 @@ export type CheckIndexingAndGenerateSummaryRef = FunctionReference<
   { submissionId: Id<'submissions'>; attempt: number },
   void
 >;
-

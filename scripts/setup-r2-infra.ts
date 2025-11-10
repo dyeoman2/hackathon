@@ -18,9 +18,9 @@
  */
 
 import { execSync } from 'node:child_process';
-import { createInterface } from 'node:readline';
-import { readFileSync, existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { createInterface } from 'node:readline';
 
 interface AlchemyOutput {
   cloudflareApiToken?: string;
@@ -48,7 +48,11 @@ function question(prompt: string): Promise<string> {
 
 function execCommand(
   command: string,
-  options?: { cwd?: string; env?: NodeJS.ProcessEnv; stdio?: Array<'inherit' | 'pipe' | 'ignore'> | 'inherit' | 'pipe' },
+  options?: {
+    cwd?: string;
+    env?: NodeJS.ProcessEnv;
+    stdio?: Array<'inherit' | 'pipe' | 'ignore'> | 'inherit' | 'pipe';
+  },
 ): string {
   try {
     const { stdio = ['inherit', 'pipe', 'pipe'], ...restOptions } = options || {};
@@ -120,7 +124,7 @@ function readAlchemyStateFiles(): AlchemyOutput | null {
         result.cloudflareApiToken = tokenData.output.value;
         return result; // Return with both token and account ID
       }
-      
+
       // If token is still creating, check if it's been stuck for a while
       // (status will be "creating" if it's in progress)
       // We'll return what we have (account ID) and let the polling handle it
@@ -203,19 +207,22 @@ async function ensureAlchemyConfigured(): Promise<void> {
   } catch {
     console.log('⚠️  Alchemy CLI not found. It should be installed as a dependency.\n');
     console.log('Checking if it needs to be installed...\n');
-    
+
     // Check if it's in package.json
     try {
       const packageJsonPath = join(process.cwd(), 'package.json');
       const packageJsonContent = readFileSync(packageJsonPath, 'utf-8');
       const packageJson = JSON.parse(packageJsonContent);
-      
+
       if (!packageJson.dependencies?.alchemy && !packageJson.devDependencies?.alchemy) {
         console.log('Installing Alchemy...\n');
         execCommand('pnpm add alchemy', { stdio: 'inherit' });
       }
     } catch (error) {
-      console.error('❌ Could not check/install Alchemy:', error instanceof Error ? error.message : error);
+      console.error(
+        '❌ Could not check/install Alchemy:',
+        error instanceof Error ? error.message : error,
+      );
       console.error('\nPlease ensure Alchemy is installed: pnpm add alchemy');
       process.exit(1);
     }
@@ -244,7 +251,7 @@ async function deployWithAlchemy(): Promise<AlchemyOutput> {
     // Use ALCHEMY_PROFILE if set, otherwise use default
     const profileEnv = process.env.ALCHEMY_PROFILE;
     const env = profileEnv ? { ...process.env, ALCHEMY_PROFILE: profileEnv } : process.env;
-    
+
     const output = execCommand('pnpm infra:deploy', { env });
     console.log(output);
 
@@ -254,7 +261,7 @@ async function deployWithAlchemy(): Promise<AlchemyOutput> {
 
     // Read state files - account ID should be available immediately from bucket file
     let parsed = parseAlchemyOutput(output);
-    
+
     // Only poll for account ID if not found (should be immediate, but just in case)
     let attempts = 0;
     const maxAttempts = 3;
@@ -263,26 +270,28 @@ async function deployWithAlchemy(): Promise<AlchemyOutput> {
       parsed = parseAlchemyOutput(output);
       attempts++;
     }
-    
+
     // Log what we found
     if (parsed.accountId) {
       console.log(`✅ Account ID extracted: ${parsed.accountId}`);
     } else {
       console.log('⚠️  Could not extract Account ID from state files');
     }
-    
+
     // API token will never be created automatically (OAuth tokens can't create API tokens)
     // So we'll always need manual creation - no need to wait/poll for it
     console.log('\n⚠️  API token not available.');
     console.log('This is expected - Alchemy OAuth tokens cannot create API tokens.');
-    console.log('You\'ll need to create a Cloudflare API token manually.\n');
+    console.log("You'll need to create a Cloudflare API token manually.\n");
     console.log('Next steps:');
     console.log('1. Go to https://dash.cloudflare.com/profile/api-tokens');
     console.log('2. Click "Create Token"');
     console.log('3. Use "Edit Cloudflare Workers" template (includes R2 permissions)');
     console.log('4. Copy the token value\n');
-    
-    const tokenInput = await question('Enter your Cloudflare API token (or press Enter to exit and create it manually): ');
+
+    const tokenInput = await question(
+      'Enter your Cloudflare API token (or press Enter to exit and create it manually): ',
+    );
     if (tokenInput.trim()) {
       parsed.cloudflareApiToken = tokenInput.trim();
     } else {
@@ -293,14 +302,16 @@ async function deployWithAlchemy(): Promise<AlchemyOutput> {
     // If we didn't get account ID, ask for it
     if (!parsed.accountId) {
       console.log('\n⚠️  Could not automatically extract Account ID.');
-      parsed.accountId = await question('Enter your Cloudflare Account ID (found in Dashboard sidebar): ');
+      parsed.accountId = await question(
+        'Enter your Cloudflare Account ID (found in Dashboard sidebar): ',
+      );
     }
 
     return parsed;
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     const errorOutput = error instanceof Error ? String(error) : String(error);
-    
+
     // Check if user wants to create token manually
     if (errorMessage === 'API_TOKEN_MANUAL_REQUIRED') {
       console.log('\n📋 Manual API Token Creation Required\n');
@@ -310,17 +321,17 @@ async function deployWithAlchemy(): Promise<AlchemyOutput> {
       console.log('3. Use "Edit Cloudflare Workers" template OR create custom token with:');
       console.log('   - Account > R2 > Read & Write');
       console.log('4. Copy the token value\n');
-      
+
       const apiToken = await question('Enter your Cloudflare API token: ');
       const accountId = await question('Enter your Cloudflare Account ID: ');
-      
+
       return {
         cloudflareApiToken: apiToken.trim(),
         accountId: accountId.trim(),
         bucketName: 'hackathon-repos',
       };
     }
-    
+
     // Check for R2 not enabled error
     if (
       errorMessage.includes('Please enable R2') ||
@@ -337,7 +348,7 @@ async function deployWithAlchemy(): Promise<AlchemyOutput> {
       console.error('Once R2 is enabled, run this script again.\n');
       process.exit(1);
     }
-    
+
     // Check for API token creation permission error
     if (
       errorMessage.includes('Unauthorized to access requested resource') ||
@@ -346,8 +357,10 @@ async function deployWithAlchemy(): Promise<AlchemyOutput> {
       errorOutput.includes('Error creating token')
     ) {
       console.error('\n⚠️  R2 bucket was created successfully, but API token creation failed.\n');
-      console.error('This is because Alchemy OAuth tokens don\'t have permission to create API tokens.');
-      console.error('This is expected - you\'ll need to create the API token manually.\n');
+      console.error(
+        "This is because Alchemy OAuth tokens don't have permission to create API tokens.",
+      );
+      console.error("This is expected - you'll need to create the API token manually.\n");
       console.error('Next steps:\n');
       console.error('1. Create a Cloudflare API token manually:');
       console.error('   - Go to https://dash.cloudflare.com/profile/api-tokens');
@@ -359,15 +372,19 @@ async function deployWithAlchemy(): Promise<AlchemyOutput> {
       console.error('   CLOUDFLARE_API_TOKEN=<your-token> \\');
       console.error('   CLOUDFLARE_ACCOUNT_ID=<your-account-id> \\');
       console.error('   pnpm infra:create-r2-token\n');
-      console.error('3. Then set Convex environment variables manually or continue with the script.\n');
+      console.error(
+        '3. Then set Convex environment variables manually or continue with the script.\n',
+      );
       console.error('The R2 bucket "hackathon-repos" is ready!\n');
-      
+
       // Ask if they want to continue with manual token creation
-      const continueManual = await question('Do you have a Cloudflare API token ready to continue? (y/n): ');
+      const continueManual = await question(
+        'Do you have a Cloudflare API token ready to continue? (y/n): ',
+      );
       if (continueManual.toLowerCase() === 'y') {
         const apiToken = await question('Enter your Cloudflare API token: ');
         const accountId = await question('Enter your Cloudflare Account ID: ');
-        
+
         // Continue with R2 token creation using the manual API token
         try {
           const r2Tokens = await createR2Tokens(apiToken, accountId);
@@ -380,7 +397,10 @@ async function deployWithAlchemy(): Promise<AlchemyOutput> {
             bucketName: 'hackathon-repos',
           };
         } catch (error) {
-          console.error('\n❌ Failed to continue setup:', error instanceof Error ? error.message : error);
+          console.error(
+            '\n❌ Failed to continue setup:',
+            error instanceof Error ? error.message : error,
+          );
           process.exit(1);
         }
       } else {
@@ -388,20 +408,25 @@ async function deployWithAlchemy(): Promise<AlchemyOutput> {
         process.exit(0);
       }
     }
-    
+
     // Check for specific Alchemy configuration errors
-    if (errorMessage.includes('No credentials found') || errorMessage.includes('not found in profile')) {
+    if (
+      errorMessage.includes('No credentials found') ||
+      errorMessage.includes('not found in profile')
+    ) {
       console.error('\n❌ Alchemy Cloudflare provider is not configured on the current profile.\n');
-      
+
       const profileEnv = process.env.ALCHEMY_PROFILE;
       if (profileEnv) {
         console.error(`Current profile: ${profileEnv}\n`);
       } else {
         console.error('Current profile: default\n');
-        console.error('ℹ️  If you configured Cloudflare on a different profile (e.g., "hackathon"),');
+        console.error(
+          'ℹ️  If you configured Cloudflare on a different profile (e.g., "hackathon"),',
+        );
         console.error('   run this script with: ALCHEMY_PROFILE=hackathon pnpm infra:setup\n');
       }
-      
+
       console.error('Please run:');
       console.error('  1. npx alchemy configure');
       console.error('     (Make sure Cloudflare is configured on the profile you want to use)');
@@ -410,7 +435,7 @@ async function deployWithAlchemy(): Promise<AlchemyOutput> {
       console.error('\nThen run this script again.\n');
       process.exit(1);
     }
-    
+
     console.error('❌ Failed to deploy with Alchemy:', errorMessage);
     console.error('\nTroubleshooting:');
     console.error('1. Make sure you have run: npx alchemy configure');
@@ -434,7 +459,10 @@ function setConvexEnvVar(key: string, value: string, isProd = false): void {
   }
 }
 
-async function createR2Tokens(cloudflareApiToken: string, accountId: string): Promise<R2TokenOutput> {
+async function createR2Tokens(
+  cloudflareApiToken: string,
+  accountId: string,
+): Promise<R2TokenOutput> {
   console.log('\n🔑 Step 2: Creating R2 API tokens...\n');
 
   try {
@@ -517,7 +545,7 @@ async function createR2Tokens(cloudflareApiToken: string, accountId: string): Pr
     };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    
+
     // Check if it's a 404 error (endpoint not available)
     if (errorMessage.includes('404') || errorMessage.includes('No route matches')) {
       console.error('\n⚠️  R2 API token creation via API is not available.');
@@ -533,13 +561,13 @@ async function createR2Tokens(cloudflareApiToken: string, accountId: string): Pr
       console.error('6. Under "R2 Buckets", select "hackathon-repos" (or "All buckets")');
       console.error('7. Click "Create API Token"');
       console.error('8. Copy the Access Key ID and Secret Access Key (shown only once!)\n');
-      
+
       const hasTokens = await question('Do you have the R2 API token credentials ready? (y/n): ');
       if (hasTokens.toLowerCase() === 'y') {
         const accessKeyId = await question('Enter R2 Access Key ID: ');
         const secretAccessKey = await question('Enter R2 Secret Access Key: ');
         const bucketName = 'hackathon-repos';
-        
+
         return {
           bucketName,
           accessKeyId: accessKeyId.trim(),
@@ -556,7 +584,7 @@ async function createR2Tokens(cloudflareApiToken: string, accountId: string): Pr
         throw new Error('R2_TOKEN_MANUAL_REQUIRED');
       }
     }
-    
+
     console.error('❌ Failed to create R2 tokens:', errorMessage);
     throw error;
   }
@@ -591,7 +619,9 @@ async function setupConvexEnvVars(
 async function setupWorkersAIAndGateway(): Promise<void> {
   console.log('\n🧠 Step 4: Enabling Workers AI & configuring AI Gateway...\n');
 
-  console.log('Workers AI powers the rubric-based reviews and needs to be enabled in your Cloudflare account.');
+  console.log(
+    'Workers AI powers the rubric-based reviews and needs to be enabled in your Cloudflare account.',
+  );
   console.log('If you have not done this yet:');
   console.log('  1. Go to https://dash.cloudflare.com');
   console.log('  2. Navigate to AI > Workers AI');
@@ -600,11 +630,15 @@ async function setupWorkersAIAndGateway(): Promise<void> {
 
   const enabled = await question('Have you already enabled Workers AI for this account? (y/n): ');
   if (enabled.toLowerCase() !== 'y') {
-    console.log('\nPlease enable Workers AI before continuing — it only takes a moment in the dashboard.');
+    console.log(
+      '\nPlease enable Workers AI before continuing — it only takes a moment in the dashboard.',
+    );
     await question('Press Enter once Workers AI is enabled to continue...');
   }
 
-  console.log('\nOptional: Cloudflare AI Gateway adds analytics, caching, and rate limits for AI calls.');
+  console.log(
+    '\nOptional: Cloudflare AI Gateway adds analytics, caching, and rate limits for AI calls.',
+  );
   console.log('Create one via AI > AI Gateway (recommended). Make sure to copy the Gateway ID.');
 
   const gatewayId = await question('Enter your AI Gateway ID (or press Enter to skip): ');
@@ -643,7 +677,9 @@ async function setupAISearch(): Promise<void> {
   }
 
   const isProd = process.argv.includes('--prod');
-  console.log(`\nSetting CLOUDFLARE_AI_SEARCH_INSTANCE_ID for ${isProd ? 'production' : 'development'}...`);
+  console.log(
+    `\nSetting CLOUDFLARE_AI_SEARCH_INSTANCE_ID for ${isProd ? 'production' : 'development'}...`,
+  );
   setConvexEnvVar('CLOUDFLARE_AI_SEARCH_INSTANCE_ID', instanceId.trim(), isProd);
 
   console.log('\n✅ AI Search environment variable set!');
@@ -690,10 +726,7 @@ async function main() {
       throw new Error('Missing cloudflareApiToken or accountId from Alchemy output');
     }
     try {
-      r2Tokens = await createR2Tokens(
-        alchemyOutput.cloudflareApiToken,
-        alchemyOutput.accountId,
-      );
+      r2Tokens = await createR2Tokens(alchemyOutput.cloudflareApiToken, alchemyOutput.accountId);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       if (errorMessage === 'R2_TOKEN_MANUAL_REQUIRED') {
@@ -710,11 +743,7 @@ async function main() {
     if (!alchemyOutput.cloudflareApiToken || !alchemyOutput.accountId) {
       throw new Error('Missing cloudflareApiToken or accountId from Alchemy output');
     }
-    await setupConvexEnvVars(
-      alchemyOutput.cloudflareApiToken,
-      alchemyOutput.accountId,
-      r2Tokens,
-    );
+    await setupConvexEnvVars(alchemyOutput.cloudflareApiToken, alchemyOutput.accountId, r2Tokens);
 
     // Step 4 & 5: Workers AI/Gateway + AI Search
     await setupWorkersAIAndGateway();

@@ -69,7 +69,7 @@ export const r2ManagementToken = await AccountApiToken('r2-management-token', {
   console.warn('   1. Go to https://dash.cloudflare.com/profile/api-tokens');
   console.warn('   2. Create a token with R2 read/write permissions');
   console.warn('   3. Use that token with the create-r2-token script\n');
-  
+
   // Return a placeholder so the export doesn't break
   return { value: 'MANUAL_TOKEN_REQUIRED' };
 });

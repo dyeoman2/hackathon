@@ -9,10 +9,7 @@ import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import type { ActionCtx } from '../_generated/server';
 import { action } from '../_generated/server';
-import type {
-  GetSubmissionInternalRef,
-  UpdateSubmissionSourceInternalRef,
-} from './types';
+import type { GetSubmissionInternalRef, UpdateSubmissionSourceInternalRef } from './types';
 
 /**
  * Helper function to download and upload repo to R2
@@ -262,4 +259,3 @@ export const downloadAndUploadRepo = action({
     return await downloadAndUploadRepoHelper(ctx, args);
   },
 });
-

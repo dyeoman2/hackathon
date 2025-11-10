@@ -18,4 +18,3 @@ export function SubmissionScoring({ score }: SubmissionScoringProps) {
     </div>
   );
 }
-

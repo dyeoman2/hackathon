@@ -218,7 +218,10 @@ function parseReviewResponse(raw: string) {
           : raw.trim();
 
     const scoreRaw =
-      parsed.score ?? parsed.rating ?? parsed.overallScore ?? (parsed as Record<string, unknown>).score;
+      parsed.score ??
+      parsed.rating ??
+      parsed.overallScore ??
+      (parsed as Record<string, unknown>).score;
     const numericScore =
       typeof scoreRaw === 'number'
         ? scoreRaw
@@ -506,7 +509,8 @@ async function fetchGatewayCompletion(prompt: string) {
 
     if (
       response.status === 401 ||
-      (errorText.includes('Authentication error') || errorText.includes('Unauthorized'))
+      errorText.includes('Authentication error') ||
+      errorText.includes('Unauthorized')
     ) {
       throw new Error(
         `Gateway authentication error (401): Please verify:\n` +
@@ -521,7 +525,10 @@ async function fetchGatewayCompletion(prompt: string) {
   }
 
   const body = (await response.json()) as {
-    result?: { response?: string; usage?: { totalTokens?: number; inputTokens?: number; outputTokens?: number } };
+    result?: {
+      response?: string;
+      usage?: { totalTokens?: number; inputTokens?: number; outputTokens?: number };
+    };
     response?: string;
     usage?: { totalTokens?: number; inputTokens?: number; outputTokens?: number };
   };
@@ -1416,13 +1423,17 @@ export const listAISearchInstances = action({
           console.log(`[AI Search] Endpoint ${listUrl} returned ${response.status}: ${errorText}`);
         }
       } catch (error) {
-        console.log(`[AI Search] Endpoint ${listUrl} failed:`, error instanceof Error ? error.message : 'Unknown error');
+        console.log(
+          `[AI Search] Endpoint ${listUrl} failed:`,
+          error instanceof Error ? error.message : 'Unknown error',
+        );
       }
     }
 
     return {
       success: false,
-      error: 'Could not find valid endpoint to list AI Search instances. The API endpoint format may have changed.',
+      error:
+        'Could not find valid endpoint to list AI Search instances. The API endpoint format may have changed.',
       instances: [],
     };
   },
@@ -1483,7 +1494,8 @@ async function queryAISearchHelper(options: AISearchQueryOptions): Promise<AISea
 
     if (
       response.status === 401 ||
-      (errorText.includes('Authentication error') || errorText.includes('Unauthorized'))
+      errorText.includes('Authentication error') ||
+      errorText.includes('Unauthorized')
     ) {
       throw new Error(
         `AI Search authentication error (401): Please verify your CLOUDFLARE_API_TOKEN has "AI Search > Edit" permissions. See docs/CLOUDFLARE_AI_SETUP.md for setup instructions.`,

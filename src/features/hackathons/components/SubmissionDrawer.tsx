@@ -44,7 +44,9 @@ export function SubmissionDrawer({ submissionId, open, onClose }: SubmissionDraw
           <>
             <SheetHeader>
               <SheetTitle>Submission not found</SheetTitle>
-              <SheetDescription className="sr-only">The requested submission could not be found</SheetDescription>
+              <SheetDescription className="sr-only">
+                The requested submission could not be found
+              </SheetDescription>
             </SheetHeader>
             <div className="text-center py-8">
               <p className="text-muted-foreground">Submission not found</p>

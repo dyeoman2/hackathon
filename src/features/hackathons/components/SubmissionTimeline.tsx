@@ -1,4 +1,3 @@
-import type { Id } from '@convex/_generated/dataModel';
 import type { Doc } from '@convex/_generated/dataModel';
 import { Field } from '~/components/ui/field';
 
@@ -53,8 +52,7 @@ export function SubmissionTimeline({ submission }: SubmissionTimelineProps) {
       timestamp: submission.updatedAt,
       label: 'Last Updated',
       color: 'bg-muted-foreground',
-      details:
-        submission.status !== 'submitted' ? `Status: ${submission.status}` : undefined,
+      details: submission.status !== 'submitted' ? `Status: ${submission.status}` : undefined,
     });
   }
 
@@ -110,4 +108,3 @@ export function SubmissionTimeline({ submission }: SubmissionTimelineProps) {
     </div>
   );
 }
-

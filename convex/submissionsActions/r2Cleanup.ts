@@ -1,10 +1,6 @@
 'use node';
 
-import {
-  DeleteObjectCommand,
-  ListObjectsV2Command,
-  S3Client,
-} from '@aws-sdk/client-s3';
+import { DeleteObjectCommand, ListObjectsV2Command, S3Client } from '@aws-sdk/client-s3';
 import { v } from 'convex/values';
 import type { ActionCtx } from '../_generated/server';
 import { action, internalAction } from '../_generated/server';
@@ -189,4 +185,3 @@ export const deleteR2ObjectsByPrefix = action({
     };
   },
 });
-

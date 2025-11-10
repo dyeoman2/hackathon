@@ -13,7 +13,6 @@
  *   pnpm tsx scripts/create-r2-token.ts
  */
 
-
 interface R2ApiTokenResponse {
   result: {
     access_key_id: string;
@@ -28,8 +27,7 @@ interface R2ApiTokenResponse {
 async function createR2ApiToken() {
   // Get Cloudflare API token (from Alchemy or env)
   const cloudflareApiToken =
-    process.env.CLOUDFLARE_API_TOKEN ||
-    process.env.ALCHEMY_R2_MANAGEMENT_TOKEN;
+    process.env.CLOUDFLARE_API_TOKEN || process.env.ALCHEMY_R2_MANAGEMENT_TOKEN;
 
   if (!cloudflareApiToken) {
     console.error('❌ Error: CLOUDFLARE_API_TOKEN or ALCHEMY_R2_MANAGEMENT_TOKEN not set');
@@ -37,7 +35,9 @@ async function createR2ApiToken() {
     console.error('After running `npx alchemy deploy`, you can:');
     console.error('1. Get the token value from Alchemy output (r2ManagementToken.value)');
     console.error('2. Set it as: export CLOUDFLARE_API_TOKEN=<token-value>');
-    console.error('3. Or set it in your shell: CLOUDFLARE_API_TOKEN=<token> pnpm tsx scripts/create-r2-token.ts');
+    console.error(
+      '3. Or set it in your shell: CLOUDFLARE_API_TOKEN=<token> pnpm tsx scripts/create-r2-token.ts',
+    );
     process.exit(1);
   }
 
@@ -97,18 +97,20 @@ async function createR2ApiToken() {
     if (!response.ok) {
       const errorText = await response.text();
       let errorMessage = `❌ Error creating R2 API token: ${response.status} ${response.statusText}`;
-      
+
       // Check for specific error codes
       try {
         const errorData = JSON.parse(errorText);
         if (errorData.errors && errorData.errors.length > 0) {
           const firstError = errorData.errors[0];
           errorMessage = `❌ Error creating R2 API token: ${firstError.code} - ${firstError.message}`;
-          
+
           // Provide helpful guidance for common errors
           if (response.status === 404) {
             console.error(errorMessage);
-            console.error('\n⚠️  The R2 API token creation endpoint is not available via the Cloudflare API.');
+            console.error(
+              '\n⚠️  The R2 API token creation endpoint is not available via the Cloudflare API.',
+            );
             console.error('R2 API tokens (S3-compatible credentials) must be created manually.\n');
             console.error('Please create R2 API tokens manually:');
             console.error('1. In the R2 Overview page, scroll down to "Account Details" section');
@@ -124,7 +126,9 @@ async function createR2ApiToken() {
             console.error('Then set these Convex environment variables:');
             console.error(`   npx convex env set CLOUDFLARE_R2_BUCKET_NAME ${bucketName}`);
             console.error('   npx convex env set CLOUDFLARE_R2_ACCESS_KEY_ID <access-key-id>');
-            console.error('   npx convex env set CLOUDFLARE_R2_SECRET_ACCESS_KEY <secret-access-key>');
+            console.error(
+              '   npx convex env set CLOUDFLARE_R2_SECRET_ACCESS_KEY <secret-access-key>',
+            );
             console.error(`   npx convex env set CLOUDFLARE_ACCOUNT_ID ${accountId}\n`);
             process.exit(1);
           }
@@ -133,7 +137,7 @@ async function createR2ApiToken() {
         // If we can't parse the error, use the raw text
         errorMessage += `\n${errorText}`;
       }
-      
+
       console.error(errorMessage);
       process.exit(1);
     }
@@ -150,16 +154,18 @@ async function createR2ApiToken() {
 
     console.log('✅ R2 API token created successfully!');
     console.log('');
-    
+
     // Output in parseable format for automation scripts
     if (process.env.AUTOMATED === 'true') {
       // JSON output for automated parsing
-      console.log(JSON.stringify({
-        bucketName,
-        accessKeyId: access_key_id,
-        secretAccessKey: secret_access_key,
-        accountId,
-      }));
+      console.log(
+        JSON.stringify({
+          bucketName,
+          accessKeyId: access_key_id,
+          secretAccessKey: secret_access_key,
+          accountId,
+        }),
+      );
     } else {
       // Human-readable output
       console.log('📋 Set these environment variables in Convex:');
@@ -185,4 +191,3 @@ createR2ApiToken().catch((error) => {
   console.error('❌ Unexpected error:', error);
   process.exit(1);
 });
-
