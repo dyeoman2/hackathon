@@ -1,7 +1,7 @@
 import { Link, useLocation, useNavigate } from '@tanstack/react-router';
 import { Cloud, LogOut, type LucideIcon, Menu, Shield, Trophy, User } from 'lucide-react';
 import { useState } from 'react';
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '~/components/ui/sheet';
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '~/components/ui/sheet';
 import { signOut } from '~/features/auth/auth-client';
 import { useAuth } from '~/features/auth/hooks/useAuth';
 import { useAuthState } from '~/features/auth/hooks/useAuthState';
@@ -81,6 +81,7 @@ export function MobileNavigation() {
             </Link>
             <SheetTitle>TanStack Start Template</SheetTitle>
           </div>
+          <SheetDescription className="sr-only">Navigation menu</SheetDescription>
         </SheetHeader>
         <div className="flex flex-col mx-2">
           {/* Main Navigation */}

@@ -29,27 +29,38 @@ export function SubmissionDrawer({ submissionId, open, onClose }: SubmissionDraw
     <Sheet open={open} onOpenChange={onClose}>
       <SheetContent className="sm:max-w-[600px] overflow-y-auto">
         {submission === undefined ? (
-          <div className="space-y-4">
-            <Skeleton className="h-8 w-3/4" />
-            <Skeleton className="h-4 w-full" />
-            <Skeleton className="h-64 w-full" />
-          </div>
+          <>
+            <SheetHeader>
+              <SheetTitle className="sr-only">Loading submission</SheetTitle>
+              <SheetDescription className="sr-only">Loading submission details</SheetDescription>
+            </SheetHeader>
+            <div className="space-y-4">
+              <Skeleton className="h-8 w-3/4" />
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-64 w-full" />
+            </div>
+          </>
         ) : submission === null ? (
-          <div className="text-center py-8">
-            <p className="text-muted-foreground">Submission not found</p>
-          </div>
+          <>
+            <SheetHeader>
+              <SheetTitle>Submission not found</SheetTitle>
+              <SheetDescription className="sr-only">The requested submission could not be found</SheetDescription>
+            </SheetHeader>
+            <div className="text-center py-8">
+              <p className="text-muted-foreground">Submission not found</p>
+            </div>
+          </>
         ) : (
           <>
             <SheetHeader>
               <SheetTitle>{submission.title}</SheetTitle>
-              <SheetDescription>
-                <div className="flex items-center gap-2 mt-2">
-                  <Badge variant="outline">{submission.status}</Badge>
-                  {submission.ai?.score !== undefined && (
-                    <Badge variant="secondary">Score: {submission.ai.score.toFixed(1)}</Badge>
-                  )}
-                </div>
-              </SheetDescription>
+              <SheetDescription>Submission details</SheetDescription>
+              <div className="flex items-center gap-2 mt-2">
+                <Badge variant="outline">{submission.status}</Badge>
+                {submission.ai?.score !== undefined && (
+                  <Badge variant="secondary">Score: {submission.ai.score.toFixed(1)}</Badge>
+                )}
+              </div>
             </SheetHeader>
 
             <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-6">
