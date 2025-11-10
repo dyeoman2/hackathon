@@ -4,6 +4,37 @@ import { createAuth } from '@convex/auth';
 import { setupFetchClient } from '@convex-dev/better-auth/react-start';
 import { createFileRoute } from '@tanstack/react-router';
 import { getCookie } from '@tanstack/react-start/server';
+import type { FunctionReference } from 'convex/server';
+
+// Type definitions for action references (until Convex regenerates types)
+type DownloadAndUploadRepoRef = FunctionReference<
+  'action',
+  'public',
+  { submissionId: Id<'submissions'> },
+  { r2Key: string; uploadedAt: number }
+>;
+
+type GenerateRepoSummaryRef = FunctionReference<
+  'action',
+  'public',
+  { submissionId: Id<'submissions'>; forceRegenerate?: boolean },
+  { scheduled: boolean }
+>;
+
+type GenerateSubmissionReviewRef = FunctionReference<
+  'action',
+  'public',
+  {
+    submissionId: Id<'submissions'>;
+    submissionTitle: string;
+    team: string;
+    repoUrl: string;
+    siteUrl?: string | null;
+    repoSummary: string;
+    rubric: string;
+  },
+  { score: number | null; summary: string }
+>;
 
 export const Route = createFileRoute('/app/api/ai/review')({
   server: {
@@ -31,6 +62,27 @@ export const Route = createFileRoute('/app/api/ai/review')({
             createAuth,
             getCookie,
           );
+
+          const pollSubmissionSummary = async (
+            submissionId: Id<'submissions'>,
+            timeoutMs: number = 120_000,
+            intervalMs: number = 2_000,
+          ) => {
+            const deadline = Date.now() + timeoutMs;
+            while (Date.now() < deadline) {
+              const current = await fetchQuery(api.submissions.getSubmission, {
+                submissionId,
+              });
+
+              if (current?.source?.aiSummary) {
+                return current;
+              }
+
+              await new Promise((resolve) => setTimeout(resolve, intervalMs));
+            }
+
+            return null;
+          };
 
           // Get submission to check hackathon access
           const submission = await fetchQuery(api.submissions.getSubmission, {
@@ -85,22 +137,38 @@ export const Route = createFileRoute('/app/api/ai/review')({
           try {
             // Check if R2 object exists, trigger GitHub clone + R2 upload if not
             if (!submission.source?.r2Key) {
-              await fetchAction((api.submissions as any).downloadAndUploadRepo, {
-                submissionId: sid as Id<'submissions'>,
-              });
+              await fetchAction(
+                (
+                  api.submissionsActions as unknown as {
+                    downloadAndUploadRepo: DownloadAndUploadRepoRef;
+                  }
+                ).downloadAndUploadRepo,
+                {
+                  submissionId: sid as Id<'submissions'>,
+                },
+              );
             }
 
-            // Check if AI summary exists, trigger AI Search summary generation if not
-            if (!submission.source?.aiSummary) {
-              await fetchAction((api.submissions as any).generateRepoSummary, {
+            // Always regenerate the summary when "Run AI review" is clicked
+            // This ensures fresh summaries and scores each time
+            console.log(
+              `[AI Review] Triggering summary generation for submission ${sid}. Has existing summary: ${!!submission.source?.aiSummary}`,
+            );
+            await fetchAction(
+              (
+                api.submissionsActions as unknown as {
+                  generateRepoSummary: GenerateRepoSummaryRef;
+                }
+              ).generateRepoSummary,
+              {
                 submissionId: sid as Id<'submissions'>,
-              });
-            }
+                forceRegenerate: true, // Always force regenerate to get fresh summary
+              },
+            );
 
-            // Get updated submission with summary
-            const updatedSubmission = await fetchQuery(api.submissions.getSubmission, {
-              submissionId: sid as Id<'submissions'>,
-            });
+            // Get updated submission with summary (poll until ready)
+            // Always poll since we're regenerating the summary
+            const updatedSubmission = await pollSubmissionSummary(sid as Id<'submissions'>);
 
             if (!updatedSubmission?.source?.aiSummary) {
               throw new Error('Failed to generate repository summary');
@@ -115,41 +183,32 @@ export const Route = createFileRoute('/app/api/ai/review')({
               throw new Error('Hackathon not found');
             }
 
-            // Stream AI review via Cloudflare Gateway
-            // TODO: Implement streaming with Cloudflare AI Gateway
-            // For now, return a placeholder response
-            const _reviewPrompt = `Review this hackathon submission based on the following rubric:
+            const reviewResult = await fetchAction(
+              (
+                api.cloudflareAi as unknown as {
+                  generateSubmissionReview: GenerateSubmissionReviewRef;
+                }
+              ).generateSubmissionReview,
+              {
+                submissionId: sid as Id<'submissions'>,
+                submissionTitle: submission.title,
+                team: submission.team,
+                repoUrl: submission.repoUrl,
+                siteUrl: submission.siteUrl ?? undefined,
+                repoSummary: updatedSubmission.source.aiSummary,
+                rubric: updatedHackathon.rubric ?? 'No rubric provided',
+              },
+            );
 
-Rubric:
-${updatedHackathon.rubric}
-
-Repository Summary:
-${updatedSubmission.source.aiSummary}
-
-Submission Details:
-- Title: ${updatedSubmission.title}
-- Team: ${updatedSubmission.team}
-- Repository: ${updatedSubmission.repoUrl}
-${updatedSubmission.siteUrl ? `- Site: ${updatedSubmission.siteUrl}` : ''}
-
-Please provide:
-1. A detailed review summary
-2. A score from 0-10 based on the rubric
-
-Respond in JSON format: { "score": number, "summary": string }`;
-
-            // TODO: Call Cloudflare AI Gateway streaming endpoint
-            // This is a placeholder - actual implementation will stream markdown tokens
-            const reviewResult = {
-              score: 7.5,
-              summary: 'This is a placeholder review. Implement Cloudflare AI Gateway streaming.',
-            };
+            if (!reviewResult.summary) {
+              throw new Error('AI review did not return a summary');
+            }
 
             // Parse and persist results
             await fetchMutation(api.submissions.updateSubmissionAI, {
               submissionId: sid as Id<'submissions'>,
               summary: reviewResult.summary,
-              score: reviewResult.score,
+              score: reviewResult.score ?? undefined,
               inFlight: false,
             });
 

@@ -1,10 +1,11 @@
 import { api } from '@convex/_generated/api';
 import type { Id } from '@convex/_generated/dataModel';
 import { useMutation, useQuery } from 'convex/react';
-import { Plus } from 'lucide-react';
+import { Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { Badge } from '~/components/ui/badge';
 import { Button } from '~/components/ui/button';
+import { DeleteConfirmationDialog } from '~/components/ui/delete-confirmation-dialog';
 import {
   Select,
   SelectContent,
@@ -31,11 +32,15 @@ interface SubmissionsListProps {
 
 export function SubmissionsList({ hackathonId }: SubmissionsListProps) {
   const toast = useToast();
+  const hackathon = useQuery(api.hackathons.getHackathon, { hackathonId });
   const submissions = useQuery(api.submissions.listByHackathon, { hackathonId });
   const updateStatus = useMutation(api.submissions.updateSubmissionStatus);
+  const deleteSubmission = useMutation(api.submissions.deleteSubmission);
   const [selectedSubmissionId, setSelectedSubmissionId] = useState<Id<'submissions'> | null>(null);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState<string | null>(null);
   const [isNewSubmissionModalOpen, setIsNewSubmissionModalOpen] = useState(false);
+  const [submissionToDelete, setSubmissionToDelete] = useState<Id<'submissions'> | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const handleStatusChange = async (
     submissionId: Id<'submissions'>,
@@ -63,6 +68,27 @@ export function SubmissionsList({ hackathonId }: SubmissionsListProps) {
         return 'info';
       default:
         return 'outline';
+    }
+  };
+
+  const canDelete = hackathon?.role === 'owner' || hackathon?.role === 'admin';
+
+  const handleDelete = async () => {
+    if (!submissionToDelete) return;
+
+    setIsDeleting(true);
+    try {
+      await deleteSubmission({ submissionId: submissionToDelete });
+      toast.showToast('Submission deleted successfully', 'success');
+      setSubmissionToDelete(null);
+    } catch (error) {
+      console.error('Failed to delete submission:', error);
+      toast.showToast(
+        error instanceof Error ? error.message : 'Failed to delete submission',
+        'error',
+      );
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -154,16 +180,31 @@ export function SubmissionsList({ hackathonId }: SubmissionsListProps) {
                   </TableCell>
                   <TableCell>{new Date(submission.createdAt).toLocaleDateString()}</TableCell>
                   <TableCell className="text-right">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedSubmissionId(submission._id);
-                      }}
-                    >
-                      View
-                    </Button>
+                    <div className="flex items-center justify-end gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedSubmissionId(submission._id);
+                        }}
+                      >
+                        View
+                      </Button>
+                      {canDelete && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSubmissionToDelete(submission._id);
+                          }}
+                          className="text-destructive hover:text-destructive"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
@@ -185,6 +226,19 @@ export function SubmissionsList({ hackathonId }: SubmissionsListProps) {
         open={isNewSubmissionModalOpen}
         onClose={() => setIsNewSubmissionModalOpen(false)}
       />
+
+      {submissionToDelete && (
+        <DeleteConfirmationDialog
+          open={submissionToDelete !== null}
+          onClose={() => setSubmissionToDelete(null)}
+          title="Delete Submission"
+          description="Are you sure you want to delete this submission? This action cannot be undone."
+          deleteText="Delete Submission"
+          isDeleting={isDeleting}
+          onConfirm={handleDelete}
+          variant="danger"
+        />
+      )}
     </div>
   );
 }

@@ -1,10 +1,28 @@
-import { assertUserId } from '../src/lib/shared/user-id';
+import type { FunctionReference } from 'convex/server';
 import { v } from 'convex/values';
-import { internalMutation, internalQuery, mutation, query } from './_generated/server';
+import { assertUserId } from '../src/lib/shared/user-id';
+import { api, internal } from './_generated/api';
+import type { Id } from './_generated/dataModel';
+import {
+  internalAction,
+  internalMutation,
+  internalQuery,
+  mutation,
+  query,
+} from './_generated/server';
 import { authComponent } from './auth';
 import { requireHackathonRole } from './hackathons';
 
 type SubmissionStatus = 'submitted' | 'review' | 'shortlist' | 'winner';
+
+// Type definition for action reference (until Convex regenerates types)
+// generateRepoSummary is defined in submissionsActions.ts
+type GenerateRepoSummaryActionRef = FunctionReference<
+  'action',
+  'public',
+  { submissionId: Id<'submissions'> },
+  { scheduled: boolean }
+>;
 
 const ALLOWED_STATUS_TRANSITIONS: Record<SubmissionStatus, SubmissionStatus[]> = {
   submitted: ['review', 'submitted'],
@@ -111,7 +129,47 @@ export const createSubmission = mutation({
       updatedAt: now,
     });
 
+    // Trigger automatic processing: download repo and generate summary
+    // This runs asynchronously, so we don't wait for it
+    // Note: We schedule processSubmission which will handle the processing
+    // processSubmission is an internal action that can be scheduled
+    ctx.scheduler
+      .runAfter(0, internal.submissions.processSubmission, {
+        submissionId,
+      })
+      .catch((error) => {
+        console.error('Failed to schedule submission processing:', error);
+      });
+
     return { submissionId };
+  },
+});
+
+/**
+ * Internal action to process submission
+ * Called automatically when a submission is created and triggers the heavy Node action
+ */
+export const processSubmission = internalAction({
+  args: {
+    submissionId: v.id('submissions'),
+  },
+  handler: async (ctx, args) => {
+    try {
+      const generateRepoSummaryAction = (
+        api as unknown as {
+          submissionsActions: {
+            generateRepoSummary: GenerateRepoSummaryActionRef;
+          };
+        }
+      ).submissionsActions.generateRepoSummary;
+
+      await ctx.runAction(generateRepoSummaryAction, {
+        submissionId: args.submissionId,
+      });
+    } catch (error) {
+      console.error(`Failed to process submission ${args.submissionId}:`, error);
+      // Don't throw - we want submission creation to succeed even if processing fails
+    }
   },
 });
 
@@ -199,6 +257,39 @@ export const updateSubmissionStatus = mutation({
       status: args.status,
       updatedAt: Date.now(),
     });
+
+    return { success: true };
+  },
+});
+
+/**
+ * Delete submission (owner/admin only)
+ * Also deletes associated R2 files automatically
+ */
+export const deleteSubmission = mutation({
+  args: {
+    submissionId: v.id('submissions'),
+  },
+  handler: async (ctx, args) => {
+    const submission = await ctx.db.get(args.submissionId);
+    if (!submission) {
+      throw new Error('Submission not found');
+    }
+
+    // Check membership - only owners and admins can delete submissions
+    await requireHackathonRole(ctx, submission.hackathonId, ['owner', 'admin']);
+
+    // Delete R2 files if they exist (fire and forget - don't block deletion if R2 deletion fails)
+    const r2PathPrefix = submission.source?.r2Key;
+    if (r2PathPrefix) {
+      // Schedule R2 deletion to run immediately after mutation completes
+      await ctx.scheduler.runAfter(0, internal.submissionsActions.deleteSubmissionR2FilesAction, {
+        r2PathPrefix,
+      });
+    }
+
+    // Delete the submission
+    await ctx.db.delete(args.submissionId);
 
     return { success: true };
   },
@@ -316,5 +407,3 @@ export const updateSubmissionSourceInternal = internalMutation({
     return { success: true };
   },
 });
-
-

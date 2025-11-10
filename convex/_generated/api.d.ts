@@ -23,6 +23,7 @@ import type * as hackathons from "../hackathons.js";
 import type * as health from "../health.js";
 import type * as http from "../http.js";
 import type * as submissions from "../submissions.js";
+import type * as submissionsActions from "../submissionsActions.js";
 import type * as users from "../users.js";
 
 import type {
@@ -55,6 +56,7 @@ declare const fullApi: ApiFromModules<{
   health: typeof health;
   http: typeof http;
   submissions: typeof submissions;
+  submissionsActions: typeof submissionsActions;
   users: typeof users;
 }>;
 declare const fullApiWithMounts: typeof fullApi;

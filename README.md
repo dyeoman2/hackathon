@@ -146,11 +146,6 @@ In order to send password reset and transactional emails, you need to set up Res
 
 - [CodeRabbit CLI Setup](docs/CODERABBIT_CLI_SETUP.md) - AI-powered code review assistance
 
-### 🗂️ **Optional Infrastructure Setup**
-
-The template includes pre-configured infrastructure for file storage using AWS S3, but this is **not currently implemented** in the application. If you need document or file upload functionality, the infrastructure is ready to leverage:
-
-- [AWS S3 Storage Setup](infra/README.md) - Document and file storage infrastructure (ready but not implemented)
 
 ## 📄 License
 

@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate, useRouter } from '@tanstack/react-router';
-import { LogOut, Shield, Trophy, User } from 'lucide-react';
+import { LogOut, Shield, User } from 'lucide-react';
 import { MobileNavigation } from '~/components/MobileNavigation';
 import { ThemeToggle } from '~/components/theme-toggle';
 import {

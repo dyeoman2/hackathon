@@ -4,7 +4,7 @@ import {
   normalizeAdapterFindManyResult,
 } from '../src/lib/server/better-auth/adapter-utils';
 import { assertUserId } from '../src/lib/shared/user-id';
-import { components } from './_generated/api';
+import { components, internal } from './_generated/api';
 import type { Id } from './_generated/dataModel';
 import type { MutationCtx, QueryCtx } from './_generated/server';
 import { mutation, query } from './_generated/server';
@@ -384,13 +384,22 @@ export const deleteHackathon = mutation({
       await ctx.db.delete(membership._id);
     }
 
-    // Delete submissions
+    // Delete submissions and their R2 files
     const submissions = await ctx.db
       .query('submissions')
       .withIndex('by_hackathonId', (q) => q.eq('hackathonId', args.hackathonId))
       .collect();
 
     for (const submission of submissions) {
+      // Delete R2 files if they exist (fire and forget - don't block deletion if R2 deletion fails)
+      const r2PathPrefix = submission.source?.r2Key;
+      if (r2PathPrefix) {
+        // Schedule R2 deletion to run immediately after mutation completes
+        await ctx.scheduler.runAfter(0, internal.submissionsActions.deleteSubmissionR2FilesAction, {
+          r2PathPrefix,
+        });
+      }
+
       await ctx.db.delete(submission._id);
     }
 

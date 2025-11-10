@@ -37,6 +37,31 @@ function getCloudflareConfig() {
   };
 }
 
+// Helper function to get and validate AI Search configuration
+function getAISearchConfig() {
+  const CLOUDFLARE_API_TOKEN = process.env.CLOUDFLARE_API_TOKEN;
+  const CLOUDFLARE_ACCOUNT_ID = process.env.CLOUDFLARE_ACCOUNT_ID;
+  const CLOUDFLARE_AI_SEARCH_INSTANCE_ID = process.env.CLOUDFLARE_AI_SEARCH_INSTANCE_ID;
+
+  if (!CLOUDFLARE_API_TOKEN || !CLOUDFLARE_ACCOUNT_ID) {
+    throw new Error(
+      'Missing required Cloudflare AI environment variables: CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID. Please set them in your Convex environment variables. See docs/CLOUDFLARE_AI_SETUP.md for setup instructions.',
+    );
+  }
+
+  if (!CLOUDFLARE_AI_SEARCH_INSTANCE_ID) {
+    throw new Error(
+      'Missing required Cloudflare AI Search environment variable: CLOUDFLARE_AI_SEARCH_INSTANCE_ID. Please set it in your Convex environment variables. See docs/CLOUDFLARE_AI_SETUP.md for setup instructions.',
+    );
+  }
+
+  return {
+    apiToken: CLOUDFLARE_API_TOKEN,
+    accountId: CLOUDFLARE_ACCOUNT_ID,
+    instanceId: CLOUDFLARE_AI_SEARCH_INSTANCE_ID,
+  };
+}
+
 // Check if Cloudflare AI is configured
 export const isCloudflareConfigured = action({
   args: {},
@@ -151,6 +176,63 @@ function extractUsageMetadata(
     inputTokens: usage?.inputTokens,
     outputTokens: usage?.outputTokens,
   };
+}
+
+function clampScore(score: number | null | undefined, min = 0, max = 10) {
+  if (typeof score !== 'number' || Number.isNaN(score)) {
+    return null;
+  }
+  return Math.min(max, Math.max(min, score));
+}
+
+function extractJsonSnippet(payload: string) {
+  const cleaned = payload.replace(/```json|```/gi, '').trim();
+  const start = cleaned.indexOf('{');
+  const end = cleaned.lastIndexOf('}');
+  if (start === -1 || end === -1 || end <= start) {
+    return null;
+  }
+  return cleaned.slice(start, end + 1);
+}
+
+function parseReviewResponse(raw: string) {
+  const snippet = extractJsonSnippet(raw);
+  if (!snippet) {
+    return { summary: raw.trim(), score: null };
+  }
+
+  try {
+    const parsed = JSON.parse(snippet) as {
+      summary?: string;
+      review?: string;
+      score?: number | string;
+      rating?: number | string;
+      overallScore?: number | string;
+    };
+
+    const summary =
+      typeof parsed.summary === 'string'
+        ? parsed.summary
+        : typeof parsed.review === 'string'
+          ? parsed.review
+          : raw.trim();
+
+    const scoreRaw =
+      parsed.score ?? parsed.rating ?? parsed.overallScore ?? (parsed as Record<string, unknown>).score;
+    const numericScore =
+      typeof scoreRaw === 'number'
+        ? scoreRaw
+        : typeof scoreRaw === 'string'
+          ? Number.parseFloat(scoreRaw)
+          : null;
+
+    return {
+      summary,
+      score: clampScore(numericScore),
+    };
+  } catch {
+    return { summary: raw.trim(), score: null };
+  }
 }
 
 async function ensureAuthenticatedUser(ctx: ActionCtx) {
@@ -380,6 +462,80 @@ async function generateWithGatewayHelper(prompt: string, model: 'llama' | 'falco
     response: result.text,
     usage: estimatedUsage,
     finishReason: result.finishReason || 'stop',
+  };
+}
+
+async function fetchGatewayCompletion(prompt: string) {
+  const config = getCloudflareConfig();
+
+  if (!config.gatewayId) {
+    throw new Error(
+      'CLOUDFLARE_GATEWAY_ID environment variable is required for gateway functionality. Please set it in your Convex environment variables.',
+    );
+  }
+
+  const model = '@cf/meta/llama-3.1-8b-instruct';
+  // Gateway ID in URL can be either the Gateway name or UUID
+  // Example: /v1/{account_id}/hackathon/workers-ai/{model} or /v1/{account_id}/{uuid}/workers-ai/{model}
+  const endpoint = `https://gateway.ai.cloudflare.com/v1/${config.accountId}/${config.gatewayId}/workers-ai/${model}`;
+
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${config.apiToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      messages: [
+        {
+          role: 'system',
+          content:
+            'You are an expert hackathon judge who provides detailed, structured feedback with scores from 0-10.',
+        },
+        {
+          role: 'user',
+          content: prompt,
+        },
+      ],
+      stream: false,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+
+    if (
+      response.status === 401 ||
+      (errorText.includes('Authentication error') || errorText.includes('Unauthorized'))
+    ) {
+      throw new Error(
+        `Gateway authentication error (401): Please verify:\n` +
+          `1. Your CLOUDFLARE_API_TOKEN has "AI Gateway > Read" permissions\n` +
+          `2. Your CLOUDFLARE_GATEWAY_ID is correct (find it in Cloudflare Dashboard > AI > AI Gateway > [Your Gateway] > Settings - it's the Gateway ID, not the name)\n` +
+          `3. The Gateway ID matches the one in your Cloudflare account\n` +
+          `See docs/CLOUDFLARE_AI_SETUP.md for setup instructions.`,
+      );
+    }
+
+    throw new Error(`Gateway HTTP error ${response.status}: ${errorText}`);
+  }
+
+  const body = (await response.json()) as {
+    result?: { response?: string; usage?: { totalTokens?: number; inputTokens?: number; outputTokens?: number } };
+    response?: string;
+    usage?: { totalTokens?: number; inputTokens?: number; outputTokens?: number };
+  };
+
+  const text = body.result?.response ?? body.response;
+  if (!text || !text.trim()) {
+    throw new Error('Gateway response missing text');
+  }
+
+  return {
+    text,
+    usage: body.result?.usage ?? body.usage ?? null,
+    provider: 'cloudflare-gateway-http',
+    model,
   };
 }
 
@@ -858,6 +1014,57 @@ export const streamStructuredResponse = action({
   },
 });
 
+// List AI Gateways to find Gateway IDs
+export const listAIGateways = action({
+  args: {},
+  handler: async (ctx: ActionCtx) => {
+    await ensureAuthenticatedUser(ctx);
+
+    const config = getCloudflareConfig();
+    const listUrl = `https://api.cloudflare.com/client/v4/accounts/${config.accountId}/ai-gateway/gateways`;
+
+    try {
+      const response = await fetch(listUrl, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${config.apiToken}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to list gateways: ${response.status} - ${errorText}`);
+      }
+
+      const data = (await response.json()) as {
+        result?: Array<{
+          id: string;
+          name: string;
+          created_at?: string;
+        }>;
+        success?: boolean;
+      };
+
+      const gateways = data.result ?? [];
+      return {
+        success: true,
+        gateways: gateways.map((g) => ({
+          id: g.id,
+          name: g.name,
+          createdAt: g.created_at,
+        })),
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        gateways: [],
+      };
+    }
+  },
+});
+
 // Test gateway connectivity
 export const testGatewayConnectivity = action({
   args: {},
@@ -1057,6 +1264,433 @@ export const compareInferenceMethods = action({
     } catch (error) {
       await releaseReservation();
       throw error;
+    }
+  },
+});
+
+export const generateSubmissionReview = action({
+  args: {
+    submissionId: v.id('submissions'),
+    submissionTitle: v.string(),
+    team: v.string(),
+    repoUrl: v.string(),
+    siteUrl: v.optional(v.string()),
+    repoSummary: v.string(),
+    rubric: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await ensureAuthenticatedUser(ctx);
+
+    const reservation = await ctx.runAction(api.ai.reserveAiMessage, {
+      metadata: {
+        provider: 'cloudflare-gateway-workers-ai',
+        model: '@cf/meta/llama-3.1-8b-instruct',
+      },
+    });
+
+    if (!reservation.allowed) {
+      throw buildReservationError(reservation);
+    }
+
+    let usageFinalized = false;
+    const releaseReservation = async () => {
+      if (usageFinalized) {
+        return;
+      }
+      usageFinalized = true;
+      try {
+        await ctx.runAction(api.ai.releaseAiMessage, {});
+      } catch (releaseError) {
+        console.error('[AI] Failed to release AI reservation', releaseError);
+      }
+    };
+
+    const prompt = `You are an expert hackathon judge. Evaluate the submission using the rubric and respond with JSON.\n\nSubmission Details:\n- Title: ${args.submissionTitle}\n- Team: ${args.team}\n- Repository: ${args.repoUrl}\n${args.siteUrl ? `- Live Site: ${args.siteUrl}\n` : ''}\nRepository Summary:\n${args.repoSummary}\n\nRubric:\n${args.rubric}\n\nReturn JSON with this shape:\n{\n  "score": number // 0-10 with one decimal place,\n  "summary": string // 2-3 paragraphs referencing rubric categories,\n  "strengths": string[],\n  "risks": string[]\n}\n\nOnly respond with valid JSON.`;
+
+    try {
+      const gatewayResult = await fetchGatewayCompletion(prompt);
+      const parsed = parseReviewResponse(gatewayResult.text);
+
+      try {
+        const completion = await ctx.runAction(api.ai.completeAiMessage, {
+          mode: reservation.mode,
+          metadata: extractUsageMetadata(
+            gatewayResult.usage,
+            gatewayResult.provider,
+            gatewayResult.model,
+          ),
+        });
+        usageFinalized = true;
+        if (completion.trackError) {
+          console.warn('[AI] Autumn usage tracking failed', completion.trackError);
+        }
+      } catch (completionError) {
+        await releaseReservation();
+        throw completionError instanceof Error
+          ? completionError
+          : new Error('Failed to finalize AI usage.');
+      }
+
+      return {
+        score: parsed.score,
+        summary: parsed.summary,
+        rawResponse: gatewayResult.text,
+        provider: gatewayResult.provider,
+        model: gatewayResult.model,
+        usage: gatewayResult.usage,
+      };
+    } catch (error) {
+      await releaseReservation();
+      throw error;
+    }
+  },
+});
+
+// Check if Cloudflare AI Search is configured
+export const isAISearchConfigured = action({
+  args: {},
+  handler: async (_ctx: ActionCtx) => {
+    const CLOUDFLARE_API_TOKEN = process.env.CLOUDFLARE_API_TOKEN ?? '';
+    const CLOUDFLARE_ACCOUNT_ID = process.env.CLOUDFLARE_ACCOUNT_ID ?? '';
+    const CLOUDFLARE_AI_SEARCH_INSTANCE_ID = process.env.CLOUDFLARE_AI_SEARCH_INSTANCE_ID ?? '';
+    return {
+      configured:
+        CLOUDFLARE_API_TOKEN.length > 0 &&
+        CLOUDFLARE_ACCOUNT_ID.length > 0 &&
+        CLOUDFLARE_AI_SEARCH_INSTANCE_ID.length > 0,
+    };
+  },
+});
+
+// List all AI Search instances (RAG instances)
+// Note: No auth check - allows CLI usage for diagnostics
+export const listAISearchInstances = action({
+  args: {},
+  handler: async (_ctx: ActionCtx) => {
+    const config = getAISearchConfig();
+    // Try different possible endpoint formats
+    const possibleEndpoints = [
+      `https://api.cloudflare.com/client/v4/accounts/${config.accountId}/autorag/rags`,
+      `https://api.cloudflare.com/client/v4/accounts/${config.accountId}/ai-search/rags`,
+      `https://api.cloudflare.com/client/v4/accounts/${config.accountId}/ai-search/instances`,
+      `https://api.cloudflare.com/client/v4/accounts/${config.accountId}/ai-search`,
+    ];
+
+    for (const listUrl of possibleEndpoints) {
+      try {
+        console.log(`[AI Search] Trying endpoint: ${listUrl}`);
+        const response = await fetch(listUrl, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${config.apiToken}`,
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (response.ok) {
+          const data = (await response.json()) as {
+            result?: Array<{
+              id?: string;
+              name?: string;
+              rag_name?: string;
+              instance_id?: string;
+              created_at?: string;
+            }>;
+            success?: boolean;
+          };
+
+          const instances = data.result ?? [];
+          return {
+            success: true,
+            endpoint: listUrl,
+            instances: instances.map((i) => ({
+              id: i.id || i.instance_id || i.name || i.rag_name || 'unknown',
+              name: i.name || i.rag_name || i.id || 'unknown',
+              ragName: i.rag_name || i.name || 'unknown',
+              createdAt: i.created_at,
+            })),
+          };
+        } else if (response.status !== 404) {
+          // If it's not a 404, this might be the right endpoint but with an error
+          const errorText = await response.text();
+          console.log(`[AI Search] Endpoint ${listUrl} returned ${response.status}: ${errorText}`);
+        }
+      } catch (error) {
+        console.log(`[AI Search] Endpoint ${listUrl} failed:`, error instanceof Error ? error.message : 'Unknown error');
+      }
+    }
+
+    return {
+      success: false,
+      error: 'Could not find valid endpoint to list AI Search instances. The API endpoint format may have changed.',
+      instances: [],
+    };
+  },
+});
+
+interface AISearchQueryOptions {
+  query: string;
+  model?: string;
+  maxNumResults?: number;
+  rewriteQuery?: boolean;
+  filters?: {
+    path?: {
+      prefix?: string;
+    };
+  };
+}
+
+interface AISearchResponse {
+  response?: string;
+  data?: Array<{
+    filename?: string;
+    attributes?: {
+      path?: string;
+    };
+    text?: string;
+    score?: number;
+  }>;
+  search_query?: string;
+  result?: {
+    response?: string;
+    data?: Array<unknown>;
+  };
+}
+
+async function queryAISearchHelper(options: AISearchQueryOptions): Promise<AISearchResponse> {
+  const config = getAISearchConfig();
+  // Correct endpoint format: /autorag/rags/{instance_name}/ai-search
+  const queryUrl = `https://api.cloudflare.com/client/v4/accounts/${config.accountId}/autorag/rags/${config.instanceId}/ai-search`;
+
+  const response = await fetch(queryUrl, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${config.apiToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      query: options.query,
+      model: options.model ?? '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+      max_num_results: options.maxNumResults ?? 20,
+      rewrite_query: options.rewriteQuery ?? false,
+      // Note: Cloudflare AI Search API doesn't support filters parameter
+      // filters: options.filters, // Removed - API doesn't support filters
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+
+    if (
+      response.status === 401 ||
+      (errorText.includes('Authentication error') || errorText.includes('Unauthorized'))
+    ) {
+      throw new Error(
+        `AI Search authentication error (401): Please verify your CLOUDFLARE_API_TOKEN has "AI Search > Edit" permissions. See docs/CLOUDFLARE_AI_SETUP.md for setup instructions.`,
+      );
+    }
+
+    if (
+      response.status === 400 &&
+      (errorText.includes('Could not route') || errorText.includes('No route for that URI'))
+    ) {
+      throw new Error(
+        `AI Search instance not found (400): The instance name "${config.instanceId}" may be incorrect or the account does not have AI Search enabled. Verify CLOUDFLARE_AI_SEARCH_INSTANCE_ID matches your instance name.`,
+      );
+    }
+
+    throw new Error(`AI Search query error ${response.status}: ${errorText}`);
+  }
+
+  const data = (await response.json()) as AISearchResponse;
+  return data;
+}
+
+// Query Cloudflare AI Search
+export const queryAISearch = action({
+  args: {
+    query: v.string(),
+    model: v.optional(v.string()),
+    maxNumResults: v.optional(v.number()),
+    rewriteQuery: v.optional(v.boolean()),
+    pathPrefix: v.optional(v.string()),
+  },
+  handler: async (ctx: ActionCtx, args) => {
+    await ensureAuthenticatedUser(ctx);
+
+    const reservation = await ctx.runAction(api.ai.reserveAiMessage, {
+      metadata: {
+        provider: 'cloudflare-ai-search',
+        model: args.model ?? '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+      },
+    });
+
+    if (!reservation.allowed) {
+      throw buildReservationError(reservation);
+    }
+
+    let usageFinalized = false;
+    const releaseReservation = async () => {
+      if (usageFinalized) {
+        return;
+      }
+      usageFinalized = true;
+      try {
+        await ctx.runAction(api.ai.releaseAiMessage, {});
+      } catch (releaseError) {
+        console.error('[AI] Failed to release AI reservation', releaseError);
+      }
+    };
+
+    try {
+      // Note: Cloudflare AI Search API doesn't support filters parameter
+      // Path filtering must be done client-side after receiving results
+      const result = await queryAISearchHelper({
+        query: args.query,
+        model: args.model,
+        maxNumResults: args.maxNumResults,
+        rewriteQuery: args.rewriteQuery,
+        // filters removed - API doesn't support them
+      });
+
+      // Extract the generated response and documents
+      const generatedResponse = result.response ?? result.result?.response;
+      const documents = result.data ?? result.result?.data ?? [];
+
+      // Estimate usage (AI Search doesn't provide detailed token usage)
+      const estimatedUsage = {
+        inputTokens: estimateTokens(args.query),
+        outputTokens: estimateTokens(generatedResponse ?? ''),
+        totalTokens: estimateTokens(args.query) + estimateTokens(generatedResponse ?? ''),
+      };
+
+      try {
+        const completion = await ctx.runAction(api.ai.completeAiMessage, {
+          mode: reservation.mode,
+          metadata: extractUsageMetadata(
+            estimatedUsage,
+            'cloudflare-ai-search',
+            args.model ?? '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+          ),
+        });
+        usageFinalized = true;
+        if (completion.trackError) {
+          console.warn('[AI] Autumn usage tracking failed', completion.trackError);
+        }
+      } catch (completionError) {
+        await releaseReservation();
+        throw completionError instanceof Error
+          ? completionError
+          : new Error('Failed to finalize AI usage.');
+      }
+
+      return {
+        response: generatedResponse,
+        documents: documents as Array<{
+          filename?: string;
+          attributes?: {
+            path?: string;
+          };
+          text?: string;
+          score?: number;
+        }>,
+        searchQuery: result.search_query,
+        usage: estimatedUsage,
+      };
+    } catch (error) {
+      await releaseReservation();
+      throw error;
+    }
+  },
+});
+
+// Test AI Search connectivity
+export const testAISearchConnectivity = action({
+  args: {},
+  handler: async (ctx: ActionCtx) => {
+    await ensureAuthenticatedUser(ctx);
+
+    if (!isAutumnConfigured()) {
+      return {
+        success: false,
+        error:
+          'Autumn billing is not configured. Follow docs/AUTUMN_SETUP.md to enable paid AI access.',
+        instanceUrl: null,
+      };
+    }
+
+    const reservation = await ctx.runAction(api.ai.reserveAiMessage, {
+      metadata: {
+        provider: 'cloudflare-ai-search-connectivity-test',
+        model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+      },
+    });
+
+    if (!reservation.allowed) {
+      throw buildReservationError(reservation);
+    }
+
+    let usageFinalized = false;
+    const releaseReservation = async () => {
+      if (usageFinalized) {
+        return;
+      }
+      usageFinalized = true;
+      try {
+        await ctx.runAction(api.ai.releaseAiMessage, {});
+      } catch (releaseError) {
+        console.error('[AI] Failed to release AI reservation', releaseError);
+      }
+    };
+
+    try {
+      const config = getAISearchConfig();
+      const testResult = await queryAISearchHelper({
+        query: 'test query',
+        maxNumResults: 1,
+      });
+
+      try {
+        const estimatedUsage = {
+          inputTokens: estimateTokens('test query'),
+          outputTokens: estimateTokens(testResult.response ?? ''),
+          totalTokens: estimateTokens('test query') + estimateTokens(testResult.response ?? ''),
+        };
+        const completion = await ctx.runAction(api.ai.completeAiMessage, {
+          mode: reservation.mode,
+          metadata: extractUsageMetadata(
+            estimatedUsage,
+            'cloudflare-ai-search-connectivity-test',
+            '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+          ),
+        });
+        usageFinalized = true;
+        if (completion.trackError) {
+          console.warn('[AI] Autumn usage tracking failed', completion.trackError);
+        }
+      } catch (completionError) {
+        await releaseReservation();
+        throw completionError instanceof Error
+          ? completionError
+          : new Error('Failed to finalize AI usage.');
+      }
+
+      await releaseReservation();
+      return {
+        success: true,
+        status: 200,
+        statusText: 'OK',
+        instanceUrl: `https://api.cloudflare.com/client/v4/accounts/${config.accountId}/autorag/rags/${config.instanceId}`,
+        response: testResult.response,
+      };
+    } catch (error) {
+      await releaseReservation();
+      console.error('❌ AI Search connectivity test failed:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        instanceUrl: null,
+      };
     }
   },
 });

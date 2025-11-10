@@ -1,7 +1,6 @@
 import { api } from '@convex/_generated/api';
 import type { Id } from '@convex/_generated/dataModel';
 import { useForm } from '@tanstack/react-form';
-import { useRouter } from '@tanstack/react-router';
 import { useMutation } from 'convex/react';
 import { useState } from 'react';
 import { z } from 'zod';
@@ -16,7 +15,6 @@ import {
 } from '~/components/ui/dialog';
 import { Field, FieldLabel } from '~/components/ui/field';
 import { Input } from '~/components/ui/input';
-import { Textarea } from '~/components/ui/textarea';
 import { useToast } from '~/components/ui/toast';
 
 const submissionSchema = z.object({
@@ -33,7 +31,6 @@ interface NewSubmissionModalProps {
 }
 
 export function NewSubmissionModal({ hackathonId, open, onClose }: NewSubmissionModalProps) {
-  const router = useRouter();
   const toast = useToast();
   const createSubmission = useMutation(api.submissions.createSubmission);
   const [isSubmitting, setIsSubmitting] = useState(false);
