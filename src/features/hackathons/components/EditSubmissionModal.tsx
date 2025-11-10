@@ -1,7 +1,6 @@
 import { api } from '@convex/_generated/api';
-import type { Id } from '@convex/_generated/dataModel';
+import type { Doc, Id } from '@convex/_generated/dataModel';
 import { useForm } from '@tanstack/react-form';
-import { useRouter } from '@tanstack/react-router';
 import { useMutation } from 'convex/react';
 import { useState } from 'react';
 import { z } from 'zod';
@@ -25,51 +24,43 @@ const submissionSchema = z.object({
   siteUrl: z.string().url('Please enter a valid URL').optional().or(z.literal('')),
 });
 
-interface NewSubmissionModalProps {
-  hackathonId: Id<'hackathons'>;
+interface EditSubmissionModalProps {
+  submission: Doc<'submissions'>;
   open: boolean;
   onClose: () => void;
 }
 
-export function NewSubmissionModal({ hackathonId, open, onClose }: NewSubmissionModalProps) {
-  const router = useRouter();
+export function EditSubmissionModal({ submission, open, onClose }: EditSubmissionModalProps) {
   const toast = useToast();
-  const createSubmission = useMutation(api.submissions.createSubmission);
+  const updateSubmission = useMutation(api.submissions.updateSubmission);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   const form = useForm({
     defaultValues: {
-      title: '',
-      team: '',
-      repoUrl: '',
-      siteUrl: '',
+      title: submission.title,
+      team: submission.team,
+      repoUrl: submission.repoUrl,
+      siteUrl: submission.siteUrl || '',
     },
     onSubmit: async ({ value }) => {
       setIsSubmitting(true);
       setSubmitError(null);
 
       try {
-        const result = await createSubmission({
-          hackathonId,
+        await updateSubmission({
+          submissionId: submission._id,
           title: value.title,
           team: value.team,
           repoUrl: value.repoUrl,
           siteUrl: value.siteUrl?.trim() || undefined,
         });
 
-        toast.showToast('Submission created successfully!', 'success');
+        toast.showToast('Submission updated successfully!', 'success');
         onClose();
-        form.reset();
-
-        // Navigate to the new submission detail page
-        await router.navigate({
-          to: '/app/h/$id/submissions/$submissionId',
-          params: { id: hackathonId, submissionId: result.submissionId },
-        });
       } catch (error) {
-        console.error('Failed to create submission:', error);
-        setSubmitError(error instanceof Error ? error.message : 'Failed to create submission');
+        console.error('Failed to update submission:', error);
+        setSubmitError(error instanceof Error ? error.message : 'Failed to update submission');
       } finally {
         setIsSubmitting(false);
       }
@@ -80,10 +71,9 @@ export function NewSubmissionModal({ hackathonId, open, onClose }: NewSubmission
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
       <DialogContent className="sm:max-w-[600px]">
         <DialogHeader>
-          <DialogTitle>Add New Submission</DialogTitle>
+          <DialogTitle>Edit Submission</DialogTitle>
           <DialogDescription>
-            Add a new submission to this hackathon. Include the GitHub repository URL and optional
-            live site URL.
+            Update the submission details. Changes will be saved immediately.
           </DialogDescription>
         </DialogHeader>
 
@@ -193,7 +183,7 @@ export function NewSubmissionModal({ hackathonId, open, onClose }: NewSubmission
             <form.Subscribe selector={(state) => [state.canSubmit, state.isSubmitting]}>
               {([canSubmit, isFormSubmitting]) => (
                 <Button type="submit" disabled={!canSubmit || isSubmitting || isFormSubmitting}>
-                  {isSubmitting || isFormSubmitting ? 'Creating...' : 'Create Submission'}
+                  {isSubmitting || isFormSubmitting ? 'Updating...' : 'Update Submission'}
                 </Button>
               )}
             </form.Subscribe>
@@ -203,3 +193,4 @@ export function NewSubmissionModal({ hackathonId, open, onClose }: NewSubmission
     </Dialog>
   );
 }
+

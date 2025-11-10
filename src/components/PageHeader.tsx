@@ -19,7 +19,7 @@ export function PageHeader({
 }: PageHeaderProps) {
   return (
     <div className={cn('mb-8', className)}>
-      <div className="flex items-center justify-between">
+      <div className="flex items-start justify-between">
         <div>
           <h1 className={cn('text-2xl font-bold text-foreground', titleClassName)}>{title}</h1>
           {description && (

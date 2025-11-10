@@ -135,6 +135,7 @@ export default defineSchema({
       v.literal('review'),
       v.literal('shortlist'),
       v.literal('winner'),
+      v.literal('rejected'),
     ),
     source: v.optional(
       v.object({

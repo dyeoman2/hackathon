@@ -13,8 +13,6 @@ import {
 import { authComponent } from './auth';
 import { requireHackathonRole } from './hackathons';
 
-type SubmissionStatus = 'submitted' | 'review' | 'shortlist' | 'winner';
-
 // Type definition for action reference (until Convex regenerates types)
 // generateRepoSummary is defined in submissionsActions/aiSummary.ts
 type GenerateRepoSummaryActionRef = FunctionReference<
@@ -24,12 +22,7 @@ type GenerateRepoSummaryActionRef = FunctionReference<
   { scheduled: boolean }
 >;
 
-const ALLOWED_STATUS_TRANSITIONS: Record<SubmissionStatus, SubmissionStatus[]> = {
-  submitted: ['review', 'submitted'],
-  review: ['shortlist', 'review', 'submitted'],
-  shortlist: ['winner', 'shortlist', 'review'],
-  winner: ['winner', 'shortlist'],
-};
+// Status transitions are now unrestricted - any status can transition to any other status
 
 /**
  * List submissions by hackathon
@@ -235,6 +228,7 @@ export const updateSubmissionStatus = mutation({
       v.literal('review'),
       v.literal('shortlist'),
       v.literal('winner'),
+      v.literal('rejected'),
     ),
   },
   handler: async (ctx, args) => {
@@ -246,15 +240,7 @@ export const updateSubmissionStatus = mutation({
     // Check membership
     await requireHackathonRole(ctx, submission.hackathonId, ['owner', 'admin', 'judge']);
 
-    // Validate transition
-    const currentStatus = submission.status;
-    const allowedTransitions = ALLOWED_STATUS_TRANSITIONS[currentStatus] ?? [];
-    if (!allowedTransitions.includes(args.status)) {
-      throw new Error(
-        `Invalid status transition: ${currentStatus} → ${args.status}. Allowed: ${allowedTransitions.join(', ')}`,
-      );
-    }
-
+    // Status transitions are unrestricted - allow any status to transition to any other status
     await ctx.db.patch(args.submissionId, {
       status: args.status,
       updatedAt: Date.now(),
@@ -285,9 +271,13 @@ export const deleteSubmission = mutation({
     const r2PathPrefix = submission.source?.r2Key;
     if (r2PathPrefix) {
       // Schedule R2 deletion to run immediately after mutation completes
-      await ctx.scheduler.runAfter(0, internal.submissionsActions.r2Cleanup.deleteSubmissionR2FilesAction, {
-        r2PathPrefix,
-      });
+      await ctx.scheduler.runAfter(
+        0,
+        internal.submissionsActions.r2Cleanup.deleteSubmissionR2FilesAction,
+        {
+          r2PathPrefix,
+        },
+      );
     }
 
     // Delete the submission

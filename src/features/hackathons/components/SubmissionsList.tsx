@@ -1,6 +1,7 @@
 import { api } from '@convex/_generated/api';
 import type { Id } from '@convex/_generated/dataModel';
 import { useMutation, useQuery } from 'convex/react';
+import { useRouter } from '@tanstack/react-router';
 import { Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { Badge } from '~/components/ui/badge';
@@ -24,7 +25,6 @@ import {
 } from '~/components/ui/table';
 import { useToast } from '~/components/ui/toast';
 import { NewSubmissionModal } from './NewSubmissionModal';
-import { SubmissionDrawer } from './SubmissionDrawer';
 
 interface SubmissionsListProps {
   hackathonId: Id<'hackathons'>;
@@ -32,19 +32,26 @@ interface SubmissionsListProps {
 
 export function SubmissionsList({ hackathonId }: SubmissionsListProps) {
   const toast = useToast();
+  const router = useRouter();
   const hackathon = useQuery(api.hackathons.getHackathon, { hackathonId });
   const submissions = useQuery(api.submissions.listByHackathon, { hackathonId });
   const updateStatus = useMutation(api.submissions.updateSubmissionStatus);
   const deleteSubmission = useMutation(api.submissions.deleteSubmission);
-  const [selectedSubmissionId, setSelectedSubmissionId] = useState<Id<'submissions'> | null>(null);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState<string | null>(null);
   const [isNewSubmissionModalOpen, setIsNewSubmissionModalOpen] = useState(false);
   const [submissionToDelete, setSubmissionToDelete] = useState<Id<'submissions'> | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
+  const handleViewSubmission = (submissionId: Id<'submissions'>) => {
+    void router.navigate({
+      to: '/app/h/$id/submissions/$submissionId',
+      params: { id: hackathonId, submissionId },
+    });
+  };
+
   const handleStatusChange = async (
     submissionId: Id<'submissions'>,
-    newStatus: 'submitted' | 'review' | 'shortlist' | 'winner',
+    newStatus: 'submitted' | 'review' | 'shortlist' | 'winner' | 'rejected',
   ) => {
     setIsUpdatingStatus(submissionId);
     try {
@@ -66,6 +73,10 @@ export function SubmissionsList({ hackathonId }: SubmissionsListProps) {
         return 'secondary';
       case 'review':
         return 'info';
+      case 'submitted':
+        return 'light-purple'; // Purple to differentiate from Review
+      case 'rejected':
+        return 'destructive';
       default:
         return 'outline';
     }
@@ -143,7 +154,7 @@ export function SubmissionsList({ hackathonId }: SubmissionsListProps) {
                 <TableRow
                   key={submission._id}
                   className="cursor-pointer"
-                  onClick={() => setSelectedSubmissionId(submission._id)}
+                  onClick={() => handleViewSubmission(submission._id)}
                 >
                   <TableCell className="font-medium">{submission.title}</TableCell>
                   <TableCell>{submission.team}</TableCell>
@@ -153,10 +164,11 @@ export function SubmissionsList({ hackathonId }: SubmissionsListProps) {
                       onValueChange={(value) => {
                         handleStatusChange(
                           submission._id,
-                          value as 'submitted' | 'review' | 'shortlist' | 'winner',
+                          value as 'submitted' | 'review' | 'shortlist' | 'winner' | 'rejected',
                         );
                       }}
                       disabled={isUpdatingStatus === submission._id}
+                      onClick={(e) => e.stopPropagation()}
                     >
                       <SelectTrigger className="w-32">
                         <SelectValue />
@@ -165,6 +177,7 @@ export function SubmissionsList({ hackathonId }: SubmissionsListProps) {
                         <SelectItem value="submitted">Submitted</SelectItem>
                         <SelectItem value="review">Review</SelectItem>
                         <SelectItem value="shortlist">Shortlist</SelectItem>
+                        <SelectItem value="rejected">Rejected</SelectItem>
                         <SelectItem value="winner">Winner</SelectItem>
                       </SelectContent>
                     </Select>
@@ -186,7 +199,7 @@ export function SubmissionsList({ hackathonId }: SubmissionsListProps) {
                         size="sm"
                         onClick={(e) => {
                           e.stopPropagation();
-                          setSelectedSubmissionId(submission._id);
+                          handleViewSubmission(submission._id);
                         }}
                       >
                         View
@@ -211,14 +224,6 @@ export function SubmissionsList({ hackathonId }: SubmissionsListProps) {
             </TableBody>
           </Table>
         </div>
-      )}
-
-      {selectedSubmissionId && (
-        <SubmissionDrawer
-          submissionId={selectedSubmissionId}
-          open={selectedSubmissionId !== null}
-          onClose={() => setSelectedSubmissionId(null)}
-        />
       )}
 
       <NewSubmissionModal
