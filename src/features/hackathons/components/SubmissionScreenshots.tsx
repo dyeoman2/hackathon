@@ -52,8 +52,21 @@ export function SubmissionScreenshots({ submission, canEdit = false }: Submissio
 
     setIsCapturingScreenshot(true);
     try {
-      await captureScreenshot({ submissionId: submission._id });
-      toast.showToast('Screenshot captured successfully', 'success');
+      const result = await captureScreenshot({ submissionId: submission._id });
+      if (result && typeof result === 'object' && 'pagesCaptured' in result) {
+        const pagesCaptured = result.pagesCaptured as number;
+        const totalPagesFound = result.totalPagesFound as number;
+        if (pagesCaptured > 1) {
+          toast.showToast(
+            `Captured ${pagesCaptured} of ${totalPagesFound} page${totalPagesFound !== 1 ? 's' : ''} successfully`,
+            'success',
+          );
+        } else {
+          toast.showToast('Screenshot captured successfully', 'success');
+        }
+      } else {
+        toast.showToast('Screenshots captured successfully', 'success');
+      }
     } catch (error) {
       console.error('Failed to capture screenshot:', error);
       toast.showToast(
@@ -186,7 +199,29 @@ export function SubmissionScreenshots({ submission, canEdit = false }: Submissio
                         loading="lazy"
                       />
                       <div className="absolute bottom-0 left-0 right-0 bg-black/60 px-3 py-2 text-xs text-white">
-                        Captured {new Date(screenshot.capturedAt).toLocaleString()}
+                        {screenshot.pageUrl ? (
+                          <>
+                            <div className="font-medium truncate">
+                              {screenshot.pageName || new URL(screenshot.pageUrl).pathname || 'Page'}
+                            </div>
+                            <a
+                              href={screenshot.pageUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs opacity-80 truncate hover:opacity-100 hover:underline block"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              {new URL(screenshot.pageUrl).hostname}
+                            </a>
+                            <div className="text-xs opacity-60 mt-1">
+                              Captured {new Date(screenshot.capturedAt).toLocaleString()}
+                            </div>
+                          </>
+                        ) : (
+                          <div className="text-xs opacity-60">
+                            Captured {new Date(screenshot.capturedAt).toLocaleString()}
+                          </div>
+                        )}
                       </div>
                     </button>
                   </CarouselItem>
@@ -279,9 +314,31 @@ export function SubmissionScreenshots({ submission, canEdit = false }: Submissio
               )}
 
               {/* Image info */}
-              <div className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-black/60 px-4 py-2 rounded-lg text-xs text-white">
-                Screenshot {openIndex + 1} of {screenshots.length} • Captured{' '}
-                {new Date(screenshots[openIndex].capturedAt).toLocaleString()}
+              <div className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-black/60 px-4 py-3 rounded-lg text-xs text-white max-w-[90%]">
+                {screenshots[openIndex].pageUrl ? (
+                  <>
+                    <div className="font-medium text-center mb-1">
+                      {screenshots[openIndex].pageName || new URL(screenshots[openIndex].pageUrl).pathname || `Page ${openIndex + 1}`}
+                    </div>
+                    <a
+                      href={screenshots[openIndex].pageUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs opacity-80 text-center mb-1 break-all hover:opacity-100 hover:underline block"
+                    >
+                      {screenshots[openIndex].pageUrl}
+                    </a>
+                    <div className="text-xs opacity-60 text-center">
+                      Screenshot {openIndex + 1} of {screenshots.length} • Captured{' '}
+                      {new Date(screenshots[openIndex].capturedAt).toLocaleString()}
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-xs opacity-60 text-center">
+                    Screenshot {openIndex + 1} of {screenshots.length} • Captured{' '}
+                    {new Date(screenshots[openIndex].capturedAt).toLocaleString()}
+                  </div>
+                )}
               </div>
             </div>
           </DialogContent>

@@ -22,7 +22,12 @@ function getFirecrawlApiKey(): string {
 }
 
 // Helper function to get R2 credentials
-function getR2Credentials() {
+function getR2Credentials(): {
+  r2BucketName: string;
+  r2AccessKeyId: string;
+  r2SecretAccessKey: string;
+  r2AccountId: string;
+} {
   const r2BucketName = process.env.CLOUDFLARE_R2_BUCKET_NAME;
   const r2AccessKeyId = process.env.CLOUDFLARE_R2_ACCESS_KEY_ID;
   const r2SecretAccessKey = process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY;
@@ -33,6 +38,25 @@ function getR2Credentials() {
   }
 
   return { r2BucketName, r2AccessKeyId, r2SecretAccessKey, r2AccountId };
+}
+
+// Helper function to normalize URLs for comparison (removes trailing slashes, normalizes protocol)
+function normalizeUrl(url: string): string {
+  try {
+    const urlObj = new URL(url);
+    // Remove trailing slash from pathname
+    const normalizedPath = urlObj.pathname.replace(/\/+$/, '') || '/';
+    // Reconstruct URL with normalized pathname
+    return `${urlObj.protocol}//${urlObj.host}${normalizedPath}${urlObj.search}${urlObj.hash}`;
+  } catch {
+    // If URL parsing fails, just remove trailing slash
+    return url.replace(/\/+$/, '');
+  }
+}
+
+// Helper function to check if two URLs are equivalent (normalized comparison)
+function urlsAreEquivalent(url1: string, url2: string): boolean {
+  return normalizeUrl(url1) === normalizeUrl(url2);
 }
 
 /**
@@ -83,112 +107,261 @@ export const captureScreenshot = action({
       // Initialize Firecrawl client
       const firecrawl = new Firecrawl({ apiKey });
 
-      // Use Firecrawl's scrape method with screenshot format
-      // According to Firecrawl docs: https://docs.firecrawl.dev/features/scrape
-      // Screenshots are returned as URLs pointing to Firecrawl's storage
-      // Using object format with fullPage: true to capture full-page scrolling screenshots
-      const result: unknown = await firecrawl.scrape(submission.siteUrl, {
-        formats: [{ type: 'screenshot', fullPage: true }],
+      // Step 1: Use map endpoint to quickly discover URLs (much faster than crawl)
+      // Map is designed for speed and costs 1 credit per site regardless of size
+      const mapResult: unknown = await firecrawl.map(submission.siteUrl, {
+        limit: 10, // Maximum 10 pages
       });
 
-      // Handle Firecrawl response format
-      // SDK returns data directly, but structure may vary: result.screenshot or result.data?.screenshot
-      let screenshotUrl: string | undefined;
+      // Extract URLs from map result
+      let urlsToScrape: string[] = [];
+      if (typeof mapResult === 'object' && mapResult !== null) {
+        // Check for result.links or result.data.links (array of URL strings or objects)
+        const links =
+          (mapResult as { links?: unknown; data?: { links?: unknown } }).links ||
+          (mapResult as { data?: { links?: unknown } }).data?.links;
 
-      // Check if result is a string URL first
-      if (typeof result === 'string' && result.startsWith('http')) {
-        screenshotUrl = result;
-      }
-      // Check different possible response structures for object responses
-      else if (typeof result === 'object' && result !== null) {
-        // Check result.screenshot (direct property)
-        if (typeof (result as { screenshot?: unknown }).screenshot === 'string') {
-          screenshotUrl = (result as { screenshot: string }).screenshot;
+        if (Array.isArray(links)) {
+          urlsToScrape = links
+            .map((link) => {
+              if (typeof link === 'string') return link;
+              if (typeof link === 'object' && link !== null && 'url' in link) {
+                return typeof link.url === 'string' ? link.url : null;
+              }
+              return null;
+            })
+            .filter((url): url is string => url !== null && (url?.startsWith('http') ?? false));
         }
-        // Check result.data.screenshot (nested structure)
-        else if (
-          typeof (result as { data?: { screenshot?: unknown } }).data?.screenshot === 'string'
+      }
+
+      // Normalize the original URL for comparison
+      const normalizedOriginalUrl = normalizeUrl(submission.siteUrl);
+
+      // Deduplicate URLs using normalized comparison and ensure original URL is first
+      const uniqueUrls: string[] = [];
+      const seenNormalizedUrls = new Set<string>();
+
+      // Always add the original URL first (if map results exist, we'll skip duplicates later)
+      if (urlsToScrape.length > 0) {
+        uniqueUrls.push(submission.siteUrl);
+        seenNormalizedUrls.add(normalizedOriginalUrl);
+      }
+
+      // Add other URLs from map results, skipping duplicates (including normalized versions of the original)
+      for (const url of urlsToScrape) {
+        const normalizedUrl = normalizeUrl(url);
+        if (!seenNormalizedUrls.has(normalizedUrl)) {
+          uniqueUrls.push(url);
+          seenNormalizedUrls.add(normalizedUrl);
+        }
+      }
+
+      // If no URLs were found, use the original URL
+      if (uniqueUrls.length === 0) {
+        urlsToScrape = [submission.siteUrl];
+      } else {
+        urlsToScrape = uniqueUrls.slice(0, 10); // Keep max 10 URLs
+      }
+
+      // Step 2: Scrape each URL in parallel to capture screenshots
+      // Using parallel scrape calls is faster and more reliable than crawl's async job system
+      const scrapePromises = urlsToScrape.map(async (url) => {
+        try {
+          const result = await firecrawl.scrape(url, {
+            formats: [{ type: 'screenshot', fullPage: true }],
+          });
+          // Extract screenshot URL from result (could be string or nested in data)
+          let screenshotUrl: string | undefined;
+          let pageName: string | undefined;
+
+          if (typeof result === 'object' && result !== null) {
+            // Extract screenshot URL
+            if (typeof (result as { screenshot?: unknown }).screenshot === 'string') {
+              screenshotUrl = (result as { screenshot: string }).screenshot;
+            } else if (
+              typeof (result as { data?: { screenshot?: unknown } }).data?.screenshot === 'string'
+            ) {
+              screenshotUrl = (result as { data: { screenshot: string } }).data.screenshot;
+            }
+
+            // Extract page name/title from metadata
+            const metadata = (result as { metadata?: { title?: string; pageTitle?: string } })
+              .metadata;
+            if (metadata) {
+              pageName = metadata.title || metadata.pageTitle;
+            }
+            // Fallback to extracting from markdown if available
+            if (!pageName && typeof (result as { markdown?: string }).markdown === 'string') {
+              const markdown = (result as { markdown: string }).markdown;
+              const titleMatch = markdown.match(/^#\s+(.+)$/m);
+              if (titleMatch) {
+                pageName = titleMatch[1].trim();
+              }
+            }
+          }
+
+          return {
+            url,
+            screenshot: screenshotUrl,
+            pageName,
+            metadata: { sourceURL: url },
+          };
+        } catch (error) {
+          console.warn(`Failed to scrape ${url}:`, error);
+          return null;
+        }
+      });
+
+      const scrapeResults = await Promise.all(scrapePromises);
+      const pages: Array<{
+        url: string;
+        screenshot: string;
+        pageName?: string;
+        metadata: { sourceURL: string };
+      }> = [];
+
+      for (const page of scrapeResults) {
+        if (
+          page !== null &&
+          typeof page.screenshot === 'string' &&
+          page.screenshot.startsWith('http')
         ) {
-          screenshotUrl = (result as { data: { screenshot: string } }).data.screenshot;
+          pages.push({
+            url: page.url,
+            screenshot: page.screenshot,
+            pageName: page.pageName,
+            metadata: page.metadata,
+          });
         }
       }
 
-      if (!screenshotUrl || !screenshotUrl.startsWith('http')) {
-        console.error('Firecrawl response:', JSON.stringify(result, null, 2));
+      if (pages.length === 0) {
         throw new Error(
-          'No valid screenshot URL returned from Firecrawl. The API may not support screenshots or returned an unexpected format.',
+          'No pages were successfully scraped. All URLs may have failed to return screenshots.',
         );
       }
 
-      // Fetch screenshot from Firecrawl's storage URL
-      // Firecrawl returns screenshots as URLs (e.g., https://...supabase.co/storage/.../screenshot-xxx.png)
-      const screenshotResponse = await fetch(screenshotUrl, {
-        signal: AbortSignal.timeout(30000), // 30 second timeout for fetching the image
-      });
-
-      if (!screenshotResponse.ok) {
-        throw new Error(
-          `Failed to fetch screenshot from Firecrawl: ${screenshotResponse.status} ${screenshotResponse.statusText}`,
-        );
-      }
-
-      const screenshotBuffer = Buffer.from(await screenshotResponse.arrayBuffer());
-
-      // Get R2 credentials
-      const { r2BucketName, r2AccessKeyId, r2SecretAccessKey, r2AccountId } = getR2Credentials();
+      // Get R2 credentials (throws if not configured)
+      const r2Creds = getR2Credentials();
 
       // Create S3 client for R2
       const s3Client = new S3Client({
         region: 'auto',
-        endpoint: `https://${r2AccountId}.r2.cloudflarestorage.com`,
+        endpoint: `https://${r2Creds.r2AccountId}.r2.cloudflarestorage.com`,
         credentials: {
-          accessKeyId: r2AccessKeyId,
-          secretAccessKey: r2SecretAccessKey,
+          accessKeyId: r2Creds.r2AccessKeyId,
+          secretAccessKey: r2Creds.r2SecretAccessKey,
         },
       });
 
-      // Generate R2 key: hackathon-repos/repos/{submissionId}/firecrawl/screenshot-{timestamp}.png
-      const timestamp = Date.now();
-      const r2Key = `repos/${args.submissionId}/firecrawl/screenshot-${timestamp}.png`;
+      const baseTimestamp = Date.now();
 
-      // Upload screenshot to R2
-      await s3Client.send(
-        new PutObjectCommand({
-          Bucket: r2BucketName,
-          Key: r2Key,
-          Body: screenshotBuffer,
-          ContentType: 'image/png',
-          Metadata: {
-            submissionId: args.submissionId,
-            url: submission.siteUrl,
-            capturedAt: timestamp.toString(),
-          },
-        }),
-      );
+      // Process all pages in parallel for better performance
+      // Each page processing is independent, so we can do them concurrently
+      const screenshotPromises = pages.map(async (pageItem, i) => {
+        const pageUrl: string =
+          pageItem.url || pageItem.metadata?.sourceURL || submission.siteUrl || '';
+        const screenshotUrl = pageItem.screenshot; // Already extracted and validated in filter
 
-      // Generate presigned URL for R2 object (valid for 7 days - maximum allowed)
-      // AWS S3/R2 presigned URLs have a maximum expiration of 7 days
-      // This allows secure access to the screenshot without making the bucket public
-      const getObjectCommand = new GetObjectCommand({
-        Bucket: r2BucketName,
-        Key: r2Key,
+        if (!screenshotUrl) {
+          console.warn(`No screenshot URL found for page ${i + 1} (${pageUrl}), skipping`);
+          return null;
+        }
+
+        try {
+          // Fetch screenshot from Firecrawl's storage URL
+          const screenshotResponse = await fetch(screenshotUrl, {
+            signal: AbortSignal.timeout(30000), // 30 second timeout for fetching the image
+          });
+
+          if (!screenshotResponse.ok) {
+            console.warn(
+              `Failed to fetch screenshot for page ${i + 1} (${pageUrl}): ${screenshotResponse.status} ${screenshotResponse.statusText}`,
+            );
+            return null;
+          }
+
+          const screenshotBuffer = Buffer.from(await screenshotResponse.arrayBuffer());
+
+          // Generate R2 key: repos/{submissionId}/firecrawl/page-{index}-{timestamp}.png
+          const timestamp = baseTimestamp + i; // Ensure unique timestamps
+          const pageIndex = i + 1;
+          const r2Key = `repos/${args.submissionId}/firecrawl/page-${pageIndex}-${timestamp}.png`;
+
+          // Upload screenshot to R2
+          await s3Client.send(
+            new PutObjectCommand({
+              Bucket: r2Creds.r2BucketName,
+              Key: r2Key,
+              Body: screenshotBuffer,
+              ContentType: 'image/png',
+              Metadata: {
+                submissionId: args.submissionId,
+                url: pageUrl,
+                pageIndex: pageIndex.toString(),
+                capturedAt: timestamp.toString(),
+              },
+            }),
+          );
+
+          // Generate presigned URL for R2 object (valid for 7 days - maximum allowed)
+          const getObjectCommand = new GetObjectCommand({
+            Bucket: r2Creds.r2BucketName,
+            Key: r2Key,
+          });
+          const publicUrl = await getSignedUrl(s3Client, getObjectCommand, {
+            expiresIn: 7 * 24 * 60 * 60, // 7 days in seconds (maximum allowed)
+          });
+
+          return {
+            r2Key,
+            url: publicUrl,
+            capturedAt: timestamp,
+            pageUrl: pageItem.url,
+            pageName: pageItem.pageName,
+          };
+        } catch (error) {
+          console.warn(`Failed to process screenshot for page ${i + 1} (${pageUrl}):`, error);
+          return null;
+        }
       });
-      const publicUrl = await getSignedUrl(s3Client, getObjectCommand, {
-        expiresIn: 7 * 24 * 60 * 60, // 7 days in seconds (maximum allowed)
+
+      // Wait for all screenshots to be processed in parallel
+      const screenshotResults = await Promise.all(screenshotPromises);
+      const capturedScreenshots: Array<{
+        r2Key: string;
+        url: string;
+        capturedAt: number;
+        pageUrl: string;
+        pageName?: string;
+      }> = [];
+
+      for (const screenshot of screenshotResults) {
+        if (screenshot !== null) {
+          capturedScreenshots.push({
+            r2Key: screenshot.r2Key,
+            url: screenshot.url,
+            capturedAt: screenshot.capturedAt,
+            pageUrl: screenshot.pageUrl,
+            pageName: screenshot.pageName,
+          });
+        }
+      }
+
+      if (capturedScreenshots.length === 0) {
+        throw new Error(
+          'No screenshots were successfully captured. All pages may have failed to capture screenshots.',
+        );
+      }
+
+      // Batch add all screenshots atomically in a single mutation call
+      await ctx.runMutation(internal.submissions.addScreenshots, {
+        submissionId: args.submissionId,
+        screenshots: capturedScreenshots,
       });
 
       // Record screenshot capture completion time
       const screenshotCaptureCompletedAt = Date.now();
-
-      // Update submission with screenshot metadata
-      await ctx.runMutation(internal.submissions.addScreenshot, {
-        submissionId: args.submissionId,
-        screenshot: {
-          r2Key,
-          url: publicUrl,
-          capturedAt: timestamp,
-        },
-      });
 
       // Update source with screenshot capture completion timestamp
       await ctx.runMutation(internal.submissions.updateSubmissionSourceInternal, {
@@ -198,9 +371,9 @@ export const captureScreenshot = action({
 
       return {
         success: true,
-        r2Key,
-        url: publicUrl,
-        capturedAt: timestamp,
+        screenshots: capturedScreenshots,
+        pagesCaptured: capturedScreenshots.length,
+        totalPagesFound: pages.length,
       };
     } catch (error) {
       // Handle timeout errors specifically
@@ -265,105 +438,264 @@ export const captureScreenshotInternal = internalAction({
       // Initialize Firecrawl client
       const firecrawl = new Firecrawl({ apiKey });
 
-      // Use Firecrawl's scrape method with screenshot format
-      // Screenshots are returned as URLs pointing to Firecrawl's storage
-      // Using object format with fullPage: true to capture full-page scrolling screenshots
-      const result: unknown = await firecrawl.scrape(submission.siteUrl, {
-        formats: [{ type: 'screenshot', fullPage: true }],
+      // Step 1: Use map endpoint to quickly discover URLs (much faster than crawl)
+      // Map is designed for speed and costs 1 credit per site regardless of size
+      const mapResult: unknown = await firecrawl.map(submission.siteUrl, {
+        limit: 10, // Maximum 10 pages
       });
 
-      // Handle Firecrawl response format
-      let screenshotUrl: string | undefined;
+      // Extract URLs from map result
+      let urlsToScrape: string[] = [];
+      if (typeof mapResult === 'object' && mapResult !== null) {
+        // Check for result.links or result.data.links (array of URL strings or objects)
+        const links =
+          (mapResult as { links?: unknown; data?: { links?: unknown } }).links ||
+          (mapResult as { data?: { links?: unknown } }).data?.links;
 
-      // Check if result is a string URL first
-      if (typeof result === 'string' && result.startsWith('http')) {
-        screenshotUrl = result;
-      }
-      // Check different possible response structures for object responses
-      else if (typeof result === 'object' && result !== null) {
-        if (typeof (result as { screenshot?: unknown }).screenshot === 'string') {
-          screenshotUrl = (result as { screenshot: string }).screenshot;
-        } else if (
-          typeof (result as { data?: { screenshot?: unknown } }).data?.screenshot === 'string'
-        ) {
-          screenshotUrl = (result as { data: { screenshot: string } }).data.screenshot;
+        if (Array.isArray(links)) {
+          urlsToScrape = links
+            .map((link) => {
+              if (typeof link === 'string') return link;
+              if (typeof link === 'object' && link !== null && 'url' in link) {
+                return typeof link.url === 'string' ? link.url : null;
+              }
+              return null;
+            })
+            .filter((url): url is string => url !== null && (url?.startsWith('http') ?? false));
         }
       }
 
-      if (!screenshotUrl || !screenshotUrl.startsWith('http')) {
-        console.error('Firecrawl response:', JSON.stringify(result, null, 2));
-        throw new Error(
-          'No valid screenshot URL returned from Firecrawl. The API may not support screenshots or returned an unexpected format.',
-        );
+      // Normalize the original URL for comparison
+      const normalizedOriginalUrl = normalizeUrl(submission.siteUrl);
+
+      // Deduplicate URLs using normalized comparison and ensure original URL is first
+      const uniqueUrls: string[] = [];
+      const seenNormalizedUrls = new Set<string>();
+
+      // Always add the original URL first (if map results exist, we'll skip duplicates later)
+      if (urlsToScrape.length > 0) {
+        uniqueUrls.push(submission.siteUrl);
+        seenNormalizedUrls.add(normalizedOriginalUrl);
       }
 
-      // Fetch screenshot from Firecrawl's storage URL
-      const screenshotResponse = await fetch(screenshotUrl, {
-        signal: AbortSignal.timeout(30000), // 30 second timeout for fetching the image
+      // Add other URLs from map results, skipping duplicates (including normalized versions of the original)
+      for (const url of urlsToScrape) {
+        const normalizedUrl = normalizeUrl(url);
+        if (!seenNormalizedUrls.has(normalizedUrl)) {
+          uniqueUrls.push(url);
+          seenNormalizedUrls.add(normalizedUrl);
+        }
+      }
+
+      // If no URLs were found, use the original URL
+      if (uniqueUrls.length === 0) {
+        urlsToScrape = [submission.siteUrl];
+      } else {
+        urlsToScrape = uniqueUrls.slice(0, 10); // Keep max 10 URLs
+      }
+
+      // Step 2: Scrape each URL in parallel to capture screenshots
+      // Using parallel scrape calls is faster and more reliable than crawl's async job system
+      const scrapePromises = urlsToScrape.map(async (url) => {
+        try {
+          const result = await firecrawl.scrape(url, {
+            formats: [{ type: 'screenshot', fullPage: true }],
+          });
+          // Extract screenshot URL from result (could be string or nested in data)
+          let screenshotUrl: string | undefined;
+          let pageName: string | undefined;
+
+          if (typeof result === 'object' && result !== null) {
+            // Extract screenshot URL
+            if (typeof (result as { screenshot?: unknown }).screenshot === 'string') {
+              screenshotUrl = (result as { screenshot: string }).screenshot;
+            } else if (
+              typeof (result as { data?: { screenshot?: unknown } }).data?.screenshot === 'string'
+            ) {
+              screenshotUrl = (result as { data: { screenshot: string } }).data.screenshot;
+            }
+
+            // Extract page name/title from metadata
+            const metadata = (result as { metadata?: { title?: string; pageTitle?: string } })
+              .metadata;
+            if (metadata) {
+              pageName = metadata.title || metadata.pageTitle;
+            }
+            // Fallback to extracting from markdown if available
+            if (!pageName && typeof (result as { markdown?: string }).markdown === 'string') {
+              const markdown = (result as { markdown: string }).markdown;
+              const titleMatch = markdown.match(/^#\s+(.+)$/m);
+              if (titleMatch) {
+                pageName = titleMatch[1].trim();
+              }
+            }
+          }
+
+          return {
+            url,
+            screenshot: screenshotUrl,
+            pageName,
+            metadata: { sourceURL: url },
+          };
+        } catch (error) {
+          console.warn(`Failed to scrape ${url}:`, error);
+          return null;
+        }
       });
 
-      if (!screenshotResponse.ok) {
+      const scrapeResults = await Promise.all(scrapePromises);
+      const pages: Array<{
+        url: string;
+        screenshot: string;
+        pageName?: string;
+        metadata: { sourceURL: string };
+      }> = [];
+
+      for (const page of scrapeResults) {
+        if (
+          page !== null &&
+          typeof page.screenshot === 'string' &&
+          page.screenshot.startsWith('http')
+        ) {
+          pages.push({
+            url: page.url,
+            screenshot: page.screenshot,
+            pageName: page.pageName,
+            metadata: page.metadata,
+          });
+        }
+      }
+
+      if (pages.length === 0) {
         throw new Error(
-          `Failed to fetch screenshot from Firecrawl: ${screenshotResponse.status} ${screenshotResponse.statusText}`,
+          'No pages were successfully scraped. All URLs may have failed to return screenshots.',
         );
       }
 
-      const screenshotBuffer = Buffer.from(await screenshotResponse.arrayBuffer());
-
-      // Get R2 credentials
-      const { r2BucketName, r2AccessKeyId, r2SecretAccessKey, r2AccountId } = getR2Credentials();
+      // Get R2 credentials (throws if not configured)
+      const r2Creds = getR2Credentials();
 
       // Create S3 client for R2
       const s3Client = new S3Client({
         region: 'auto',
-        endpoint: `https://${r2AccountId}.r2.cloudflarestorage.com`,
+        endpoint: `https://${r2Creds.r2AccountId}.r2.cloudflarestorage.com`,
         credentials: {
-          accessKeyId: r2AccessKeyId,
-          secretAccessKey: r2SecretAccessKey,
+          accessKeyId: r2Creds.r2AccessKeyId,
+          secretAccessKey: r2Creds.r2SecretAccessKey,
         },
       });
 
-      // Generate R2 key
-      const timestamp = Date.now();
-      const r2Key = `repos/${args.submissionId}/firecrawl/screenshot-${timestamp}.png`;
+      const baseTimestamp = Date.now();
 
-      // Upload screenshot to R2
-      await s3Client.send(
-        new PutObjectCommand({
-          Bucket: r2BucketName,
-          Key: r2Key,
-          Body: screenshotBuffer,
-          ContentType: 'image/png',
-          Metadata: {
-            submissionId: args.submissionId,
-            url: submission.siteUrl,
-            capturedAt: timestamp.toString(),
-          },
-        }),
-      );
+      // Process all pages in parallel for better performance
+      // Each page processing is independent, so we can do them concurrently
+      const screenshotPromises = pages.map(async (pageItem, i) => {
+        const pageUrl: string =
+          pageItem.url || pageItem.metadata?.sourceURL || submission.siteUrl || '';
+        const screenshotUrl = pageItem.screenshot; // Already extracted and validated in filter
 
-      // Generate presigned URL for R2 object (valid for 7 days - maximum allowed)
-      // AWS S3/R2 presigned URLs have a maximum expiration of 7 days
-      const getObjectCommand = new GetObjectCommand({
-        Bucket: r2BucketName,
-        Key: r2Key,
+        if (!screenshotUrl) {
+          console.warn(`No screenshot URL found for page ${i + 1} (${pageUrl}), skipping`);
+          return null;
+        }
+
+        try {
+          // Fetch screenshot from Firecrawl's storage URL
+          const screenshotResponse = await fetch(screenshotUrl, {
+            signal: AbortSignal.timeout(30000), // 30 second timeout for fetching the image
+          });
+
+          if (!screenshotResponse.ok) {
+            console.warn(
+              `Failed to fetch screenshot for page ${i + 1} (${pageUrl}): ${screenshotResponse.status} ${screenshotResponse.statusText}`,
+            );
+            return null;
+          }
+
+          const screenshotBuffer = Buffer.from(await screenshotResponse.arrayBuffer());
+
+          // Generate R2 key: repos/{submissionId}/firecrawl/page-{index}-{timestamp}.png
+          const timestamp = baseTimestamp + i; // Ensure unique timestamps
+          const pageIndex = i + 1;
+          const r2Key = `repos/${args.submissionId}/firecrawl/page-${pageIndex}-${timestamp}.png`;
+
+          // Upload screenshot to R2
+          await s3Client.send(
+            new PutObjectCommand({
+              Bucket: r2Creds.r2BucketName,
+              Key: r2Key,
+              Body: screenshotBuffer,
+              ContentType: 'image/png',
+              Metadata: {
+                submissionId: args.submissionId,
+                url: pageUrl,
+                pageIndex: pageIndex.toString(),
+                capturedAt: timestamp.toString(),
+              },
+            }),
+          );
+
+          // Generate presigned URL for R2 object (valid for 7 days - maximum allowed)
+          const getObjectCommand = new GetObjectCommand({
+            Bucket: r2Creds.r2BucketName,
+            Key: r2Key,
+          });
+          const publicUrl = await getSignedUrl(s3Client, getObjectCommand, {
+            expiresIn: 7 * 24 * 60 * 60, // 7 days in seconds (maximum allowed)
+          });
+
+          return {
+            r2Key,
+            url: publicUrl,
+            capturedAt: timestamp,
+            pageUrl: pageItem.url,
+            pageName: pageItem.pageName,
+          };
+        } catch (error) {
+          console.warn(`Failed to process screenshot for page ${i + 1} (${pageUrl}):`, error);
+          return null;
+        }
       });
-      const publicUrl = await getSignedUrl(s3Client, getObjectCommand, {
-        expiresIn: 7 * 24 * 60 * 60, // 7 days in seconds (maximum allowed)
+
+      // Wait for all screenshots to be processed in parallel
+      const screenshotResults = await Promise.all(screenshotPromises);
+      const capturedScreenshots: Array<{
+        r2Key: string;
+        url: string;
+        capturedAt: number;
+        pageUrl: string;
+        pageName?: string;
+      }> = [];
+
+      for (const screenshot of screenshotResults) {
+        if (screenshot !== null) {
+          capturedScreenshots.push({
+            r2Key: screenshot.r2Key,
+            url: screenshot.url,
+            capturedAt: screenshot.capturedAt,
+            pageUrl: screenshot.pageUrl,
+            pageName: screenshot.pageName,
+          });
+        }
+      }
+
+      if (capturedScreenshots.length === 0) {
+        return {
+          success: false,
+          reason: 'no_screenshots',
+          error:
+            'No screenshots were successfully captured. All pages may have failed to capture screenshots.',
+        };
+      }
+
+      // Batch add all screenshots atomically in a single mutation call
+      await ctx.runMutation(internal.submissions.addScreenshots, {
+        submissionId: args.submissionId,
+        screenshots: capturedScreenshots,
       });
 
       // Record screenshot capture completion time
       const screenshotCaptureCompletedAt = Date.now();
-
-      // Update submission with screenshot metadata and completion timestamp
-      await ctx.runMutation(internal.submissions.addScreenshot, {
-        submissionId: args.submissionId,
-        screenshot: {
-          r2Key,
-          url: publicUrl,
-          capturedAt: timestamp,
-        },
-      });
 
       // Update source with screenshot capture completion timestamp
       await ctx.runMutation(internal.submissions.updateSubmissionSourceInternal, {
@@ -373,9 +705,9 @@ export const captureScreenshotInternal = internalAction({
 
       return {
         success: true,
-        r2Key,
-        url: publicUrl,
-        capturedAt: timestamp,
+        screenshots: capturedScreenshots,
+        pagesCaptured: capturedScreenshots.length,
+        totalPagesFound: pages.length,
       };
     } catch (error) {
       // Handle timeout errors specifically - return failure instead of throwing for internal action

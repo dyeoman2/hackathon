@@ -83,7 +83,7 @@ export function SubmissionTimeline({ submission }: SubmissionTimelineProps) {
   if (submission.source?.screenshotCaptureStartedAt) {
     events.push({
       timestamp: submission.source.screenshotCaptureStartedAt,
-      label: 'Started capturing screenshot with Firecrawl',
+      label: 'Started capturing screenshots with Firecrawl',
       color: 'bg-indigo-500',
     });
   }
@@ -92,7 +92,7 @@ export function SubmissionTimeline({ submission }: SubmissionTimelineProps) {
   if (submission.source?.screenshotCaptureCompletedAt) {
     events.push({
       timestamp: submission.source.screenshotCaptureCompletedAt,
-      label: 'Finished capturing screenshot with Firecrawl',
+      label: 'Finished capturing screenshots with Firecrawl',
       color: 'bg-indigo-600',
     });
   }

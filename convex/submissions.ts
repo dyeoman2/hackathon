@@ -499,6 +499,8 @@ export const addScreenshot = internalMutation({
       r2Key: v.string(),
       url: v.string(),
       capturedAt: v.number(),
+      pageUrl: v.optional(v.string()),
+      pageName: v.optional(v.string()),
     }),
   },
   handler: async (ctx, args) => {
@@ -516,6 +518,41 @@ export const addScreenshot = internalMutation({
     });
 
     return { success: true };
+  },
+});
+
+/**
+ * Add multiple screenshots to submission atomically (internal mutation)
+ * This is more efficient than calling addScreenshot multiple times
+ */
+export const addScreenshots = internalMutation({
+  args: {
+    submissionId: v.id('submissions'),
+    screenshots: v.array(
+      v.object({
+        r2Key: v.string(),
+        url: v.string(),
+        capturedAt: v.number(),
+        pageUrl: v.optional(v.string()),
+        pageName: v.optional(v.string()),
+      }),
+    ),
+  },
+  handler: async (ctx, args) => {
+    const submission = await ctx.db.get(args.submissionId);
+    if (!submission) {
+      throw new Error('Submission not found');
+    }
+
+    const existingScreenshots = submission.screenshots || [];
+    const allScreenshots = [...existingScreenshots, ...args.screenshots];
+
+    await ctx.db.patch(args.submissionId, {
+      screenshots: allScreenshots,
+      updatedAt: Date.now(),
+    });
+
+    return { success: true, added: args.screenshots.length };
   },
 });
 

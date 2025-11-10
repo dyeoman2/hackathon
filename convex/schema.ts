@@ -179,6 +179,8 @@ export default defineSchema({
           r2Key: v.string(),
           url: v.string(),
           capturedAt: v.number(),
+          pageUrl: v.optional(v.string()),
+          pageName: v.optional(v.string()),
         }),
       ),
     ),
