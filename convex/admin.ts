@@ -470,9 +470,12 @@ export const deleteUser = guarded.mutation(
 
     // Prevent deletion of the only admin user
     if (targetProfile?.role === 'admin') {
-      const allProfiles = await ctx.db.query('userProfiles').collect();
-      const adminCount = allProfiles.filter((p) => p.role === 'admin').length;
-      if (adminCount <= 1) {
+      // OPTIMIZATION: Use index to query only admin profiles instead of collecting all
+      const adminProfiles = await ctx.db
+        .query('userProfiles')
+        .withIndex('by_role_createdAt', (q) => q.eq('role', 'admin'))
+        .collect();
+      if (adminProfiles.length <= 1) {
         throw new Error('Cannot delete the only admin user. At least one admin must remain.');
       }
     }

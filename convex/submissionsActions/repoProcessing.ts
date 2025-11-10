@@ -186,17 +186,21 @@ export async function downloadAndUploadRepoHelper(
 
   // Trigger screenshot capture if siteUrl is provided (runs in parallel, doesn't block upload)
   if (submission.siteUrl?.trim()) {
-    ctx.scheduler
-      .runAfter(0, internal.submissionsActions.screenshot.captureScreenshotInternal, {
-        submissionId: args.submissionId,
-      })
-      .catch((error) => {
-        // Log but don't fail - screenshot capture is optional
-        console.warn(
-          `[R2 Upload] Failed to schedule screenshot capture for submission ${args.submissionId}:`,
-          error instanceof Error ? error.message : String(error),
-        );
-      });
+    try {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.submissionsActions.screenshot.captureScreenshotInternal,
+        {
+          submissionId: args.submissionId,
+        },
+      );
+    } catch (error) {
+      // Log but don't fail - screenshot capture is optional
+      console.warn(
+        `[R2 Upload] Failed to schedule screenshot capture for submission ${args.submissionId}:`,
+        error instanceof Error ? error.message : String(error),
+      );
+    }
   }
 
   // Set processing state to downloading

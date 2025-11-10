@@ -126,17 +126,17 @@ export const createSubmission = mutation({
     });
 
     // Trigger automatic processing: download repo and generate summary
-    // This runs asynchronously, so we don't wait for it
     // Note: We schedule processSubmission which will handle the processing
     // processSubmission is an internal action that can be scheduled
     // Screenshot capture will be triggered during repo upload (in downloadAndUploadRepoHelper)
-    ctx.scheduler
-      .runAfter(0, internal.submissions.processSubmission, {
+    try {
+      await ctx.scheduler.runAfter(0, internal.submissions.processSubmission, {
         submissionId,
-      })
-      .catch((error) => {
-        console.error('Failed to schedule submission processing:', error);
       });
+    } catch (error) {
+      console.error('Failed to schedule submission processing:', error);
+      // Don't throw - submission creation should succeed even if scheduling fails
+    }
 
     return { submissionId };
   },
@@ -221,13 +221,18 @@ export const updateSubmission = mutation({
     // Note: If repo upload is in progress, screenshot will also be captured during upload
     // This ensures we capture even if repo was already uploaded
     if (args.siteUrl?.trim()) {
-      ctx.scheduler
-        .runAfter(0, internal.submissionsActions.screenshot.captureScreenshotInternal, {
-          submissionId: args.submissionId,
-        })
-        .catch((error) => {
-          console.error('Failed to schedule screenshot capture:', error);
-        });
+      try {
+        await ctx.scheduler.runAfter(
+          0,
+          internal.submissionsActions.screenshot.captureScreenshotInternal,
+          {
+            submissionId: args.submissionId,
+          },
+        );
+      } catch (error) {
+        console.error('Failed to schedule screenshot capture:', error);
+        // Don't throw - submission update should succeed even if scheduling fails
+      }
     }
 
     return { success: true };
