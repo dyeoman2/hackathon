@@ -14,4 +14,3 @@ export function ProcessingLoader({ title, description }: ProcessingLoaderProps) 
     </div>
   );
 }
-

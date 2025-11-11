@@ -143,9 +143,13 @@ export const processSubmission = internalAction({
     try {
       // Fetch README first (runs in parallel, doesn't block)
       try {
-        await ctx.scheduler.runAfter(0, internal.submissionsActions.repoProcessing.fetchReadmeFromGitHub, {
-          submissionId: args.submissionId,
-        });
+        await ctx.scheduler.runAfter(
+          0,
+          internal.submissionsActions.repoProcessing.fetchReadmeFromGitHub,
+          {
+            submissionId: args.submissionId,
+          },
+        );
       } catch (error) {
         console.warn(`Failed to schedule README fetch:`, error);
         // Don't fail - README fetch is optional

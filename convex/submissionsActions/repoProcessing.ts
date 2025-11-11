@@ -518,9 +518,7 @@ export const fetchReadmeFromGitHub = internalAction({
       });
 
       if (!submission || !submission.repoUrl) {
-        console.warn(
-          `[README Fetch] Submission ${args.submissionId} not found or missing repoUrl`,
-        );
+        console.warn(`[README Fetch] Submission ${args.submissionId} not found or missing repoUrl`);
         return;
       }
 

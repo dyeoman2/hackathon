@@ -14,10 +14,7 @@ import { internal } from '../_generated/api';
 import type { ActionCtx } from '../_generated/server';
 import { action, internalAction } from '../_generated/server';
 import { authComponent } from '../auth';
-import type {
-  GenerateEarlySummaryRef,
-  GetSubmissionInternalRef,
-} from './types';
+import type { GenerateEarlySummaryRef, GetSubmissionInternalRef } from './types';
 
 // Helper function to get the Firecrawl API key from environment
 function getFirecrawlApiKey(): string {
