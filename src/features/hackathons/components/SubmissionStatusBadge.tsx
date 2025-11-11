@@ -105,7 +105,7 @@ export function SubmissionStatusBadge({
         <button
           type="button"
           disabled={isUpdating}
-          className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-md disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation"
+          className="flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-md disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation"
         >
           <Badge variant={getStatusBadgeVariant(status)} className="cursor-pointer">
             {status.charAt(0).toUpperCase() + status.slice(1)}

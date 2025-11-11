@@ -143,9 +143,9 @@ export function SubmissionsList({ hackathonId }: SubmissionsListProps) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="text-2xl font-semibold">Submissions</h2>
-        <Button onClick={() => setIsNewSubmissionModalOpen(true)}>
+        <Button onClick={() => setIsNewSubmissionModalOpen(true)} className="w-full sm:w-auto">
           <Plus className="mr-2 h-4 w-4" />
           New Submission
         </Button>

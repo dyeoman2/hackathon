@@ -25,7 +25,6 @@ import {
   SubmissionStatusBadge,
 } from '~/features/hackathons/components/SubmissionStatusBadge';
 import { SubmissionTimeline } from '~/features/hackathons/components/SubmissionTimeline';
-import { useAIReply } from '~/features/hackathons/hooks/useAIReply';
 import { usePerformanceMonitoring } from '~/hooks/use-performance-monitoring';
 
 export const Route = createFileRoute('/app/h/$id/submissions/$submissionId')({
@@ -47,9 +46,6 @@ function SubmissionDetailComponent() {
   const submissions = useQuery(api.submissions.listByHackathon, {
     hackathonId: hackathonId as Id<'hackathons'>,
   });
-  const { review, isReviewing, rateLimitRetryAfter } = useAIReply(
-    submissionId as Id<'submissions'>,
-  );
 
   // Use optimistic mutations for better UX - Convex automatically handles cache updates and rollback
   const deleteSubmissionOptimistic = useOptimisticMutation(api.submissions.deleteSubmission, {
@@ -112,21 +108,12 @@ function SubmissionDetailComponent() {
     };
   }, [submissions, submission, submissionId]);
 
-  const canRunReview = useMemo(
-    () => submission && !submission.ai?.inFlight && !isReviewing,
-    [submission, isReviewing],
-  );
-
   const handleBack = useCallback(() => {
     void navigate({
       to: '/app/h/$id',
       params: { id: hackathonId },
     });
   }, [navigate, hackathonId]);
-
-  const handleRunReview = useCallback(async () => {
-    await review();
-  }, [review]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -237,45 +224,73 @@ function SubmissionDetailComponent() {
       <PageHeader
         title={submission.title}
         titleActions={
-          <div className="flex items-center gap-2 flex-wrap">
-            <Button variant="ghost" size="sm" asChild className="touch-manipulation">
-              <a href={submission.repoUrl} target="_blank" rel="noopener noreferrer">
-                <SiGithub className="h-4 w-4" />
-              </a>
-            </Button>
-            {submission.siteUrl && (
+          <>
+            <div className="hidden sm:flex items-center gap-2 flex-wrap">
               <Button variant="ghost" size="sm" asChild className="touch-manipulation">
-                <a href={submission.siteUrl} target="_blank" rel="noopener noreferrer">
-                  <ExternalLink className="h-4 w-4" />
+                <a href={submission.repoUrl} target="_blank" rel="noopener noreferrer">
+                  <SiGithub className="h-4 w-4" />
                 </a>
               </Button>
-            )}
-          </div>
+              {submission.siteUrl && (
+                <Button variant="ghost" size="sm" asChild className="touch-manipulation">
+                  <a href={submission.siteUrl} target="_blank" rel="noopener noreferrer">
+                    <ExternalLink className="h-4 w-4" />
+                  </a>
+                </Button>
+              )}
+            </div>
+            <div className="sm:hidden">
+              <SubmissionActionsMenu
+                canEdit={canEdit}
+                canDelete={canDelete}
+                hasSiteUrl={!!submission.siteUrl}
+                isCapturingScreenshot={false}
+                onEdit={() => setIsEditModalOpen(true)}
+                onDelete={() => setIsDeleteDialogOpen(true)}
+                onCaptureScreenshot={() => {
+                  // Moved to SubmissionScreenshots component
+                }}
+              />
+            </div>
+          </>
         }
         actions={
-          <div className="flex items-center gap-2 flex-wrap">
-            <SubmissionStatusBadge
-              status={submission.status}
-              canEdit={canEdit}
-              isUpdating={isUpdatingStatus}
-              onStatusChange={handleStatusChange}
-            />
-            <SubmissionActionsMenu
-              canEdit={canEdit}
-              canDelete={canDelete}
-              canRunReview={!!canRunReview}
-              isReviewing={isReviewing}
-              inFlight={submission.ai?.inFlight}
-              rateLimitRetryAfter={rateLimitRetryAfter}
-              hasSiteUrl={!!submission.siteUrl}
-              isCapturingScreenshot={false}
-              onEdit={() => setIsEditModalOpen(true)}
-              onDelete={() => setIsDeleteDialogOpen(true)}
-              onRunReview={handleRunReview}
-              onCaptureScreenshot={() => {
-                // Moved to SubmissionScreenshots component
-              }}
-            />
+          <div className="flex items-center justify-between gap-2 w-full sm:w-auto sm:justify-end">
+            <div className="flex items-center gap-2 sm:hidden">
+              <Button variant="ghost" size="sm" asChild className="touch-manipulation">
+                <a href={submission.repoUrl} target="_blank" rel="noopener noreferrer">
+                  <SiGithub className="h-4 w-4" />
+                </a>
+              </Button>
+              {submission.siteUrl && (
+                <Button variant="ghost" size="sm" asChild className="touch-manipulation">
+                  <a href={submission.siteUrl} target="_blank" rel="noopener noreferrer">
+                    <ExternalLink className="h-4 w-4" />
+                  </a>
+                </Button>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <SubmissionStatusBadge
+                status={submission.status}
+                canEdit={canEdit}
+                isUpdating={isUpdatingStatus}
+                onStatusChange={handleStatusChange}
+              />
+              <div className="hidden sm:block">
+                <SubmissionActionsMenu
+                  canEdit={canEdit}
+                  canDelete={canDelete}
+                  hasSiteUrl={!!submission.siteUrl}
+                  isCapturingScreenshot={false}
+                  onEdit={() => setIsEditModalOpen(true)}
+                  onDelete={() => setIsDeleteDialogOpen(true)}
+                  onCaptureScreenshot={() => {
+                    // Moved to SubmissionScreenshots component
+                  }}
+                />
+              </div>
+            </div>
           </div>
         }
       />

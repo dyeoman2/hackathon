@@ -1,13 +1,20 @@
 import { api } from '@convex/_generated/api';
 import type { Doc } from '@convex/_generated/dataModel';
 import { useAction } from 'convex/react';
-import { FileText, Loader2, Zap } from 'lucide-react';
+import { FileText, Loader2, MoreVertical, Zap } from 'lucide-react';
 import { useCallback, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Button } from '~/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~/components/ui/card';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '~/components/ui/dropdown-menu';
 import { ProcessingLoader } from '~/components/ui/processing-loader';
+import { SimpleTooltip } from '~/components/ui/simple-tooltip';
 import { useToast } from '~/components/ui/toast';
 
 type EarlyProcessingStage =
@@ -168,54 +175,66 @@ export function SubmissionRepositorySummary({
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-start justify-between">
+        <div className="flex items-start justify-between gap-4">
           <div>
-            <CardTitle>Repository Summary</CardTitle>
-            <CardDescription>
-              Generated from the repository README and screenshots of the website.
-            </CardDescription>
+            <CardTitle>Summary</CardTitle>
+            <CardDescription>AI-generated summary of the project.</CardDescription>
           </div>
           {canEdit && (
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleGenerateQuickSummary}
-                disabled={isGeneratingQuick || isGeneratingFull}
-                title="Generate quick summary using README and screenshots (fast)"
-              >
-                {isGeneratingQuick ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Generating...
-                  </>
-                ) : (
-                  <>
-                    <Zap className="mr-2 h-4 w-4" />
-                    Quick Summary
-                  </>
-                )}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleGenerateFullSummary}
-                disabled={isGeneratingQuick || isGeneratingFull}
-                title="Generate comprehensive summary using AI Search (slower, more detailed)"
-              >
-                {isGeneratingFull ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Generating...
-                  </>
-                ) : (
-                  <>
-                    <FileText className="mr-2 h-4 w-4" />
-                    Full Summary
-                  </>
-                )}
-              </Button>
-            </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="touch-manipulation">
+                  <MoreVertical className="h-4 w-4" />
+                  <span className="sr-only">Summary actions</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="flex flex-col">
+                <SimpleTooltip content="Generated from the repository README and screenshots of the website">
+                  <DropdownMenuItem
+                    onClick={handleGenerateQuickSummary}
+                    disabled={isGeneratingQuick || isGeneratingFull}
+                  >
+                    {isGeneratingQuick ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <Zap className="h-4 w-4" />
+                        Quick Summary
+                      </>
+                    )}
+                  </DropdownMenuItem>
+                </SimpleTooltip>
+                <SimpleTooltip
+                  content={
+                    !isAISearchComplete
+                      ? 'Unavailable until the repository finishes indexing with AI Search'
+                      : isGeneratingQuick || isGeneratingFull
+                        ? 'Please wait for the current operation to complete'
+                        : 'Generated from repository files using AI Search (slower, more detailed)'
+                  }
+                >
+                  <DropdownMenuItem
+                    onClick={handleGenerateFullSummary}
+                    disabled={isGeneratingQuick || isGeneratingFull || !isAISearchComplete}
+                  >
+                    {isGeneratingFull ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Generating Full Summary...
+                      </>
+                    ) : (
+                      <>
+                        <FileText className="h-4 w-4" />
+                        Full Summary
+                      </>
+                    )}
+                  </DropdownMenuItem>
+                </SimpleTooltip>
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
         </div>
       </CardHeader>

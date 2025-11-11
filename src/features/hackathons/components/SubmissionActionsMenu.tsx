@@ -1,4 +1,4 @@
-import { Edit, Loader2, MoreVertical, Play, Trash2 } from 'lucide-react';
+import { Edit, MoreVertical, Trash2 } from 'lucide-react';
 import { Button } from '~/components/ui/button';
 import {
   DropdownMenu,
@@ -11,38 +11,26 @@ import {
 interface SubmissionActionsMenuProps {
   canEdit: boolean;
   canDelete: boolean;
-  canRunReview: boolean;
-  isReviewing: boolean;
-  inFlight: boolean | undefined;
-  rateLimitRetryAfter: number | null;
   hasSiteUrl: boolean;
   isCapturingScreenshot: boolean;
   onEdit: () => void;
   onDelete: () => void;
-  onRunReview: () => void;
   onCaptureScreenshot: () => void;
 }
 
 export function SubmissionActionsMenu({
   canEdit,
   canDelete,
-  canRunReview,
-  isReviewing,
-  inFlight,
-  rateLimitRetryAfter,
   hasSiteUrl: _hasSiteUrl,
   isCapturingScreenshot: _isCapturingScreenshot,
   onEdit,
   onDelete,
-  onRunReview,
   onCaptureScreenshot: _onCaptureScreenshot,
 }: SubmissionActionsMenuProps) {
-  const isProcessing = isReviewing || !!inFlight;
-
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="sm" className="touch-manipulation">
+        <Button variant="ghost" size="sm" className="touch-manipulation">
           <MoreVertical className="h-4 w-4" />
           <span className="sr-only">Actions</span>
         </Button>
@@ -54,14 +42,6 @@ export function SubmissionActionsMenu({
             Edit
           </DropdownMenuItem>
         )}
-        <DropdownMenuItem onClick={onRunReview} disabled={!canRunReview || !!rateLimitRetryAfter}>
-          {isProcessing ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          ) : (
-            <Play className="mr-2 h-4 w-4" />
-          )}
-          {isProcessing ? 'Running Review...' : 'Run AI Review'}
-        </DropdownMenuItem>
         {canDelete && (
           <>
             <DropdownMenuSeparator />

@@ -21,13 +21,11 @@ export function PageHeader({
 }: PageHeaderProps) {
   return (
     <div className={cn('mb-8', className)}>
-      <div className="flex items-start justify-between">
-        <div>
-          <div className="flex items-center gap-3 flex-wrap">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-start justify-between gap-2 sm:justify-start sm:gap-3">
             <h1 className={cn('text-2xl font-bold text-foreground', titleClassName)}>{title}</h1>
-            {titleActions && (
-              <div className="flex items-center gap-2">{titleActions}</div>
-            )}
+            {titleActions && <div className="flex items-center gap-2 shrink-0">{titleActions}</div>}
           </div>
           {description && (
             <div className={cn('mt-2 text-sm text-muted-foreground', descriptionClassName)}>
@@ -35,7 +33,7 @@ export function PageHeader({
             </div>
           )}
         </div>
-        {actions && <div className="flex items-center gap-2">{actions}</div>}
+        {actions && <div className="w-full sm:w-auto">{actions}</div>}
       </div>
     </div>
   );

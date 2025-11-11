@@ -1,7 +1,7 @@
 import { api } from '@convex/_generated/api';
 import type { Doc } from '@convex/_generated/dataModel';
 import { useAction } from 'convex/react';
-import { Camera, ChevronLeft, ChevronRight, Loader2, Trash2, X } from 'lucide-react';
+import { Camera, ChevronLeft, ChevronRight, Loader2, MoreVertical, Trash2, X } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import {
   AlertDialog,
@@ -23,19 +23,20 @@ import {
   CarouselPrevious,
 } from '~/components/ui/carousel';
 import { Dialog, DialogContent } from '~/components/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '~/components/ui/dropdown-menu';
 import { ProcessingLoader } from '~/components/ui/processing-loader';
 import { useToast } from '~/components/ui/toast';
 import { useOptimisticMutation } from '~/features/admin/hooks/useOptimisticUpdates';
 
-type ScreenshotProcessingStage =
-  | 'fetching-readme'
-  | 'mapping-urls'
-  | 'capturing-screenshots'
-  | null;
+type ScreenshotProcessingStage = 'mapping-urls' | 'capturing-screenshots' | null;
 
 function getScreenshotProcessingStage(submission: Doc<'submissions'>): ScreenshotProcessingStage {
   const source = submission.source;
-  const hasReadme = !!source?.readmeFetchedAt;
   const screenshotStarted = !!source?.screenshotCaptureStartedAt;
   const screenshotCompleted = !!source?.screenshotCaptureCompletedAt;
   const hasSiteUrl = !!submission.siteUrl;
@@ -51,17 +52,12 @@ function getScreenshotProcessingStage(submission: Doc<'submissions'>): Screensho
     return null;
   }
 
-  // Stage 1: Fetching Readme
-  if (!hasReadme && submission.repoUrl) {
-    return 'fetching-readme';
-  }
-
-  // Stage 2: Mapping Website URLs
-  if (hasReadme && hasSiteUrl && !screenshotStarted) {
+  // Stage 1: Mapping Website URLs
+  if (hasSiteUrl && !screenshotStarted) {
     return 'mapping-urls';
   }
 
-  // Stage 3: Capturing Screenshots
+  // Stage 2: Capturing Screenshots
   if (screenshotStarted && !screenshotCompleted) {
     return 'capturing-screenshots';
   }
@@ -74,11 +70,6 @@ function getScreenshotProcessingMessage(stage: ScreenshotProcessingStage): {
   description: string;
 } | null {
   switch (stage) {
-    case 'fetching-readme':
-      return {
-        title: 'Fetching Readme',
-        description: 'Fetching README file from repository...',
-      };
     case 'mapping-urls':
       return {
         title: 'Mapping Website URLs',
@@ -209,30 +200,38 @@ export function SubmissionScreenshots({ submission, canEdit = false }: Submissio
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-start justify-between">
+        <div className="flex items-start justify-between gap-4">
           <div>
             <CardTitle>Screenshots</CardTitle>
             <CardDescription>Visual previews of the site captured via Firecrawl</CardDescription>
           </div>
           {canEdit && submission.siteUrl && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleCaptureScreenshot}
-              disabled={isCapturingScreenshot}
-            >
-              {isCapturingScreenshot ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Capturing...
-                </>
-              ) : (
-                <>
-                  <Camera className="mr-2 h-4 w-4" />
-                  Capture Screenshots
-                </>
-              )}
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="touch-manipulation">
+                  <MoreVertical className="h-4 w-4" />
+                  <span className="sr-only">Screenshot actions</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="flex flex-col">
+                <DropdownMenuItem
+                  onClick={handleCaptureScreenshot}
+                  disabled={isCapturingScreenshot}
+                >
+                  {isCapturingScreenshot ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Capturing...
+                    </>
+                  ) : (
+                    <>
+                      <Camera className="h-4 w-4" />
+                      Capture Screenshots
+                    </>
+                  )}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
         </div>
       </CardHeader>
@@ -264,8 +263,15 @@ export function SubmissionScreenshots({ submission, canEdit = false }: Submissio
                   <CarouselItem key={screenshot.r2Key} className="basis-1/2 md:basis-1/3">
                     <button
                       type="button"
-                      className="relative aspect-video w-full overflow-hidden rounded-lg border bg-muted cursor-pointer hover:opacity-90 transition-opacity focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-                      onClick={() => setOpenIndex(index)}
+                      className="relative aspect-video w-full overflow-hidden rounded-lg border bg-muted cursor-pointer hover:opacity-90 transition-opacity focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 touch-manipulation"
+                      onClick={(e) => {
+                        // Don't open modal if clicking on a link
+                        const target = e.target as HTMLElement;
+                        if (target.tagName === 'A' || target.closest('a')) {
+                          return;
+                        }
+                        setOpenIndex(index);
+                      }}
                     >
                       <img
                         src={screenshot.url}
@@ -273,7 +279,7 @@ export function SubmissionScreenshots({ submission, canEdit = false }: Submissio
                         className="h-full w-full object-contain"
                         loading="lazy"
                       />
-                      <div className="absolute bottom-0 left-0 right-0 bg-black/60 px-3 py-2 text-xs text-white">
+                      <div className="hidden sm:block absolute bottom-0 left-0 right-0 bg-black/60 px-3 py-2 text-xs text-white">
                         {screenshot.pageUrl ? (
                           <>
                             <div className="font-medium truncate">
@@ -285,8 +291,27 @@ export function SubmissionScreenshots({ submission, canEdit = false }: Submissio
                               href={screenshot.pageUrl}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-xs opacity-80 truncate hover:opacity-100 hover:underline block"
-                              onClick={(e) => e.stopPropagation()}
+                              className="text-xs opacity-80 truncate hover:opacity-100 hover:underline block sm:hover:underline"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                // On mobile, open modal instead of link
+                                const isMobile = window.innerWidth < 640; // sm breakpoint
+                                if (isMobile) {
+                                  e.preventDefault();
+                                  setOpenIndex(index);
+                                } else {
+                                  // On desktop, open link
+                                  e.preventDefault();
+                                  window.open(screenshot.pageUrl, '_blank', 'noopener,noreferrer');
+                                }
+                              }}
+                              onPointerDown={(e) => {
+                                // On mobile, don't stop propagation so modal can open
+                                const isMobile = window.innerWidth < 640;
+                                if (!isMobile) {
+                                  e.stopPropagation();
+                                }
+                              }}
                             >
                               {new URL(screenshot.pageUrl).hostname}
                             </a>
