@@ -3,8 +3,7 @@
 import Firecrawl from '@mendable/firecrawl-js';
 import { v } from 'convex/values';
 import type { ActionCtx } from './_generated/server';
-import { action } from './_generated/server';
-import { authComponent } from './auth';
+import { guarded } from './authz/guardFactory';
 
 // Helper function to get the Firecrawl API key from environment
 function getFirecrawlApiKey(): string {
@@ -25,26 +24,23 @@ function getNotConfiguredError(url: string, _warnType: 'missing' | 'invalid' = '
   };
 }
 
-export const isFirecrawlConfigured = action({
-  args: {},
-  handler: async (_ctx: ActionCtx) => {
+export const isFirecrawlConfigured = guarded.action(
+  'profile.read',
+  {},
+  async (_ctx: ActionCtx, _args, _role) => {
     const apiKey = getFirecrawlApiKey();
     return {
       configured: apiKey.length > 0,
     };
   },
-});
+);
 
-export const extractWithFirecrawl = action({
-  args: {
+export const extractWithFirecrawl = guarded.action(
+  'profile.read',
+  {
     url: v.string(),
   },
-  handler: async (ctx: ActionCtx, args) => {
-    const authUser = await authComponent.getAuthUser(ctx);
-    if (!authUser) {
-      throw new Error('Authentication required');
-    }
-
+  async (_ctx: ActionCtx, args, _role) => {
     const apiKey = getFirecrawlApiKey();
 
     if (!apiKey || apiKey.length === 0) {
@@ -95,4 +91,4 @@ export const extractWithFirecrawl = action({
       throw new Error(errorMessage);
     }
   },
-});
+);

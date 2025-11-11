@@ -8,7 +8,8 @@ import { v } from 'convex/values';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import type { ActionCtx } from '../_generated/server';
-import { action, internalAction } from '../_generated/server';
+import { internalAction } from '../_generated/server';
+import { guarded } from '../authz/guardFactory';
 import type {
   GenerateEarlySummaryRef,
   GetSubmissionInternalRef,
@@ -50,24 +51,45 @@ async function triggerAISearchSync(_ctx: ActionCtx): Promise<string | null> {
   if (!response.ok) {
     const errorText = await response.text();
 
-    // Log detailed error for debugging
-    console.error(`[AI Search] Sync trigger failed: ${response.status} ${response.statusText}`);
-    console.error(`[AI Search] Endpoint: ${syncUrl}`);
-    console.error(`[AI Search] Error response: ${errorText}`);
-
-    // If sync was triggered recently (within 30 seconds), that's okay
+    // Check if this is an expected cooldown/rate limit error first
     // Cloudflare rate-limits syncs to prevent abuse - this is expected behavior
     // Multiple uploads within 30 seconds will share the same sync job
-    if (
-      response.status === 429 ||
-      errorText.includes('rate limit') ||
-      errorText.includes('too frequent')
-    ) {
+    let isCooldownError = false;
+    if (response.status === 429) {
+      isCooldownError = true;
+    } else {
+      // Parse error response to check for sync_in_cooldown code/message
+      try {
+        const errorJson = JSON.parse(errorText);
+        const errors = errorJson?.errors || [];
+        isCooldownError = errors.some(
+          (err: { code?: number; message?: string }) =>
+            err.code === 7020 ||
+            err.message?.includes('sync_in_cooldown') ||
+            err.message?.includes('rate limit') ||
+            err.message?.includes('too frequent'),
+        );
+      } catch {
+        // If JSON parsing fails, check text content
+        isCooldownError =
+          errorText.includes('sync_in_cooldown') ||
+          errorText.includes('rate limit') ||
+          errorText.includes('too frequent');
+      }
+    }
+
+    if (isCooldownError) {
+      // This is expected - sync was triggered recently, new files will be included
       console.log(
         '[AI Search] Sync already triggered recently (within 30s), new files will be included in existing sync',
       );
       return null;
     }
+
+    // For unexpected errors, log details for debugging
+    console.error(`[AI Search] Sync trigger failed: ${response.status} ${response.statusText}`);
+    console.error(`[AI Search] Endpoint: ${syncUrl}`);
+    console.error(`[AI Search] Error response: ${errorText}`);
 
     // For 404, check if instance ID is correct
     if (response.status === 404) {
@@ -640,8 +662,23 @@ export const fetchReadmeFromGitHub = internalAction({
 /**
  * Download GitHub repo, extract filtered files, and upload to R2
  * Action with "use node" for git operations
+ * Public action for user-initiated calls (requires authentication)
  */
-export const downloadAndUploadRepo = action({
+export const downloadAndUploadRepo = guarded.action(
+  'submission.write',
+  {
+    submissionId: v.id('submissions'),
+  },
+  async (ctx, args, _role) => {
+    return await downloadAndUploadRepoHelper(ctx, args);
+  },
+);
+
+/**
+ * Internal action to download and upload repo (for automated processes)
+ * Called from processSubmission and other internal actions
+ */
+export const downloadAndUploadRepoInternal = internalAction({
   args: {
     submissionId: v.id('submissions'),
   },

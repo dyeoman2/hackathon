@@ -98,6 +98,15 @@ export async function requireHackathonRole(
 /**
  * List hackathons for current user
  * Returns owned + judging hackathons with role badges
+ *
+ * ACCESS CONTROL: This query intentionally returns an empty array `[]` for unauthenticated
+ * users instead of throwing an error. This allows:
+ * 1. Client components to render empty states gracefully without error boundaries
+ * 2. Smooth UX when users navigate while signed out
+ * 3. Avoid error boundary triggers for expected authentication failures
+ *
+ * This is a deliberate design choice for better UX. The client should check for empty
+ * arrays and render appropriate UI (sign-in prompt, "no hackathons" message, etc.).
  */
 export const listHackathons = query({
   args: {},
@@ -136,6 +145,15 @@ export const listHackathons = query({
 
 /**
  * Get single hackathon with membership check
+ *
+ * ACCESS CONTROL: This query intentionally returns `null` for unauthenticated users or
+ * users without active membership instead of throwing an error. This allows:
+ * 1. Client components to handle "not found" vs "no access" states gracefully
+ * 2. Smooth UX when users navigate while signed out or without access
+ * 3. Avoid error boundary triggers for expected authorization failures
+ *
+ * This is a deliberate design choice for better UX. The client should check for `null`
+ * and render appropriate UI (sign-in prompt, "not found" message, etc.).
  */
 export const getHackathon = query({
   args: {

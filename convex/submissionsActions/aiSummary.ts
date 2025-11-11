@@ -5,7 +5,8 @@ import { v } from 'convex/values';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import type { ActionCtx } from '../_generated/server';
-import { action, internalAction } from '../_generated/server';
+import { internalAction } from '../_generated/server';
+import { guarded } from '../authz/guardFactory';
 import { checkAISearchJobStatus, downloadAndUploadRepoHelper } from './repoProcessing';
 import type {
   CheckIndexingAndGenerateSummaryRef,
@@ -29,7 +30,9 @@ export const checkIndexingAndGenerateSummary = internalAction({
   },
   handler: async (ctx, args) => {
     try {
-      const maxAttempts = 60; // Maximum 60 attempts (2 minutes total)
+      // Sync jobs can take up to 10 minutes, so we need enough attempts to cover that
+      // With exponential backoff (3s to 10s), ~100 attempts covers ~15 minutes
+      const maxAttempts = 100; // Maximum 100 attempts (~15 minutes total)
       // Exponential backoff: start with 3 seconds, increase gradually
       const pollIntervalMs = Math.min(3000 + args.attempt * 500, 10000); // 3s to 10s max
 
@@ -226,8 +229,15 @@ export const checkIndexingAndGenerateSummary = internalAction({
       // Check if files are indexed by checking job status first, then falling back to querying documents
       let indexed = false;
 
-      // First, try to check job status if we have a job_id
-      if (submission.source?.aiSearchSyncJobId) {
+      // If sync completion time is already recorded, assume indexing is complete
+      // This handles cases where indexing was confirmed in a previous attempt
+      if (submission.source?.aiSearchSyncCompletedAt) {
+        console.log(`[AI Search] Sync completion already recorded - assuming indexing is complete`);
+        indexed = true;
+      }
+
+      // First, try to check job status if we have a job_id and indexing isn't already confirmed
+      if (!indexed && submission.source?.aiSearchSyncJobId) {
         const jobStatus = await checkAISearchJobStatus(ctx, submission.source.aiSearchSyncJobId);
         console.log(
           `[AI Search] Job ${submission.source.aiSearchSyncJobId} status: ${jobStatus || 'unknown'}`,
@@ -258,10 +268,37 @@ export const checkIndexingAndGenerateSummary = internalAction({
           // Job is still running, don't mark as indexed yet
           indexed = false;
         } else {
-          // Job not found or status unknown - fall back to document query
-          console.log(
-            `[AI Search] Job status unknown or not found - falling back to document query`,
-          );
+          // Job not found (null) or status unknown - check if enough time has passed
+          // Cloudflare may clean up completed jobs after some time
+          // Sync jobs can take up to 10 minutes, so we wait at least 12 minutes before assuming completion
+          const syncStartedAt = submission.source?.aiSearchSyncStartedAt || 0;
+          const timeSinceSyncStart = Date.now() - syncStartedAt;
+          const MIN_TIME_FOR_JOB_COMPLETION = 12 * 60 * 1000; // 12 minutes (sync can take up to 10 minutes)
+
+          if (syncStartedAt > 0 && timeSinceSyncStart > MIN_TIME_FOR_JOB_COMPLETION) {
+            // Job was started but is now not found - likely completed and cleaned up
+            console.log(
+              `[AI Search] Job not found but sync started ${Math.round(timeSinceSyncStart / 1000)}s ago (${Math.round(timeSinceSyncStart / 60000)} minutes). Assuming job completed and was cleaned up.`,
+            );
+            indexed = true;
+            // Record sync completion time
+            await ctx.runMutation(
+              (
+                internal.submissions as unknown as {
+                  updateSubmissionSourceInternal: UpdateSubmissionSourceInternalRef;
+                }
+              ).updateSubmissionSourceInternal,
+              {
+                submissionId: args.submissionId,
+                aiSearchSyncCompletedAt: Date.now(),
+              },
+            );
+          } else {
+            // Job not found and not enough time has passed - fall back to document query
+            console.log(
+              `[AI Search] Job status unknown or not found (sync started ${Math.round(timeSinceSyncStart / 1000)}s ago) - falling back to document query`,
+            );
+          }
         }
       }
 
@@ -271,9 +308,10 @@ export const checkIndexingAndGenerateSummary = internalAction({
       // - Job status check failed
       // - Job completed but we want to verify documents are actually indexed
       if (!indexed) {
-        // If enough time has passed since upload (5+ minutes), assume indexing is complete
+        // If enough time has passed since upload (12+ minutes), assume indexing is complete
+        // Sync jobs can take up to 10 minutes, so we wait at least 12 minutes before assuming completion
         // This handles cases where AI Search is indexed but our query detection isn't working
-        const MIN_TIME_FOR_INDEXING = 5 * 60 * 1000; // 5 minutes
+        const MIN_TIME_FOR_INDEXING = 12 * 60 * 1000; // 12 minutes (sync can take up to 10 minutes)
         if (timeSinceUpload > MIN_TIME_FOR_INDEXING && args.attempt >= 10) {
           console.log(
             `[AI Search] Files uploaded ${Math.round(timeSinceUpload / 1000)}s ago (${Math.round(timeSinceUpload / 60000)} minutes). Assuming indexing is complete and proceeding.`,
@@ -349,10 +387,11 @@ export const checkIndexingAndGenerateSummary = internalAction({
                 );
 
                 // If enough time has passed, proceed anyway (files might be indexed but path format differs)
-                if (timeSinceUpload > 3 * 60 * 1000) {
-                  // 3 minutes
+                // Sync jobs can take up to 10 minutes, so wait at least 12 minutes before assuming completion
+                if (timeSinceUpload > 12 * 60 * 1000) {
+                  // 12 minutes (sync can take up to 10 minutes)
                   console.log(
-                    `[AI Search] Files uploaded ${Math.round(timeSinceUpload / 1000)}s ago. Proceeding despite path mismatch - files may be indexed with different path format.`,
+                    `[AI Search] Files uploaded ${Math.round(timeSinceUpload / 1000)}s ago (${Math.round(timeSinceUpload / 60000)} minutes). Proceeding despite path mismatch - files may be indexed with different path format.`,
                   );
                   indexed = true;
                 }
@@ -1523,18 +1562,19 @@ async function generateRepoSummaryHelper(
  * Public action wrapper for generating early summary (README + screenshots)
  * This provides fast summary generation without waiting for AI Search indexing
  */
-export const generateEarlySummaryPublic = action({
-  args: {
+export const generateEarlySummaryPublic = guarded.action(
+  'submission.write',
+  {
     submissionId: v.id('submissions'),
     forceRegenerate: v.optional(v.boolean()), // If true, regenerate even if summary exists
   },
-  handler: async (ctx, args) => {
+  async (ctx, args, _role) => {
     return await generateEarlySummaryHelper(ctx, {
       submissionId: args.submissionId,
       forceRegenerate: args.forceRegenerate ?? false,
     });
   },
-});
+);
 
 /**
  * Public action wrapper for generating repository summary using AI Search
@@ -1542,15 +1582,16 @@ export const generateEarlySummaryPublic = action({
  * This combines download/upload and summary scheduling in one action to avoid cross-action calls
  * Uses Cloudflare AI Search to analyze all repository files for comprehensive summary
  */
-export const generateRepoSummary = action({
-  args: {
+export const generateRepoSummary = guarded.action(
+  'submission.write',
+  {
     submissionId: v.id('submissions'),
     forceRegenerate: v.optional(v.boolean()), // If true, regenerate even if summary exists
   },
-  handler: async (ctx, args) => {
+  async (ctx, args, _role) => {
     return await generateRepoSummaryHelper(ctx, {
       submissionId: args.submissionId,
       forceRegenerate: args.forceRegenerate ?? false,
     });
   },
-});
+);

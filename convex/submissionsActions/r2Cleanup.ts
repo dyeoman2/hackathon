@@ -3,7 +3,8 @@
 import { DeleteObjectCommand, ListObjectsV2Command, S3Client } from '@aws-sdk/client-s3';
 import { v } from 'convex/values';
 import type { ActionCtx } from '../_generated/server';
-import { action, internalAction } from '../_generated/server';
+import { internalAction } from '../_generated/server';
+import { guarded } from '../authz/guardFactory';
 
 /**
  * Internal helper to delete R2 files for a submission
@@ -95,15 +96,15 @@ export const deleteSubmissionR2FilesAction = internalAction({
  * Delete R2 objects by prefix (e.g., delete all repos or a specific submission's files)
  * This action uses Convex environment variables, so no local env setup needed
  *
- * Note: This action can be called from CLI (npx convex run) without authentication.
- * The `confirm: true` parameter provides safety against accidental deletion.
+ * Requires authentication. The `confirm: true` parameter provides safety against accidental deletion.
  */
-export const deleteR2ObjectsByPrefix = action({
-  args: {
+export const deleteR2ObjectsByPrefix = guarded.action(
+  'user.write', // Admin-only - deleting R2 objects is a destructive operation
+  {
     prefix: v.string(),
     confirm: v.boolean(), // Safety: require explicit confirmation
   },
-  handler: async (_ctx: ActionCtx, args) => {
+  async (_ctx: ActionCtx, args, _role) => {
     if (!args.confirm) {
       throw new Error('Deletion requires explicit confirmation. Set confirm: true');
     }
@@ -184,4 +185,4 @@ export const deleteR2ObjectsByPrefix = action({
       deletedKeys: deletedKeys.slice(0, 100), // Return first 100 for logging
     };
   },
-});
+);

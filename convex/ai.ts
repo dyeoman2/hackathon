@@ -9,6 +9,7 @@ import {
   query,
 } from './_generated/server';
 import { authComponent } from './auth';
+import { guarded } from './authz/guardFactory';
 import { AUTUMN_NOT_CONFIGURED_ERROR, autumn, isAutumnConfigured } from './autumn';
 
 const FREE_MESSAGE_LIMIT = 10;
@@ -180,8 +181,16 @@ export const getUsageRecord = internalQuery({
 });
 
 /**
- * Public query to get current user's AI usage record (reactive)
- * Returns null if user is not authenticated
+ * Get current user's AI usage record (reactive)
+ *
+ * ACCESS CONTROL: This query intentionally returns `null` for unauthenticated callers
+ * instead of throwing an error. This allows:
+ * 1. Client components to check usage status without requiring authentication
+ * 2. Graceful handling of signed-out state (show "sign in to see usage" instead of error)
+ * 3. Avoid error boundary triggers when users navigate while signed out
+ *
+ * This is a deliberate design choice for better UX. The client should check for `null`
+ * and render appropriate UI (sign-in prompt, usage display, etc.) accordingly.
  */
 export const getCurrentUserUsage = query({
   args: {},
@@ -387,22 +396,22 @@ export const releaseUsage = internalMutation({
   },
 });
 
-function ensureAuthenticatedUser(ctx: Parameters<typeof authComponent.getAuthUser>[0]) {
-  return authComponent.getAuthUser(ctx).then((authUser) => {
-    if (!authUser) {
-      throw new Error('Authentication required.');
-    }
+async function ensureAuthenticatedUser(ctx: Parameters<typeof authComponent.getAuthUser>[0]) {
+  const authUser = await authComponent.getAuthUser(ctx);
+  if (!authUser) {
+    throw new Error('Authentication required.');
+  }
 
-    const userId = assertUserId(authUser, 'Unable to resolve user id.');
-    return {
-      authUser,
-      userId,
-    };
-  });
+  const userId = assertUserId(authUser, 'Unable to resolve user id.');
+  return {
+    authUser,
+    userId,
+  };
 }
 
-export const reserveAiMessage = action({
-  args: {
+export const reserveAiMessage = guarded.action(
+  'profile.read',
+  {
     metadata: v.optional(
       v.object({
         provider: v.optional(v.string()),
@@ -410,7 +419,7 @@ export const reserveAiMessage = action({
       }),
     ),
   },
-  handler: async (ctx: ActionCtx): Promise<ReserveAiMessageResult> => {
+  async (ctx: ActionCtx, _args, _role): Promise<ReserveAiMessageResult> => {
     const { userId } = await ensureAuthenticatedUser(ctx);
     const freeLimit = FREE_MESSAGE_LIMIT;
     const timestamp = Date.now();
@@ -495,10 +504,11 @@ export const reserveAiMessage = action({
       usage: reserveResult.usage,
     };
   },
-});
+);
 
-export const completeAiMessage = action({
-  args: {
+export const completeAiMessage = guarded.action(
+  'profile.read',
+  {
     mode: v.union(v.literal('free'), v.literal('paid')),
     metadata: v.optional(
       v.object({
@@ -510,7 +520,7 @@ export const completeAiMessage = action({
       }),
     ),
   },
-  handler: async (ctx: ActionCtx, args): Promise<CompleteAiMessageResult> => {
+  async (ctx: ActionCtx, args, _role): Promise<CompleteAiMessageResult> => {
     const { userId } = await ensureAuthenticatedUser(ctx);
     const timestamp = Date.now();
 
@@ -565,11 +575,12 @@ export const completeAiMessage = action({
       trackError,
     };
   },
-});
+);
 
-export const releaseAiMessage = action({
-  args: {},
-  handler: async (ctx: ActionCtx): Promise<ReleaseAiMessageResult> => {
+export const releaseAiMessage = guarded.action(
+  'profile.read',
+  {},
+  async (ctx: ActionCtx, _args, _role): Promise<ReleaseAiMessageResult> => {
     const { userId } = await ensureAuthenticatedUser(ctx);
     const timestamp = Date.now();
 
@@ -598,7 +609,7 @@ export const releaseAiMessage = action({
       usage: releaseResult.usage,
     };
   },
-});
+);
 
 export const getAiUsageStatus = action({
   args: {},
@@ -674,12 +685,17 @@ export const getAiUsageStatus = action({
   },
 });
 
-export const aiUsageConstants = action({
-  args: {},
-  handler: async (_ctx: ActionCtx): Promise<{ freeMessageLimit: number; featureId: string }> => {
+export const aiUsageConstants = guarded.action(
+  'util.firstUserCheck', // Public capability - constants don't need auth
+  {},
+  async (
+    _ctx: ActionCtx,
+    _args,
+    _role,
+  ): Promise<{ freeMessageLimit: number; featureId: string }> => {
     return {
       freeMessageLimit: FREE_MESSAGE_LIMIT,
       featureId: AI_MESSAGE_FEATURE_ID,
     };
   },
-});
+);

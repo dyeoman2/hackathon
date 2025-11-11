@@ -252,15 +252,13 @@ export const getAllUsers = guarded.query(
     // For accurate total count when role filtering, we need to count total profiles
     const totalProfiles =
       args.role !== 'all'
-        ? await ctx.db
-            .query('userProfiles')
-            .withIndex('by_role_createdAt', (q) => q.eq('role', args.role))
-            .collect()
-            .then((profiles) => profiles.length)
-        : await ctx.db
-            .query('userProfiles')
-            .collect()
-            .then((profiles) => profiles.length);
+        ? (
+            await ctx.db
+              .query('userProfiles')
+              .withIndex('by_role_createdAt', (q) => q.eq('role', args.role))
+              .collect()
+          ).length
+        : (await ctx.db.query('userProfiles').collect()).length;
 
     return {
       users: combinedUsers,

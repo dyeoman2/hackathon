@@ -12,8 +12,9 @@ import { v } from 'convex/values';
 import { assertUserId } from '../../src/lib/shared/user-id';
 import { internal } from '../_generated/api';
 import type { ActionCtx } from '../_generated/server';
-import { action, internalAction } from '../_generated/server';
+import { internalAction } from '../_generated/server';
 import { authComponent } from '../auth';
+import { guarded } from '../authz/guardFactory';
 import type { GenerateEarlySummaryRef, GetSubmissionInternalRef } from './types';
 
 // Helper function to get the Firecrawl API key from environment
@@ -57,16 +58,12 @@ function normalizeUrl(url: string): string {
 /**
  * Capture screenshot of a URL using Firecrawl and save to R2
  */
-export const captureScreenshot = action({
-  args: {
+export const captureScreenshot = guarded.action(
+  'submission.write',
+  {
     submissionId: v.id('submissions'),
   },
-  handler: async (ctx: ActionCtx, args) => {
-    const authUser = await authComponent.getAuthUser(ctx);
-    if (!authUser) {
-      throw new Error('Authentication required');
-    }
-
+  async (ctx: ActionCtx, args, _role) => {
     // Get submission to check siteUrl and verify access
     const submission = await ctx.runQuery(
       (internal.submissions as unknown as { getSubmissionInternal: GetSubmissionInternalRef })
@@ -438,7 +435,7 @@ export const captureScreenshot = action({
       throw new Error(errorMessage);
     }
   },
-});
+);
 
 /**
  * Internal action to capture screenshot (can be called from scheduled tasks)
@@ -830,12 +827,13 @@ export const captureScreenshotInternal = internalAction({
 /**
  * Delete screenshot from R2 storage only (used after optimistic DB deletion)
  */
-export const deleteScreenshotFromR2 = action({
-  args: {
+export const deleteScreenshotFromR2 = guarded.action(
+  'submission.write',
+  {
     submissionId: v.id('submissions'),
     r2Key: v.string(),
   },
-  handler: async (_ctx: ActionCtx, args) => {
+  async (_ctx: ActionCtx, args, _role) => {
     // Get R2 credentials
     const r2BucketName = process.env.CLOUDFLARE_R2_BUCKET_NAME;
     const r2AccessKeyId = process.env.CLOUDFLARE_R2_ACCESS_KEY_ID;
@@ -868,23 +866,19 @@ export const deleteScreenshotFromR2 = action({
 
     return { success: true };
   },
-});
+);
 
 /**
  * Delete a screenshot from a submission (legacy - kept for backward compatibility)
  * Note: Prefer using removeScreenshot mutation + deleteScreenshotFromR2 action for better UX
  */
-export const deleteScreenshot = action({
-  args: {
+export const deleteScreenshot = guarded.action(
+  'submission.write',
+  {
     submissionId: v.id('submissions'),
     r2Key: v.string(),
   },
-  handler: async (ctx: ActionCtx, args) => {
-    const authUser = await authComponent.getAuthUser(ctx);
-    if (!authUser) {
-      throw new Error('Authentication required');
-    }
-
+  async (ctx: ActionCtx, args, _role) => {
     // Get submission to verify access
     const submission = await ctx.runQuery(
       (internal.submissions as unknown as { getSubmissionInternal: GetSubmissionInternalRef })
@@ -900,6 +894,11 @@ export const deleteScreenshot = action({
 
     // Check if user has write access to this submission's hackathon
     // Since we're in an action, we need to check membership via a query
+    // Guarded action already ensures authentication, so get userId from context
+    const authUser = await authComponent.getAuthUser(ctx);
+    if (!authUser) {
+      throw new Error('Authentication required');
+    }
     const userId = assertUserId(authUser, 'User ID not found');
     const membership = await ctx.runQuery(internal.hackathons.getMembershipInternal, {
       hackathonId: submission.hackathonId,
@@ -960,4 +959,4 @@ export const deleteScreenshot = action({
 
     return { success: true };
   },
-});
+);

@@ -15,6 +15,15 @@ import { requireHackathonRole } from './hackathons';
 
 /**
  * List submissions by hackathon
+ *
+ * ACCESS CONTROL: This query intentionally returns an empty array `[]` for unauthenticated
+ * users or users without active membership instead of throwing an error. This allows:
+ * 1. Client components to render empty states gracefully without error boundaries
+ * 2. Smooth UX when users navigate while signed out or without access
+ * 3. Avoid error boundary triggers for expected authorization failures
+ *
+ * This is a deliberate design choice for better UX. The client should check for empty
+ * arrays and render appropriate UI (sign-in prompt, "no access" message, etc.).
  */
 export const listByHackathon = query({
   args: {
@@ -50,6 +59,15 @@ export const listByHackathon = query({
 
 /**
  * Get single submission
+ *
+ * ACCESS CONTROL: This query intentionally returns `null` for unauthenticated users or
+ * users without active membership instead of throwing an error. This allows:
+ * 1. Client components to handle "not found" vs "no access" states gracefully
+ * 2. Smooth UX when users navigate while signed out or without access
+ * 3. Avoid error boundary triggers for expected authorization failures
+ *
+ * This is a deliberate design choice for better UX. The client should check for `null`
+ * and render appropriate UI (sign-in prompt, "not found" message, etc.).
  */
 export const getSubmission = query({
   args: {
@@ -159,10 +177,13 @@ export const processSubmission = internalAction({
       // AI Search summary is only generated when user clicks "Full Summary" button
       // Early summary (README + screenshots) will be generated automatically when screenshots are captured
       try {
-        // Use the public action (which internally calls the helper)
-        await ctx.runAction(api.submissionsActions.repoProcessing.downloadAndUploadRepo, {
-          submissionId: args.submissionId,
-        });
+        // Use the internal action (no auth required for automated processes)
+        await ctx.runAction(
+          internal.submissionsActions.repoProcessing.downloadAndUploadRepoInternal,
+          {
+            submissionId: args.submissionId,
+          },
+        );
       } catch (error) {
         console.error(`Failed to download/upload repo for submission ${args.submissionId}:`, error);
         // Don't throw - submission creation should succeed even if repo processing fails
@@ -313,6 +334,7 @@ export const deleteSubmission = mutation({
 
 /**
  * Update AI review results (clears inFlight flag)
+ * Requires hackathon membership (owner/admin/judge)
  */
 export const updateSubmissionAI = mutation({
   args: {
@@ -326,6 +348,9 @@ export const updateSubmissionAI = mutation({
     if (!submission) {
       throw new Error('Submission not found');
     }
+
+    // Check membership - only owners, admins, and judges can update AI data
+    await requireHackathonRole(ctx, submission.hackathonId, ['owner', 'admin', 'judge']);
 
     const aiData = {
       ...submission.ai,
@@ -385,6 +410,7 @@ export const updateSubmissionAIInternal = internalMutation({
 
 /**
  * Update submission source (R2 key, upload status, AI summary)
+ * Requires hackathon membership (owner/admin/judge)
  */
 export const updateSubmissionSource = mutation({
   args: {
@@ -399,6 +425,9 @@ export const updateSubmissionSource = mutation({
     if (!submission) {
       throw new Error('Submission not found');
     }
+
+    // Check membership - only owners, admins, and judges can update source data
+    await requireHackathonRole(ctx, submission.hackathonId, ['owner', 'admin', 'judge']);
 
     const sourceData = {
       ...submission.source,

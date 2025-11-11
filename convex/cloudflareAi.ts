@@ -10,8 +10,9 @@ import { assertUserId } from '../src/lib/shared/user-id';
 import { api, internal } from './_generated/api';
 import type { Id } from './_generated/dataModel';
 import type { ActionCtx } from './_generated/server';
-import { action, internalAction } from './_generated/server';
+import { internalAction } from './_generated/server';
 import { authComponent } from './auth';
+import { guarded } from './authz/guardFactory';
 import { isAutumnConfigured } from './autumn';
 
 // Simple token estimation function (rough approximation)
@@ -67,16 +68,17 @@ function getAISearchConfig() {
 }
 
 // Check if Cloudflare AI is configured
-export const isCloudflareConfigured = action({
-  args: {},
-  handler: async (_ctx: ActionCtx) => {
+export const isCloudflareConfigured = guarded.action(
+  'profile.read',
+  {},
+  async (_ctx: ActionCtx, _args, _role) => {
     const CLOUDFLARE_API_TOKEN = process.env.CLOUDFLARE_API_TOKEN ?? '';
     const CLOUDFLARE_ACCOUNT_ID = process.env.CLOUDFLARE_ACCOUNT_ID ?? '';
     return {
       configured: CLOUDFLARE_API_TOKEN.length > 0 && CLOUDFLARE_ACCOUNT_ID.length > 0,
     };
   },
-});
+);
 
 // Cached providers to avoid re-initialization
 let workersaiProvider: ReturnType<typeof createWorkersAI> | null = null;
@@ -1168,15 +1170,17 @@ async function fetchGatewayCompletion(prompt: string) {
 }
 
 // Streaming version for real-time text updates
-export const streamWithWorkersAI = action({
-  args: {
+export const streamWithWorkersAI = guarded.action(
+  'profile.read',
+  {
     prompt: v.string(),
     model: v.union(v.literal('llama'), v.literal('falcon')),
     requestId: v.string(),
   },
-  handler: async (
+  async (
     ctx: ActionCtx,
     args,
+    _role,
   ): Promise<{
     responseId: Id<'aiResponses'>;
   }> => {
@@ -1307,18 +1311,20 @@ export const streamWithWorkersAI = action({
       throw error;
     }
   },
-});
+);
 
 // Streaming version for gateway
-export const streamWithGateway = action({
-  args: {
+export const streamWithGateway = guarded.action(
+  'profile.read',
+  {
     prompt: v.string(),
     model: v.union(v.literal('llama'), v.literal('falcon')),
     requestId: v.string(),
   },
-  handler: async (
+  async (
     ctx: ActionCtx,
     args,
+    _role,
   ): Promise<{
     responseId: Id<'aiResponses'>;
   }> => {
@@ -1453,18 +1459,20 @@ export const streamWithGateway = action({
       throw error;
     }
   },
-});
+);
 
 // Streaming version for structured output
-export const streamStructuredResponse = action({
-  args: {
+export const streamStructuredResponse = guarded.action(
+  'profile.read',
+  {
     topic: v.string(),
     style: v.union(v.literal('formal'), v.literal('casual'), v.literal('technical')),
     requestId: v.string(),
   },
-  handler: async (
+  async (
     ctx: ActionCtx,
     args,
+    _role,
   ): Promise<{
     responseId: Id<'aiResponses'>;
   }> => {
@@ -1640,14 +1648,13 @@ export const streamStructuredResponse = action({
       throw error;
     }
   },
-});
+);
 
 // List AI Gateways to find Gateway IDs
-export const listAIGateways = action({
-  args: {},
-  handler: async (ctx: ActionCtx) => {
-    await ensureAuthenticatedUser(ctx);
-
+export const listAIGateways = guarded.action(
+  'profile.read',
+  {},
+  async (_ctx: ActionCtx, _args, _role) => {
     const config = getCloudflareConfig();
     const listUrl = `https://api.cloudflare.com/client/v4/accounts/${config.accountId}/ai-gateway/gateways`;
 
@@ -1691,14 +1698,13 @@ export const listAIGateways = action({
       };
     }
   },
-});
+);
 
 // Test gateway connectivity
-export const testGatewayConnectivity = action({
-  args: {},
-  handler: async (ctx: ActionCtx) => {
-    await ensureAuthenticatedUser(ctx);
-
+export const testGatewayConnectivity = guarded.action(
+  'profile.read',
+  {},
+  async (ctx: ActionCtx, _args, _role) => {
     if (!isAutumnConfigured()) {
       return {
         success: false,
@@ -1811,17 +1817,16 @@ export const testGatewayConnectivity = action({
       };
     }
   },
-});
+);
 
 // Comparison endpoint that runs both in parallel
-export const compareInferenceMethods = action({
-  args: {
+export const compareInferenceMethods = guarded.action(
+  'profile.read',
+  {
     prompt: v.string(),
     model: v.union(v.literal('llama'), v.literal('falcon')),
   },
-  handler: async (ctx: ActionCtx, args) => {
-    await ensureAuthenticatedUser(ctx);
-
+  async (ctx: ActionCtx, args, _role) => {
     const reservation = await ctx.runAction(api.ai.reserveAiMessage, {
       metadata: { provider: 'cloudflare-ai-comparison', model: args.model },
     });
@@ -1894,7 +1899,7 @@ export const compareInferenceMethods = action({
       throw error;
     }
   },
-});
+);
 
 /**
  * Helper function to generate review (extracted for reuse)
@@ -2005,8 +2010,9 @@ async function generateReviewHelper(
   }
 }
 
-export const generateSubmissionReview = action({
-  args: {
+export const generateSubmissionReview = guarded.action(
+  'submission.review',
+  {
     submissionId: v.id('submissions'),
     submissionTitle: v.string(),
     team: v.string(),
@@ -2015,11 +2021,10 @@ export const generateSubmissionReview = action({
     repoSummary: v.string(),
     rubric: v.string(),
   },
-  handler: async (ctx, args) => {
-    await ensureAuthenticatedUser(ctx);
+  async (ctx, args, _role) => {
     return await generateReviewHelper(ctx, args, false);
   },
-});
+);
 
 /**
  * Internal action to generate review without auth (for automated processes)
@@ -2042,9 +2047,10 @@ export const generateSubmissionReviewInternal = internalAction({
 });
 
 // Check if Cloudflare AI Search is configured
-export const isAISearchConfigured = action({
-  args: {},
-  handler: async (_ctx: ActionCtx) => {
+export const isAISearchConfigured = guarded.action(
+  'profile.read',
+  {},
+  async (_ctx: ActionCtx, _args, _role) => {
     const CLOUDFLARE_API_TOKEN = process.env.CLOUDFLARE_API_TOKEN ?? '';
     const CLOUDFLARE_ACCOUNT_ID = process.env.CLOUDFLARE_ACCOUNT_ID ?? '';
     const CLOUDFLARE_AI_SEARCH_INSTANCE_ID = process.env.CLOUDFLARE_AI_SEARCH_INSTANCE_ID ?? '';
@@ -2055,13 +2061,13 @@ export const isAISearchConfigured = action({
         CLOUDFLARE_AI_SEARCH_INSTANCE_ID.length > 0,
     };
   },
-});
+);
 
 // List all AI Search instances (RAG instances)
-// Note: No auth check - allows CLI usage for diagnostics
-export const listAISearchInstances = action({
-  args: {},
-  handler: async (_ctx: ActionCtx) => {
+export const listAISearchInstances = guarded.action(
+  'profile.read',
+  {},
+  async (_ctx: ActionCtx, _args, _role) => {
     const config = getAISearchConfig();
     // Try different possible endpoint formats
     const possibleEndpoints = [
@@ -2125,7 +2131,7 @@ export const listAISearchInstances = action({
       instances: [],
     };
   },
-});
+);
 
 interface AISearchQueryOptions {
   query: string;
@@ -2207,17 +2213,16 @@ async function queryAISearchHelper(options: AISearchQueryOptions): Promise<AISea
 }
 
 // Query Cloudflare AI Search
-export const queryAISearch = action({
-  args: {
+export const queryAISearch = guarded.action(
+  'profile.read',
+  {
     query: v.string(),
     model: v.optional(v.string()),
     maxNumResults: v.optional(v.number()),
     rewriteQuery: v.optional(v.boolean()),
     pathPrefix: v.optional(v.string()),
   },
-  handler: async (ctx: ActionCtx, args) => {
-    await ensureAuthenticatedUser(ctx);
-
+  async (ctx: ActionCtx, args, _role) => {
     const reservation = await ctx.runAction(api.ai.reserveAiMessage, {
       metadata: {
         provider: 'cloudflare-ai-search',
@@ -2302,14 +2307,13 @@ export const queryAISearch = action({
       throw error;
     }
   },
-});
+);
 
 // Test AI Search connectivity
-export const testAISearchConnectivity = action({
-  args: {},
-  handler: async (ctx: ActionCtx) => {
-    await ensureAuthenticatedUser(ctx);
-
+export const testAISearchConnectivity = guarded.action(
+  'profile.read',
+  {},
+  async (ctx: ActionCtx, _args, _role) => {
     if (!isAutumnConfigured()) {
       return {
         success: false,
@@ -2393,4 +2397,4 @@ export const testAISearchConnectivity = action({
       };
     }
   },
-});
+);

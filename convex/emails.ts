@@ -2,6 +2,7 @@ import { Resend } from '@convex-dev/resend';
 import { v } from 'convex/values';
 import { components, internal } from './_generated/api';
 import { action, internalMutation, query } from './_generated/server';
+import { authComponent } from './auth';
 
 /**
  * Email utilities for Convex using the official @convex-dev/resend component
@@ -15,10 +16,17 @@ export const resend: Resend = new Resend(components.resend, {
 
 /**
  * Check if email service is configured (for UI validation)
+ * Requires authentication
  */
 export const checkEmailServiceConfigured = query({
   args: {},
-  handler: async () => {
+  handler: async (ctx) => {
+    // Require authentication
+    const authUser = await authComponent.getAuthUser(ctx);
+    if (!authUser) {
+      throw new Error('Authentication required');
+    }
+
     const resendApiKey = process.env.RESEND_API_KEY;
     return {
       isConfigured: !!resendApiKey,

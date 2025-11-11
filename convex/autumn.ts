@@ -3,8 +3,8 @@ import { v } from 'convex/values';
 import { assertUserId } from '../src/lib/shared/user-id';
 import { components } from './_generated/api';
 import type { ActionCtx } from './_generated/server';
-import { action } from './_generated/server';
 import { authComponent } from './auth';
+import { guarded } from './authz/guardFactory';
 
 // Helper function to get the Autumn secret key from environment
 // This reads directly from process.env to ensure we get the current value
@@ -66,8 +66,9 @@ function getNotConfiguredError(
 // These override the component actions to prevent uncaught errors when AUTUMN_SECRET_KEY is missing
 // Note: When Autumn is configured, the component actions will be called by the AutumnProvider.
 // When not configured, these wrappers return graceful errors instead of throwing.
-export const createCustomer = action({
-  args: {
+export const createCustomer = guarded.action(
+  'profile.read',
+  {
     expand: v.optional(
       v.array(
         v.union(
@@ -82,7 +83,7 @@ export const createCustomer = action({
     ),
     errorOnNotFound: v.optional(v.boolean()),
   },
-  handler: async (_ctx: ActionCtx, _args) => {
+  async (_ctx: ActionCtx, _args, _role) => {
     // Check the environment variable directly in the handler
     // This ensures we get the current value even if it was set after module load
     const secretKey = getAutumnSecretKey();
@@ -97,11 +98,12 @@ export const createCustomer = action({
     // Return an error without warning since this shouldn't normally happen.
     return getNotConfiguredError('createCustomer', false);
   },
-});
+);
 
-export const listProducts = action({
-  args: {},
-  handler: async (_ctx: ActionCtx) => {
+export const listProducts = guarded.action(
+  'profile.read',
+  {},
+  async (_ctx: ActionCtx, _args, _role) => {
     // Check the environment variable directly in the handler
     // This ensures we get the current value even if it was set after module load
     const secretKey = getAutumnSecretKey();
@@ -116,7 +118,7 @@ export const listProducts = action({
     // Return an error without warning since this shouldn't normally happen.
     return getNotConfiguredError('listProducts', false);
   },
-});
+);
 
 // Export other component API functions for use by AutumnProvider and hooks
 const {
@@ -166,9 +168,12 @@ export function ensureAutumnConfigured(): void {
 // Export checkout with a custom name for backward compatibility with CreditPurchase component
 export const checkoutAutumn = checkout;
 
-export const isAutumnReady = action({
-  args: {},
-  handler: async (_ctx: ActionCtx) => ({
-    configured: isAutumnConfigured(),
-  }),
-});
+export const isAutumnReady = guarded.action(
+  'profile.read',
+  {},
+  async (_ctx: ActionCtx, _args, _role) => {
+    return {
+      configured: isAutumnConfigured(),
+    };
+  },
+);

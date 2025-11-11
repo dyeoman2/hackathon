@@ -13,8 +13,14 @@ import { guarded } from './authz/guardFactory';
  * Check if there are any users in the system (for determining first admin)
  * Queries Better Auth's user table directly for accurate count.
  *
- * Intentionally left unguarded so bootstrap flows and health checks can run
- * before an authenticated session exists.
+ * ACCESS CONTROL: This query is intentionally unguarded (no authentication required)
+ * because it must be callable:
+ * 1. During bootstrap flows when no users exist yet (first user signup)
+ * 2. By health check endpoints that run before authentication
+ * 3. By registration flows that need to determine if this is the first user
+ *
+ * This is safe because it only returns aggregate counts, not sensitive user data.
+ * If you need user-specific data, use `getCurrentUserProfile` which requires auth.
  */
 export const getUserCount = query({
   args: {},
@@ -195,8 +201,16 @@ export const getUserProfile = internalQuery({
 
 /**
  * Get current user profile (Better Auth user data + app-specific role).
- * Returns `null` for unauthenticated callers so client hooks can handle the
- * signed-out state without throwing.
+ *
+ * ACCESS CONTROL: This query intentionally returns `null` for unauthenticated callers
+ * instead of throwing an error. This allows:
+ * 1. Client hooks (like `useAuth`) to handle signed-out state gracefully
+ * 2. Conditional rendering based on authentication status without error boundaries
+ * 3. Smooth transitions when users sign in/out without triggering errors
+ *
+ * This is a deliberate design choice for better UX. The client should check for `null`
+ * and render appropriate UI (login prompt, loading state, etc.) rather than relying
+ * on error boundaries.
  */
 export const getCurrentUserProfile = query({
   args: {},

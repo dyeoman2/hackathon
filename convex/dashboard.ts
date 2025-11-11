@@ -34,9 +34,14 @@ async function countSignupsSince(ctx: QueryCtx, since: number) {
  * Returns user stats and recent audit log activity
  * OPTIMIZED: No longer fetches ALL users for stats - uses userProfiles table for counts
  *
- * NOTE: We intentionally keep this as a plain `query` instead of `guarded.query`.
- * Returning `null` for non-admin callers allows the client to render a friendly
- * fallback instead of hitting the route error boundary on authorization failures.
+ * ACCESS CONTROL: This query intentionally returns `null` for unauthenticated or non-admin
+ * users instead of throwing an error. This allows the client to:
+ * 1. Render a friendly fallback UI instead of hitting the route error boundary
+ * 2. Handle navigation gracefully when users sign out (no error thrown)
+ * 3. Avoid error boundary triggers for expected authorization failures
+ *
+ * This is a deliberate design choice for better UX. If you need strict authorization
+ * enforcement, use `guarded.query('dashboard.read', ...)` instead.
  */
 export const getDashboardData = query({
   args: {},
