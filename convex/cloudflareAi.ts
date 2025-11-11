@@ -2138,11 +2138,7 @@ interface AISearchQueryOptions {
   model?: string;
   maxNumResults?: number;
   rewriteQuery?: boolean;
-  filters?: {
-    path?: {
-      prefix?: string;
-    };
-  };
+  pathPrefix?: string; // R2 path prefix to filter by (e.g., "repos/{submissionId}/files/")
 }
 
 interface AISearchResponse {
@@ -2167,20 +2163,59 @@ async function queryAISearchHelper(options: AISearchQueryOptions): Promise<AISea
   // Correct endpoint format: /autorag/rags/{instance_name}/ai-search
   const queryUrl = `https://api.cloudflare.com/client/v4/accounts/${config.accountId}/autorag/rags/${config.instanceId}/ai-search`;
 
+  // Build request body with optional folder filter
+  const requestBody: {
+    query: string;
+    model: string;
+    max_num_results: number;
+    rewrite_query: boolean;
+    filters?: {
+      type: string;
+      filters: Array<{
+        type: string;
+        key: string;
+        value: string;
+      }>;
+    };
+  } = {
+    query: options.query,
+    model: options.model ?? '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+    max_num_results: options.maxNumResults ?? 20,
+    rewrite_query: options.rewriteQuery ?? false,
+  };
+
+  // Add folder filter if pathPrefix is provided
+  // Cloudflare AI Search uses 'folder' attribute for path filtering
+  // Format: compound filter with 'gt' and 'lte' to match paths starting with prefix
+  if (options.pathPrefix) {
+    // Remove trailing slash if present for filter comparison
+    const folderPrefix = options.pathPrefix.replace(/\/$/, '');
+    // Use compound filter to match folder paths starting with prefix
+    // 'gt' includes paths greater than prefix + '/', 'lte' includes up to prefix + 'z'
+    requestBody.filters = {
+      type: 'and',
+      filters: [
+        {
+          type: 'gt',
+          key: 'folder',
+          value: `${folderPrefix}/`,
+        },
+        {
+          type: 'lte',
+          key: 'folder',
+          value: `${folderPrefix}z`,
+        },
+      ],
+    };
+  }
+
   const response = await fetch(queryUrl, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${config.apiToken}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      query: options.query,
-      model: options.model ?? '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
-      max_num_results: options.maxNumResults ?? 20,
-      rewrite_query: options.rewriteQuery ?? false,
-      // Note: Cloudflare AI Search API doesn't support filters parameter
-      // filters: options.filters, // Removed - API doesn't support filters
-    }),
+    body: JSON.stringify(requestBody),
   });
 
   if (!response.ok) {
@@ -2248,14 +2283,13 @@ export const queryAISearch = guarded.action(
     };
 
     try {
-      // Note: Cloudflare AI Search API doesn't support filters parameter
-      // Path filtering must be done client-side after receiving results
+      // Use server-side folder filtering if pathPrefix is provided
       const result = await queryAISearchHelper({
         query: args.query,
         model: args.model,
         maxNumResults: args.maxNumResults,
         rewriteQuery: args.rewriteQuery,
-        // filters removed - API doesn't support them
+        pathPrefix: args.pathPrefix, // Pass pathPrefix for server-side filtering
       });
 
       // Extract the generated response and documents
@@ -2332,14 +2366,13 @@ export const queryAISearchForRepoChat = guarded.action(
   },
   async (_ctx: ActionCtx, args, _role) => {
     // Skip usage tracking for repo chat queries
-    // Note: Cloudflare AI Search API doesn't support filters parameter
-    // Path filtering must be done client-side after receiving results
+    // Use server-side folder filtering if pathPrefix is provided
     const result = await queryAISearchHelper({
       query: args.query,
       model: args.model,
       maxNumResults: args.maxNumResults,
       rewriteQuery: args.rewriteQuery,
-      // filters removed - API doesn't support them
+      pathPrefix: args.pathPrefix, // Pass pathPrefix for server-side filtering
     });
 
     // Extract the generated response and documents

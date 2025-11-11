@@ -3,8 +3,8 @@
 export {
   checkCloudflareIndexing,
   diagnoseAISearchPaths,
-  generateSummaryPublic,
   generateRepoSummary,
+  generateSummaryPublic,
 } from './aiSummary';
 export {
   deleteR2ObjectsByPrefix,

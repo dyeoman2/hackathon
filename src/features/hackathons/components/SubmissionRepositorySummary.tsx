@@ -31,10 +31,17 @@ function getEarlyProcessingStage(submission: Doc<'submissions'>): EarlyProcessin
   const screenshotCompleted = !!source?.screenshotCaptureCompletedAt;
   const hasSiteUrl = !!submission.siteUrl;
   const processingState = submission.source?.processingState;
-  const hasSummary = !!source?.aiSummary && processingState !== 'complete';
+  const hasSummary = !!source?.aiSummary;
+  const isAISearchComplete = processingState === 'complete';
 
   // If summary already exists, no need to show loading
   if (hasSummary) {
+    return null;
+  }
+
+  // Don't show "generating summary" if AI Search indexing is complete
+  // At this point, if there's no summary, it means it wasn't generated or failed
+  if (isAISearchComplete) {
     return null;
   }
 
@@ -106,15 +113,15 @@ export function SubmissionRepositorySummary({
   submission,
   canEdit = false,
 }: SubmissionRepositorySummaryProps) {
-  // Show early summary (README + screenshots) from aiSummary field
-  // Repository Summary card should only show the early summary, not the AI Search summary
-  // Once AI Search completes (processingState === 'complete'), aiSummary contains the AI Search summary
+  // Show summary from aiSummary field (can be early summary from README + screenshots or AI Search summary)
+  // The summary should be displayed regardless of processing state once it's generated
   const summary = submission.source?.aiSummary;
   const processingState = submission.source?.processingState;
   const isAISearchComplete = processingState === 'complete';
 
-  // Show early summary only if it exists AND AI Search hasn't completed (which would overwrite it)
-  const showEarlySummary = !!summary && !isAISearchComplete;
+  // Show summary if it exists, regardless of processing state
+  // The summary should not change when Cloudflare AI Search indexing finishes
+  const showSummary = !!summary;
 
   // Check if we're in early processing stages
   const earlyProcessingStage = getEarlyProcessingStage(submission);
@@ -123,9 +130,7 @@ export function SubmissionRepositorySummary({
   const [isGeneratingQuick, setIsGeneratingQuick] = useState(false);
   const [isGeneratingFull, setIsGeneratingFull] = useState(false);
   const toast = useToast();
-  const generateQuickSummary = useAction(
-    api.submissionsActions.aiSummary.generateSummaryPublic,
-  );
+  const generateQuickSummary = useAction(api.submissionsActions.aiSummary.generateSummaryPublic);
   const generateFullSummary = useAction(api.submissionsActions.aiSummary.generateRepoSummary);
 
   const handleGenerateQuickSummary = useCallback(async () => {
@@ -244,7 +249,7 @@ export function SubmissionRepositorySummary({
             title={earlyProcessingMessage.title}
             description={earlyProcessingMessage.description}
           />
-        ) : showEarlySummary ? (
+        ) : showSummary ? (
           <div className="prose prose-sm max-w-none dark:prose-invert prose-headings:font-semibold prose-headings:text-foreground prose-headings:mt-6 prose-headings:mb-4 prose-h1:text-2xl prose-h2:text-xl prose-h3:text-lg prose-p:text-muted-foreground prose-p:leading-relaxed prose-strong:text-foreground prose-strong:font-semibold prose-code:text-foreground prose-code:bg-muted prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-xs prose-code:font-mono prose-pre:bg-muted prose-pre:border prose-pre:rounded-lg prose-pre:p-4 prose-ul:text-muted-foreground prose-ol:text-muted-foreground prose-li:text-muted-foreground prose-li:my-2 prose-a:text-primary prose-a:underline hover:prose-a:text-primary/80 prose-blockquote:border-l-4 prose-blockquote:border-primary prose-blockquote:pl-4 prose-blockquote:italic">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{summary}</ReactMarkdown>
           </div>
