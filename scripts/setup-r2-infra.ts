@@ -647,6 +647,39 @@ async function setupWorkersAIAndGateway(): Promise<void> {
     console.log(`\nSetting CLOUDFLARE_GATEWAY_ID for ${isProd ? 'production' : 'development'}...`);
     setConvexEnvVar('CLOUDFLARE_GATEWAY_ID', gatewayId.trim(), isProd);
     console.log('\n✅ AI Gateway environment variable set!');
+
+    // Ask about Authenticated Gateway
+    console.log('\n🔐 Authenticated Gateway adds security by requiring a token for each request.');
+    console.log('This is recommended when storing logs. To set it up:');
+    console.log('  1. Go to AI > AI Gateway > [Your Gateway] > Settings');
+    console.log('  2. Click "Create authentication token" (with "Run" permissions)');
+    console.log("  3. Copy the token immediately (you won't see it again!)");
+    console.log('  4. Toggle on "Authenticated Gateway"\n');
+
+    const useAuth = await question('Do you want to configure Authenticated Gateway now? (y/n): ');
+    if (useAuth.toLowerCase() === 'y') {
+      const authToken = await question(
+        'Enter your Gateway authentication token (or press Enter to skip): ',
+      );
+      if (authToken.trim()) {
+        console.log(
+          `\nSetting CLOUDFLARE_GATEWAY_AUTH_TOKEN for ${isProd ? 'production' : 'development'}...`,
+        );
+        setConvexEnvVar('CLOUDFLARE_GATEWAY_AUTH_TOKEN', authToken.trim(), isProd);
+        console.log('\n✅ Gateway authentication token set!');
+        console.log(
+          '\n⚠️  Don\'t forget to toggle on "Authenticated Gateway" in the Gateway Settings!',
+        );
+      } else {
+        console.log('\nSkipping authentication token. You can add it later with:');
+        console.log('   npx convex env set CLOUDFLARE_GATEWAY_AUTH_TOKEN <token>');
+      }
+    } else {
+      console.log('\nSkipping Authenticated Gateway. You can configure it later:');
+      console.log('  1. Create token in Gateway Settings > Authentication');
+      console.log('  2. Set: npx convex env set CLOUDFLARE_GATEWAY_AUTH_TOKEN <token>');
+      console.log('  3. Toggle on "Authenticated Gateway" in Settings');
+    }
   } else {
     console.log('\nSkipping AI Gateway configuration. You can add it later with:');
     console.log('   npx convex env set CLOUDFLARE_GATEWAY_ID <gateway-id>');

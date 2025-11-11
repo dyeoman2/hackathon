@@ -8,8 +8,12 @@ import { v } from 'convex/values';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import type { ActionCtx } from '../_generated/server';
-import { action } from '../_generated/server';
-import type { GetSubmissionInternalRef, UpdateSubmissionSourceInternalRef } from './types';
+import { action, internalAction } from '../_generated/server';
+import type {
+  GenerateEarlySummaryRef,
+  GetSubmissionInternalRef,
+  UpdateSubmissionSourceInternalRef,
+} from './types';
 
 /**
  * Trigger Cloudflare AI Search sync to index new R2 files immediately
@@ -466,6 +470,28 @@ export async function downloadAndUploadRepoHelper(
       },
     );
 
+    // Trigger early summary generation (using README + screenshots if available)
+    // This provides immediate feedback while waiting for AI Search indexing
+    try {
+      await ctx.scheduler.runAfter(
+        0,
+        (
+          internal.submissionsActions.aiSummary as unknown as {
+            generateEarlySummary: GenerateEarlySummaryRef;
+          }
+        ).generateEarlySummary,
+        {
+          submissionId: args.submissionId,
+        },
+      );
+    } catch (error) {
+      // Log but don't fail - early summary is optional
+      console.warn(
+        `[R2 Upload] Failed to schedule early summary generation for submission ${args.submissionId}:`,
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+
     return { r2PathPrefix, uploadedAt: Date.now(), fileCount: codeFiles.length };
   } finally {
     // Cleanup temp files
@@ -476,6 +502,144 @@ export async function downloadAndUploadRepoHelper(
     }
   }
 }
+
+/**
+ * Internal action to fetch README from GitHub
+ * Fetches README directly from GitHub before repo is uploaded to R2
+ */
+export const fetchReadmeFromGitHub = internalAction({
+  args: {
+    submissionId: v.id('submissions'),
+  },
+  handler: async (ctx, args) => {
+    try {
+      const submission = await ctx.runQuery(internal.submissions.getSubmissionInternal, {
+        submissionId: args.submissionId,
+      });
+
+      if (!submission || !submission.repoUrl) {
+        console.warn(
+          `[README Fetch] Submission ${args.submissionId} not found or missing repoUrl`,
+        );
+        return;
+      }
+
+      // Parse GitHub URL
+      const githubUrl = submission.repoUrl.trim();
+      const githubMatch = githubUrl.match(/github\.com[:/]+([^/]+)\/([^/#?]+)/i);
+      if (!githubMatch) {
+        console.warn(`[README Fetch] Invalid GitHub URL: ${githubUrl}`);
+        return;
+      }
+
+      const [, owner, repo] = githubMatch;
+      const repoName = repo.replace(/\.git$/, '').replace(/\/$/, '');
+
+      // Optional GitHub token for higher rate limits / private repos
+      const githubToken = process.env.GITHUB_TOKEN;
+      const headers: Record<string, string> = { 'User-Agent': 'tanstack-hackathon' };
+      if (githubToken) {
+        headers.Authorization = `Bearer ${githubToken}`;
+      }
+
+      // Try to get default branch first
+      let defaultBranch: string | undefined;
+      try {
+        const repoInfoResponse = await fetch(`https://api.github.com/repos/${owner}/${repoName}`, {
+          headers,
+        });
+
+        if (repoInfoResponse.ok) {
+          const repoInfo: { default_branch?: string } = await repoInfoResponse.json();
+          defaultBranch = repoInfo.default_branch;
+        }
+      } catch (error) {
+        console.warn(`[README Fetch] Failed to get default branch:`, error);
+      }
+
+      // Try common README filenames in order of preference
+      const readmeFilenames = ['README.md', 'README.txt', 'README', 'README.markdown'];
+      const branchCandidates = Array.from(
+        new Set(
+          [defaultBranch, 'main', 'master'].filter((branch): branch is string => Boolean(branch)),
+        ),
+      );
+      if (branchCandidates.length === 0) {
+        branchCandidates.push('main', 'master');
+      }
+
+      let readmeContent: string | null = null;
+      let readmeFilename: string | null = null;
+
+      // Try each branch and filename combination
+      for (const branch of branchCandidates) {
+        for (const filename of readmeFilenames) {
+          try {
+            // Try GitHub API first (supports private repos with token)
+            const apiUrl = `https://api.github.com/repos/${owner}/${repoName}/contents/${filename}?ref=${branch}`;
+            const apiResponse = await fetch(apiUrl, { headers });
+
+            if (apiResponse.ok) {
+              const fileData: { content?: string; encoding?: string; name?: string } =
+                await apiResponse.json();
+              if (fileData.content && fileData.encoding === 'base64') {
+                readmeContent = Buffer.from(fileData.content, 'base64').toString('utf-8');
+                readmeFilename = fileData.name || filename;
+                break;
+              }
+            } else if (apiResponse.status === 404) {
+              // File doesn't exist, try next filename
+              continue;
+            }
+          } catch (error) {
+            // Try raw GitHub URL as fallback
+            try {
+              const rawUrl = `https://raw.githubusercontent.com/${owner}/${repoName}/${branch}/${filename}`;
+              const rawResponse = await fetch(rawUrl, { headers });
+
+              if (rawResponse.ok) {
+                readmeContent = await rawResponse.text();
+                readmeFilename = filename;
+                break;
+              }
+            } catch (rawError) {
+              // Continue to next filename
+              continue;
+            }
+          }
+        }
+
+        if (readmeContent) {
+          break; // Found README, stop searching
+        }
+      }
+
+      if (readmeContent) {
+        // Store README in submission
+        await ctx.runMutation(internal.submissions.updateSubmissionSourceInternal, {
+          submissionId: args.submissionId,
+          readme: readmeContent,
+          readmeFilename: readmeFilename || 'README.md',
+          readmeFetchedAt: Date.now(),
+        });
+
+        console.log(
+          `[README Fetch] Successfully fetched README (${readmeFilename}) for submission ${args.submissionId}`,
+        );
+      } else {
+        console.log(
+          `[README Fetch] No README found for submission ${args.submissionId} (repo: ${owner}/${repoName})`,
+        );
+      }
+    } catch (error) {
+      console.error(
+        `[README Fetch] Failed to fetch README for submission ${args.submissionId}:`,
+        error instanceof Error ? error.message : String(error),
+      );
+      // Don't throw - README fetch is optional
+    }
+  },
+});
 
 /**
  * Download GitHub repo, extract filtered files, and upload to R2

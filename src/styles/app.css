@@ -72,6 +72,7 @@
 }
 
 @plugin "tailwindcss-animate";
+@plugin "@tailwindcss/typography";
 
 :root {
   --radius: 0.65rem;

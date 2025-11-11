@@ -14,7 +14,11 @@ import { internal } from '../_generated/api';
 import type { ActionCtx } from '../_generated/server';
 import { action, internalAction } from '../_generated/server';
 import { authComponent } from '../auth';
-import type { GetSubmissionInternalRef } from './types';
+import type {
+  CheckIndexingAndGenerateSummaryRef,
+  GenerateEarlySummaryRef,
+  GetSubmissionInternalRef,
+} from './types';
 
 // Helper function to get the Firecrawl API key from environment
 function getFirecrawlApiKey(): string {
@@ -364,6 +368,73 @@ export const captureScreenshot = action({
         screenshotCaptureCompletedAt,
       });
 
+      // Trigger summary generation after screenshots are captured
+      // If repo files are uploaded, use full AI Search summary; otherwise use early summary
+      try {
+        const submission = await ctx.runQuery(
+          (internal.submissions as unknown as { getSubmissionInternal: GetSubmissionInternalRef })
+            .getSubmissionInternal,
+          {
+            submissionId: args.submissionId,
+          },
+        );
+
+        if (!submission) {
+          console.warn(
+            `[Screenshot] Could not fetch submission ${args.submissionId} to trigger summary generation`,
+          );
+          return {
+            success: true,
+            screenshots: capturedScreenshots,
+            pagesCaptured: capturedScreenshots.length,
+            totalPagesFound: pages.length,
+          };
+        }
+
+        // If repo files are uploaded, trigger full AI Search summary generation
+        if (submission.source?.r2Key) {
+          console.log(
+            `[Screenshot] Repo files uploaded for submission ${args.submissionId} - triggering full AI Search summary`,
+          );
+          await ctx.scheduler.runAfter(
+            0,
+            (
+              internal.submissionsActions.aiSummary as unknown as {
+                checkIndexingAndGenerateSummary: CheckIndexingAndGenerateSummaryRef;
+              }
+            ).checkIndexingAndGenerateSummary,
+            {
+              submissionId: args.submissionId,
+              attempt: 0,
+              forceRegenerate: false,
+            },
+          );
+        } else {
+          // If repo files aren't uploaded yet, trigger early summary using README + screenshots
+          console.log(
+            `[Screenshot] Repo files not uploaded for submission ${args.submissionId} - triggering early summary with screenshots`,
+          );
+          await ctx.scheduler.runAfter(
+            0,
+            (
+              internal.submissionsActions.aiSummary as unknown as {
+                generateEarlySummary: GenerateEarlySummaryRef;
+              }
+            ).generateEarlySummary,
+            {
+              submissionId: args.submissionId,
+              forceRegenerate: false,
+            },
+          );
+        }
+      } catch (error) {
+        // Log but don't fail - summary generation is optional
+        console.warn(
+          `[Screenshot] Failed to schedule summary generation for submission ${args.submissionId}:`,
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+
       return {
         success: true,
         screenshots: capturedScreenshots,
@@ -697,6 +768,73 @@ export const captureScreenshotInternal = internalAction({
         submissionId: args.submissionId,
         screenshotCaptureCompletedAt,
       });
+
+      // Trigger summary generation after screenshots are captured
+      // If repo files are uploaded, use full AI Search summary; otherwise use early summary
+      try {
+        const submission = await ctx.runQuery(
+          (internal.submissions as unknown as { getSubmissionInternal: GetSubmissionInternalRef })
+            .getSubmissionInternal,
+          {
+            submissionId: args.submissionId,
+          },
+        );
+
+        if (!submission) {
+          console.warn(
+            `[Screenshot] Could not fetch submission ${args.submissionId} to trigger summary generation`,
+          );
+          return {
+            success: true,
+            screenshots: capturedScreenshots,
+            pagesCaptured: capturedScreenshots.length,
+            totalPagesFound: pages.length,
+          };
+        }
+
+        // If repo files are uploaded, trigger full AI Search summary generation
+        if (submission.source?.r2Key) {
+          console.log(
+            `[Screenshot] Repo files uploaded for submission ${args.submissionId} - triggering full AI Search summary`,
+          );
+          await ctx.scheduler.runAfter(
+            0,
+            (
+              internal.submissionsActions.aiSummary as unknown as {
+                checkIndexingAndGenerateSummary: CheckIndexingAndGenerateSummaryRef;
+              }
+            ).checkIndexingAndGenerateSummary,
+            {
+              submissionId: args.submissionId,
+              attempt: 0,
+              forceRegenerate: false,
+            },
+          );
+        } else {
+          // If repo files aren't uploaded yet, trigger early summary using README + screenshots
+          console.log(
+            `[Screenshot] Repo files not uploaded for submission ${args.submissionId} - triggering early summary with screenshots`,
+          );
+          await ctx.scheduler.runAfter(
+            0,
+            (
+              internal.submissionsActions.aiSummary as unknown as {
+                generateEarlySummary: GenerateEarlySummaryRef;
+              }
+            ).generateEarlySummary,
+            {
+              submissionId: args.submissionId,
+              forceRegenerate: false,
+            },
+          );
+        }
+      } catch (error) {
+        // Log but don't fail - summary generation is optional
+        console.warn(
+          `[Screenshot] Failed to schedule summary generation for submission ${args.submissionId}:`,
+          error instanceof Error ? error.message : String(error),
+        );
+      }
 
       return {
         success: true,

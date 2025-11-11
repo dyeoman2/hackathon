@@ -17,6 +17,7 @@ import { EditSubmissionModal } from '~/features/hackathons/components/EditSubmis
 import { SubmissionActionsMenu } from '~/features/hackathons/components/SubmissionActionsMenu';
 import { SubmissionAIReview } from '~/features/hackathons/components/SubmissionAIReview';
 import { SubmissionNavigation } from '~/features/hackathons/components/SubmissionNavigation';
+import { SubmissionRepositorySummary } from '~/features/hackathons/components/SubmissionRepositorySummary';
 import { SubmissionScoring } from '~/features/hackathons/components/SubmissionScoring';
 import { SubmissionScreenshots } from '~/features/hackathons/components/SubmissionScreenshots';
 import {
@@ -235,25 +236,22 @@ function SubmissionDetailComponent() {
 
       <PageHeader
         title={submission.title}
-        description={
+        titleActions={
           <div className="flex items-center gap-2 flex-wrap">
-            <Button variant="outline" size="sm" asChild className="touch-manipulation">
+            <Button variant="ghost" size="sm" asChild className="touch-manipulation">
               <a href={submission.repoUrl} target="_blank" rel="noopener noreferrer">
-                <SiGithub className="h-4 w-4 sm:mr-2" />
-                <span className="hidden sm:inline">Repository</span>
+                <SiGithub className="h-4 w-4" />
               </a>
             </Button>
             {submission.siteUrl && (
-              <Button variant="outline" size="sm" asChild className="touch-manipulation">
+              <Button variant="ghost" size="sm" asChild className="touch-manipulation">
                 <a href={submission.siteUrl} target="_blank" rel="noopener noreferrer">
-                  <ExternalLink className="h-4 w-4 sm:mr-2" />
-                  <span className="hidden sm:inline">Live Site</span>
+                  <ExternalLink className="h-4 w-4" />
                 </a>
               </Button>
             )}
           </div>
         }
-        descriptionClassName="text-foreground"
         actions={
           <div className="flex items-center gap-2 flex-wrap">
             <SubmissionStatusBadge
@@ -283,6 +281,8 @@ function SubmissionDetailComponent() {
       />
 
       <div className="space-y-6">
+        <SubmissionRepositorySummary submission={submission} canEdit={canEdit} />
+
         <SubmissionAIReview
           summary={submission.ai?.summary}
           isReviewing={isReviewing}

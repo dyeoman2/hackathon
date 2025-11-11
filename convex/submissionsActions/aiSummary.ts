@@ -1,5 +1,6 @@
 'use node';
 
+import { GetObjectCommand, ListObjectsV2Command, S3Client } from '@aws-sdk/client-s3';
 import { v } from 'convex/values';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
@@ -24,6 +25,7 @@ export const checkIndexingAndGenerateSummary = internalAction({
   args: {
     submissionId: v.id('submissions'),
     attempt: v.number(),
+    forceRegenerate: v.optional(v.boolean()), // If true, regenerate even if summary exists
   },
   handler: async (ctx, args) => {
     try {
@@ -44,18 +46,55 @@ export const checkIndexingAndGenerateSummary = internalAction({
         throw new Error('Submission not found');
       }
 
-      // Early exit: If summary and score already exist, we're done
+      // Early exit: If summary and score already exist and we're not forcing regeneration, we're done
       // Check if processing is already complete to avoid unnecessary retries
       // This prevents the function from continuing to retry after completion
+      // BUT: If forceRegenerate is true, always regenerate regardless of existing summary
       const hasSummary = !!submission.source?.aiSummary;
       const hasScore = submission.ai?.score !== undefined;
       const isComplete = submission.source?.processingState === 'complete';
 
-      if (hasSummary && hasScore && isComplete) {
+      if (hasSummary && hasScore && isComplete && !args.forceRegenerate) {
         console.log(
           `[AI Search] Submission ${args.submissionId} already has summary and score - skipping (attempt ${args.attempt})`,
         );
-        return; // Already complete, don't reschedule
+        return; // Already complete, don't reschedule (unless forcing regeneration)
+      }
+
+      // If forcing regeneration, clear existing summary and score first
+      if (args.forceRegenerate && (hasSummary || hasScore)) {
+        console.log(
+          `[AI Search] Force regenerating summary for submission ${args.submissionId} - clearing existing summary and score`,
+        );
+        await ctx.runMutation(
+          (
+            internal.submissions as unknown as {
+              updateSubmissionSourceInternal: UpdateSubmissionSourceInternalRef;
+            }
+          ).updateSubmissionSourceInternal,
+          {
+            submissionId: args.submissionId,
+            aiSummary: undefined,
+            summarizedAt: undefined,
+            summaryGenerationStartedAt: undefined,
+            summaryGenerationCompletedAt: undefined,
+            processingState: 'indexing', // Reset to indexing state
+          },
+        );
+        await ctx.runMutation(
+          (
+            internal.submissions as unknown as {
+              updateSubmissionAIInternal: UpdateSubmissionAIInternalRef;
+            }
+          ).updateSubmissionAIInternal,
+          {
+            submissionId: args.submissionId,
+            summary: undefined,
+            score: undefined,
+            scoreGenerationStartedAt: undefined,
+            scoreGenerationCompletedAt: undefined,
+          },
+        );
       }
 
       // Also check if we have summary but are still in generating state
@@ -111,6 +150,7 @@ export const checkIndexingAndGenerateSummary = internalAction({
             {
               submissionId: args.submissionId,
               attempt: 1, // Start at attempt 1 after initial wait
+              forceRegenerate: args.forceRegenerate ?? false,
             },
           );
           return;
@@ -162,6 +202,7 @@ export const checkIndexingAndGenerateSummary = internalAction({
           {
             submissionId: args.submissionId,
             attempt: args.attempt + 1,
+            forceRegenerate: args.forceRegenerate ?? false,
           },
         );
         return;
@@ -399,6 +440,7 @@ export const checkIndexingAndGenerateSummary = internalAction({
             {
               submissionId: args.submissionId,
               attempt: args.attempt + 1,
+              forceRegenerate: args.forceRegenerate ?? false,
             },
           );
           return; // Exit early, will be called again by scheduler
@@ -436,57 +478,58 @@ export const checkIndexingAndGenerateSummary = internalAction({
       }
 
       // Files are indexed (or we've given up waiting) - proceed with summary generation
-      // Only generate summary if it doesn't already exist
+      // Generate AI Search summary (will replace early summary if one exists)
+      // The AI Search summary is more comprehensive as it analyzes all repository files
       let summary: string;
-      if (hasSummary && submission.source?.aiSummary) {
-        // Summary already exists, use it
-        summary = submission.source.aiSummary;
+      const hasEarlySummary = hasSummary && submission.source?.aiSummary;
+
+      if (hasEarlySummary) {
         console.log(
-          `[AI Search] Submission ${args.submissionId} already has summary - skipping generation`,
-        );
-      } else {
-        // Set processing state to generating and record summary generation start time
-        const summaryGenerationStartedAt = Date.now();
-        await ctx.runMutation(
-          (
-            internal.submissions as unknown as {
-              updateSubmissionSourceInternal: UpdateSubmissionSourceInternalRef;
-            }
-          ).updateSubmissionSourceInternal,
-          {
-            submissionId: args.submissionId,
-            processingState: 'generating',
-            summaryGenerationStartedAt,
-          },
-        );
-
-        summary = await generateSummaryOnceReady(
-          ctx,
-          args.submissionId,
-          r2PathPrefix,
-          aiSearchInstanceId,
-          accountId,
-          apiToken,
-          submission.title,
-        );
-
-        // Update submission with summary and record completion time
-        const summaryGenerationCompletedAt = Date.now();
-        await ctx.runMutation(
-          (
-            internal.submissions as unknown as {
-              updateSubmissionSourceInternal: UpdateSubmissionSourceInternalRef;
-            }
-          ).updateSubmissionSourceInternal,
-          {
-            submissionId: args.submissionId,
-            aiSummary: summary,
-            summarizedAt: summaryGenerationCompletedAt,
-            summaryGenerationCompletedAt,
-            processingState: 'generating', // Keep as generating while we generate the review
-          },
+          `[AI Search] Submission ${args.submissionId} has early summary - generating comprehensive AI Search summary to replace it`,
         );
       }
+
+      // Set processing state to generating and record summary generation start time
+      const summaryGenerationStartedAt = Date.now();
+      await ctx.runMutation(
+        (
+          internal.submissions as unknown as {
+            updateSubmissionSourceInternal: UpdateSubmissionSourceInternalRef;
+          }
+        ).updateSubmissionSourceInternal,
+        {
+          submissionId: args.submissionId,
+          processingState: 'generating',
+          summaryGenerationStartedAt,
+        },
+      );
+
+      summary = await generateSummaryOnceReady(
+        ctx,
+        args.submissionId,
+        r2PathPrefix,
+        aiSearchInstanceId,
+        accountId,
+        apiToken,
+        submission.title,
+      );
+
+      // Update submission with summary and record completion time
+      const summaryGenerationCompletedAt = Date.now();
+      await ctx.runMutation(
+        (
+          internal.submissions as unknown as {
+            updateSubmissionSourceInternal: UpdateSubmissionSourceInternalRef;
+          }
+        ).updateSubmissionSourceInternal,
+        {
+          submissionId: args.submissionId,
+          aiSummary: summary,
+          summarizedAt: summaryGenerationCompletedAt,
+          summaryGenerationCompletedAt,
+          processingState: 'generating', // Keep as generating while we generate the review
+        },
+      );
 
       // Automatically generate AI review (score) after summary is complete
       // Only generate score if it doesn't already exist
@@ -1047,12 +1090,395 @@ export const diagnoseAISearchPaths = internalAction({
 });
 
 /**
+ * Helper function to get R2 credentials
+ */
+function getR2Credentials(): {
+  r2BucketName: string;
+  r2AccessKeyId: string;
+  r2SecretAccessKey: string;
+  r2AccountId: string;
+} {
+  const r2BucketName = process.env.CLOUDFLARE_R2_BUCKET_NAME;
+  const r2AccessKeyId = process.env.CLOUDFLARE_R2_ACCESS_KEY_ID;
+  const r2SecretAccessKey = process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY;
+  const r2AccountId = process.env.CLOUDFLARE_ACCOUNT_ID;
+
+  if (!r2BucketName || !r2AccessKeyId || !r2SecretAccessKey || !r2AccountId) {
+    throw new Error('R2 credentials not configured');
+  }
+
+  return { r2BucketName, r2AccessKeyId, r2SecretAccessKey, r2AccountId };
+}
+
+/**
+ * Extract README content from R2 files
+ * Looks for README.md, README.txt, README, or similar files
+ */
+async function extractReadmeFromR2(
+  r2PathPrefix: string,
+): Promise<{ content: string; filename: string } | null> {
+  const r2Creds = getR2Credentials();
+
+  const s3Client = new S3Client({
+    region: 'auto',
+    endpoint: `https://${r2Creds.r2AccountId}.r2.cloudflarestorage.com`,
+    credentials: {
+      accessKeyId: r2Creds.r2AccessKeyId,
+      secretAccessKey: r2Creds.r2SecretAccessKey,
+    },
+  });
+
+  // List all files in the submission's R2 prefix
+  const listCommand = new ListObjectsV2Command({
+    Bucket: r2Creds.r2BucketName,
+    Prefix: r2PathPrefix,
+  });
+
+  const listResponse = await s3Client.send(listCommand);
+  const objects = listResponse.Contents || [];
+
+  // Look for README files (case-insensitive, various extensions)
+  // Prioritize root-level README, but also check subdirectories
+  const readmePatterns = [/^readme\.md$/i, /^readme\.txt$/i, /^readme$/i, /^readme\.markdown$/i];
+
+  // Sort objects to prioritize root-level README files
+  const sortedObjects = [...objects].sort((a, b) => {
+    if (!a.Key || !b.Key) return 0;
+    const aPath = a.Key.replace(r2PathPrefix, '');
+    const bPath = b.Key.replace(r2PathPrefix, '');
+    const aDepth = aPath.split('/').length;
+    const bDepth = bPath.split('/').length;
+    return aDepth - bDepth; // Prefer files with fewer path segments (closer to root)
+  });
+
+  for (const obj of sortedObjects) {
+    if (!obj.Key) continue;
+
+    // Extract filename from R2 key (remove prefix)
+    const relativePath = obj.Key.replace(r2PathPrefix, '');
+    const filename = relativePath.split('/').pop() || '';
+
+    // Check if this matches a README pattern
+    if (readmePatterns.some((pattern) => pattern.test(filename))) {
+      try {
+        // Download the README file
+        const getCommand = new GetObjectCommand({
+          Bucket: r2Creds.r2BucketName,
+          Key: obj.Key,
+        });
+
+        const getResponse = await s3Client.send(getCommand);
+        const content = await getResponse.Body?.transformToString();
+
+        if (content) {
+          return { content, filename };
+        }
+      } catch (error) {
+        console.warn(`Failed to read README file ${obj.Key}:`, error);
+        // Continue to next file
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Generate early summary using AI Gateway/Workers with README + screenshots
+ * This provides a fast summary before AI Search indexing completes
+ */
+async function generateEarlySummaryWithAI(
+  ctx: ActionCtx,
+  submissionId: Id<'submissions'>,
+  submissionTitle: string,
+  repoUrl: string,
+  r2PathPrefix: string | undefined,
+): Promise<string> {
+  // Import Cloudflare AI helper dynamically to avoid circular dependencies
+  // (generateEarlySummaryWithGateway is imported later when needed)
+
+  // Get submission to access screenshots and stored README
+  const submission = await ctx.runQuery(
+    (internal.submissions as unknown as { getSubmissionInternal: GetSubmissionInternalRef })
+      .getSubmissionInternal,
+    {
+      submissionId,
+    },
+  );
+
+  if (!submission) {
+    throw new Error('Submission not found');
+  }
+
+  // Use stored README if available (fetched from GitHub), otherwise try to extract from R2
+  let readmeContent: string | null = null;
+  let readmeFilename: string | null = null;
+
+  // Prefer stored README (fetched directly from GitHub)
+  if (submission.source?.readme) {
+    readmeContent = submission.source.readme;
+    readmeFilename = submission.source.readmeFilename || 'README.md';
+    console.log(
+      `[Early Summary] Using stored README (${readmeFilename}) for submission ${submissionId}`,
+    );
+  } else if (r2PathPrefix) {
+    // Fallback to extracting from R2 if stored README not available
+    try {
+      const readmeResult = await extractReadmeFromR2(r2PathPrefix);
+      if (readmeResult) {
+        readmeContent = readmeResult.content;
+        readmeFilename = readmeResult.filename;
+        console.log(
+          `[Early Summary] Extracted README from R2 (${readmeFilename}) for submission ${submissionId}`,
+        );
+      }
+    } catch (error) {
+      console.warn(
+        `[Early Summary] Failed to extract README from R2 for submission ${submissionId}:`,
+        error instanceof Error ? error.message : String(error),
+      );
+      // Continue without README
+    }
+  }
+
+  // Get screenshots
+  const screenshots = submission.screenshots || [];
+  const screenshotUrls = screenshots
+    .map((s) => s.url)
+    .filter((url): url is string => typeof url === 'string' && url.length > 0);
+
+  // Build prompt with README and screenshots
+  const repoName = repoUrl.match(/github\.com[:/]+([^/]+)\/([^/#?]+)/i)?.[2] || 'unknown';
+
+  let prompt = `You are an expert hackathon judge analyzing a submission. Generate a comprehensive summary of this project based on the available information.\n\n`;
+  prompt += `**Project Details:**\n`;
+  prompt += `- Title: ${submissionTitle}\n`;
+  prompt += `- Repository: ${repoUrl}\n`;
+  prompt += `- Repository Name: ${repoName}\n`;
+
+  if (readmeContent) {
+    prompt += `\n**GitHub README (${readmeFilename}):**\n\`\`\`\n${readmeContent.slice(0, 8000)}\n\`\`\`\n`;
+    // Limit README to 8000 chars to avoid token limits
+  } else {
+    prompt += `\n**Note:** No README file was found in the repository.\n`;
+  }
+
+  if (screenshotUrls.length > 0) {
+    prompt += `\n**Live Site Screenshots:**\n`;
+    prompt += `The project has ${screenshotUrls.length} screenshot(s) of the live site:\n`;
+    screenshotUrls.forEach((url, idx) => {
+      prompt += `${idx + 1}. ${url}\n`;
+    });
+    prompt += `\nThese screenshots show the actual user interface and functionality of the application.\n`;
+  } else {
+    prompt += `\n**Note:** No screenshots of the live site are available.\n`;
+  }
+
+  prompt += `\n**Your Task:**\n`;
+  prompt += `Generate a concise summary with these three fields as JSON:\n\n`;
+  prompt += `1. mainPurpose: Brief description (2-3 sentences max)\n`;
+  prompt += `2. keyTechnologiesAndFrameworks: Markdown bullet list (max 8 items, keep descriptions short)\n`;
+  prompt += `3. mainFeaturesAndFunctionality: Markdown bullet list of key features (max 10 items, keep descriptions short)\n\n`;
+  prompt += `Keep responses concise to fit within token limits. Be specific and reference README/screenshots.\n`;
+
+  try {
+    // Import the structured output helper
+    const { generateEarlySummaryWithGateway } = await import('../cloudflareAi');
+
+    // Generate structured summary using AI Gateway with Google AI Studio Gemini Flash Lite (ensures all sections are present)
+    // Uses Provider Keys configured in AI Gateway dashboard
+    const result = await generateEarlySummaryWithGateway(prompt, {
+      useGoogleAI: true,
+      geminiModel: 'models/gemini-flash-lite-latest',
+    });
+
+    // Format the structured output as markdown
+    const summary = `${result.summary.mainPurpose}\n\n**Main Features and Functionality:**\n\n${result.summary.mainFeaturesAndFunctionality}\n\n**Key Technologies and Frameworks:**\n\n${result.summary.keyTechnologiesAndFrameworks}`;
+
+    console.log(`[Early Summary] Generated structured summary with all three sections`);
+    console.log(`[Early Summary] Finish reason: ${result.finishReason}`);
+
+    return summary;
+  } catch (error) {
+    const errorMessage =
+      error instanceof Error ? error.message : 'Failed to generate summary with AI Gateway';
+
+    console.error(`[Early Summary] AI Gateway error for submission ${submissionId}:`, errorMessage);
+    console.error(`[Early Summary] Full error:`, error);
+
+    // Try fallback to text generation if structured output fails
+    try {
+      console.log(`[Early Summary] Attempting fallback to text generation...`);
+      const { generateWithGatewayHelper } = await import('../cloudflareAi');
+      const fallbackResult = await generateWithGatewayHelper(prompt, 'llama');
+
+      // Try to parse the text response as JSON or extract sections
+      const text = fallbackResult.response;
+
+      // Check if it's already in the right format
+      if (
+        text.includes('**Key Technologies and Frameworks:**') &&
+        text.includes('**Main Features and Functionality:**')
+      ) {
+        console.log(`[Early Summary] Fallback text generation produced valid format`);
+        // Strip "**Main Purpose:**" if present since we don't want that label
+        const cleanedText = text.replace(/^\*\*Main Purpose:\*\*\s*\n\n?/i, '');
+        return cleanedText;
+      }
+
+      // If not, return error message
+      throw new Error('Fallback text generation did not produce expected format');
+    } catch (fallbackError) {
+      console.error(`[Early Summary] Fallback also failed:`, fallbackError);
+
+      // Return a fallback summary with the three sections
+      return `Unable to generate summary due to error: ${errorMessage}. The full repository summary will be available once Cloudflare AI Search finishes indexing the repository files.\n\n**Main Features and Functionality:**\n\nInformation not available.\n\n**Key Technologies and Frameworks:**\n\nInformation not available.`;
+    }
+  }
+}
+
+/**
+ * Helper function to generate early summary (extracted so it can be called from both internal and public actions)
+ */
+async function generateEarlySummaryHelper(
+  ctx: ActionCtx,
+  args: { submissionId: Id<'submissions'>; forceRegenerate?: boolean },
+): Promise<{
+  success: boolean;
+  skipped?: boolean;
+  summary?: string;
+  error?: string;
+  reason?: string;
+}> {
+  const submission = await ctx.runQuery(
+    (internal.submissions as unknown as { getSubmissionInternal: GetSubmissionInternalRef })
+      .getSubmissionInternal,
+    {
+      submissionId: args.submissionId,
+    },
+  );
+
+  if (!submission) {
+    throw new Error('Submission not found');
+  }
+
+  // Check if summary already exists (skip only if not forcing regeneration)
+  if (submission.source?.aiSummary && !args.forceRegenerate) {
+    console.log(`[Early Summary] Submission ${args.submissionId} already has a summary - skipping`);
+    return { success: true, skipped: true };
+  }
+
+  // If forcing regeneration, clear existing summary first
+  if (args.forceRegenerate && submission.source?.aiSummary) {
+    console.log(
+      `[Early Summary] Force regenerating early summary for submission ${args.submissionId} - clearing existing summary`,
+    );
+    await ctx.runMutation(
+      (
+        internal.submissions as unknown as {
+          updateSubmissionSourceInternal: UpdateSubmissionSourceInternalRef;
+        }
+      ).updateSubmissionSourceInternal,
+      {
+        submissionId: args.submissionId,
+        aiSummary: undefined,
+        summarizedAt: undefined,
+        summaryGenerationStartedAt: undefined,
+        summaryGenerationCompletedAt: undefined,
+      },
+    );
+  }
+
+  // Check if we have at least README (stored or in R2) or screenshots to work with
+  const hasStoredReadme = !!submission.source?.readme;
+  const hasR2Files = !!submission.source?.r2Key;
+  const hasScreenshots = (submission.screenshots?.length ?? 0) > 0;
+
+  if (!hasStoredReadme && !hasR2Files && !hasScreenshots) {
+    console.log(
+      `[Early Summary] Submission ${args.submissionId} has no README or screenshots yet - skipping`,
+    );
+    return { success: false, reason: 'No README or screenshots available' };
+  }
+
+  try {
+    // Set processing state to generating
+    await ctx.runMutation(
+      (
+        internal.submissions as unknown as {
+          updateSubmissionSourceInternal: UpdateSubmissionSourceInternalRef;
+        }
+      ).updateSubmissionSourceInternal,
+      {
+        submissionId: args.submissionId,
+        processingState: 'generating',
+        summaryGenerationStartedAt: Date.now(),
+      },
+    );
+
+    // Generate early summary
+    const summary = await generateEarlySummaryWithAI(
+      ctx,
+      args.submissionId,
+      submission.title,
+      submission.repoUrl,
+      submission.source?.r2Key,
+    );
+
+    // Update submission with early summary
+    const summaryGenerationCompletedAt = Date.now();
+    await ctx.runMutation(
+      (
+        internal.submissions as unknown as {
+          updateSubmissionSourceInternal: UpdateSubmissionSourceInternalRef;
+        }
+      ).updateSubmissionSourceInternal,
+      {
+        submissionId: args.submissionId,
+        aiSummary: summary,
+        summarizedAt: summaryGenerationCompletedAt,
+        summaryGenerationCompletedAt,
+        processingState: 'indexing', // Back to indexing while waiting for AI Search
+      },
+    );
+
+    console.log(
+      `[Early Summary] Generated early summary for submission ${args.submissionId} using README + screenshots`,
+    );
+
+    return { success: true, summary };
+  } catch (error) {
+    const errorMessage =
+      error instanceof Error ? error.message : 'Failed to generate early summary';
+
+    console.error(`[Early Summary] Error for submission ${args.submissionId}:`, errorMessage);
+
+    // Don't throw - allow AI Search summary to be generated later
+    return { success: false, error: errorMessage };
+  }
+}
+
+/**
+ * Generate early summary using README + screenshots (before AI Search indexing completes)
+ * This provides immediate feedback while waiting for full repository indexing
+ */
+export const generateEarlySummary = internalAction({
+  args: {
+    submissionId: v.id('submissions'),
+    forceRegenerate: v.optional(v.boolean()), // If true, regenerate even if summary exists
+  },
+  handler: async (ctx, args) => {
+    return await generateEarlySummaryHelper(ctx, args);
+  },
+});
+
+/**
  * Helper function to generate repo summary (download/upload if needed, then schedule indexing check)
  * Extracted so it can be called from both generateRepoSummary and processSubmission
  */
 async function generateRepoSummaryHelper(
   ctx: ActionCtx,
-  args: { submissionId: Id<'submissions'> },
+  args: { submissionId: Id<'submissions'>; forceRegenerate?: boolean },
 ): Promise<{ scheduled: boolean }> {
   // Check if repo has been uploaded
   const submission = await ctx.runQuery(
@@ -1085,6 +1511,7 @@ async function generateRepoSummaryHelper(
     {
       submissionId: args.submissionId,
       attempt: 0,
+      forceRegenerate: args.forceRegenerate ?? false,
     },
   );
 
@@ -1092,9 +1519,27 @@ async function generateRepoSummaryHelper(
 }
 
 /**
- * Public action wrapper for generating repository summary
+ * Public action wrapper for generating early summary (README + screenshots)
+ * This provides fast summary generation without waiting for AI Search indexing
+ */
+export const generateEarlySummaryPublic = action({
+  args: {
+    submissionId: v.id('submissions'),
+    forceRegenerate: v.optional(v.boolean()), // If true, regenerate even if summary exists
+  },
+  handler: async (ctx, args) => {
+    return await generateEarlySummaryHelper(ctx, {
+      submissionId: args.submissionId,
+      forceRegenerate: args.forceRegenerate ?? false,
+    });
+  },
+});
+
+/**
+ * Public action wrapper for generating repository summary using AI Search
  * Handles download/upload if needed, then schedules the internal polling action to check indexing status
  * This combines download/upload and summary scheduling in one action to avoid cross-action calls
+ * Uses Cloudflare AI Search to analyze all repository files for comprehensive summary
  */
 export const generateRepoSummary = action({
   args: {
@@ -1102,33 +1547,9 @@ export const generateRepoSummary = action({
     forceRegenerate: v.optional(v.boolean()), // If true, regenerate even if summary exists
   },
   handler: async (ctx, args) => {
-    // If forceRegenerate is true, clear the existing summary first
-    if (args.forceRegenerate) {
-      const submission = await ctx.runQuery(
-        (internal.submissions as unknown as { getSubmissionInternal: GetSubmissionInternalRef })
-          .getSubmissionInternal,
-        {
-          submissionId: args.submissionId,
-        },
-      );
-
-      if (submission) {
-        // Clear the existing summary
-        await ctx.runMutation(
-          (
-            internal.submissions as unknown as {
-              updateSubmissionSourceInternal: UpdateSubmissionSourceInternalRef;
-            }
-          ).updateSubmissionSourceInternal,
-          {
-            submissionId: args.submissionId,
-            aiSummary: undefined, // Clear the summary
-            summarizedAt: undefined,
-          },
-        );
-      }
-    }
-
-    return await generateRepoSummaryHelper(ctx, { submissionId: args.submissionId });
+    return await generateRepoSummaryHelper(ctx, {
+      submissionId: args.submissionId,
+      forceRegenerate: args.forceRegenerate ?? false,
+    });
   },
 });

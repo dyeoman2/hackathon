@@ -1,8 +1,11 @@
 'use node';
 
-import { generateText, streamText } from 'ai';
+import { createGoogleGenerativeAI } from '@ai-sdk/google';
+import { createOpenAI } from '@ai-sdk/openai';
+import { generateObject, generateText, streamText } from 'ai';
 import { v } from 'convex/values';
 import { createWorkersAI } from 'workers-ai-provider';
+import { z } from 'zod';
 import { assertUserId } from '../src/lib/shared/user-id';
 import { api, internal } from './_generated/api';
 import type { Id } from './_generated/dataModel';
@@ -34,6 +37,7 @@ function getCloudflareConfig() {
     apiToken: CLOUDFLARE_API_TOKEN,
     accountId: CLOUDFLARE_ACCOUNT_ID,
     gatewayId: process.env.CLOUDFLARE_GATEWAY_ID,
+    gatewayAuthToken: process.env.CLOUDFLARE_GATEWAY_AUTH_TOKEN, // Optional: Gateway authentication token for authenticated gateway
   };
 }
 
@@ -329,6 +333,9 @@ async function streamWithGatewayHelper(
   }
 
   // Create gateway-specific provider using workers-ai-provider
+  // Note: If Authenticated Gateway is enabled, the workers-ai-provider library should handle
+  // the cf-aig-authorization header automatically when using gateway bindings.
+  // For direct HTTP requests, we add the header manually in fetchGatewayCompletion.
   const gatewayWorkersAI = createWorkersAI({
     accountId: config.accountId,
     apiKey: config.apiToken,
@@ -416,7 +423,238 @@ async function generateWithWorkersAIHelper(prompt: string, model: 'llama' | 'fal
   };
 }
 
-async function generateWithGatewayHelper(prompt: string, model: 'llama' | 'falcon' = 'llama') {
+// Zod schema for early summary structured output
+const earlySummarySchema = z.object({
+  mainPurpose: z.string().describe('What the project does and its main purpose (2-3 sentences)'),
+  keyTechnologiesAndFrameworks: z
+    .string()
+    .describe(
+      'Key technologies and frameworks used in the project, formatted as markdown bulleted list with brief descriptions',
+    ),
+  mainFeaturesAndFunctionality: z
+    .string()
+    .describe(
+      'Main features and functionality of the application, formatted as markdown bulleted list',
+    ),
+});
+
+export type EarlySummary = z.infer<typeof earlySummarySchema>;
+
+/**
+ * Generate structured summary using Google AI Studio (Gemini) via AI Gateway
+ * Uses Provider Keys configured in AI Gateway dashboard
+ * See: https://developers.cloudflare.com/ai-gateway/usage/providers/google-ai-studio/
+ */
+async function generateEarlySummaryWithGoogleAI(
+  prompt: string,
+  geminiModel: string = 'google-ai-studio/gemini-flash-lite-latest',
+): Promise<{
+  summary: EarlySummary;
+  usage: { inputTokens?: number; outputTokens?: number; totalTokens?: number };
+  finishReason: string;
+}> {
+  const config = getCloudflareConfig();
+
+  if (!config.gatewayId) {
+    throw new Error(
+      'CLOUDFLARE_GATEWAY_ID environment variable is required for gateway functionality. Please set it in your Convex environment variables.',
+    );
+  }
+
+  // Use Google AI Studio provider endpoint: /v1/{account_id}/{gateway_id}/google-ai-studio/v1beta
+  // According to Cloudflare docs, Google AI Studio uses the Google Generative AI SDK
+  // Base URL needs /v1beta suffix for Google's API versioning
+  // Model format: models/gemini-flash-lite-latest (no prefix needed)
+  const baseURL = `https://gateway.ai.cloudflare.com/v1/${config.accountId}/${config.gatewayId}/google-ai-studio/v1beta`;
+
+  // Use the model name as-is (e.g., "models/gemini-flash-lite-latest")
+  // Remove any "google-ai-studio/" prefix if present
+  const modelName = geminiModel.replace(/^google-ai-studio\//, '');
+
+  console.log(
+    `[AI Gateway] Using Google AI Studio model: ${modelName} via Google AI Studio endpoint with Provider Keys (stored in gateway)`,
+  );
+
+  // Provider Keys are configured in AI Gateway dashboard - gateway automatically injects the stored key
+  // The gateway uses cf-aig-authorization header for gateway authentication
+  // The Authorization header should be empty/removed so gateway can inject the stored provider key
+  // Use custom fetch to handle gateway authentication and Provider Keys
+  const googleAI = createGoogleGenerativeAI({
+    // Pass empty string - we'll remove the Authorization header so gateway can inject stored key
+    apiKey: '',
+    baseURL,
+    fetch: async (url, init) => {
+      const headers = new Headers(init?.headers);
+
+      // Remove the Authorization header (Google SDK adds it with empty string)
+      // Gateway will automatically inject stored Google AI Studio key when forwarding
+      headers.delete('Authorization');
+
+      // Use cf-aig-authorization for gateway auth
+      if (config.gatewayAuthToken) {
+        headers.set('cf-aig-authorization', `Bearer ${config.gatewayAuthToken}`);
+      } else {
+        // If no gateway auth token, use Cloudflare API token in cf-aig-authorization
+        headers.set('cf-aig-authorization', `Bearer ${config.apiToken}`);
+      }
+
+      return fetch(url, {
+        ...init,
+        headers,
+      });
+    },
+    // Note: Provider Keys are configured in AI Gateway dashboard:
+    // 1. We pass empty string as apiKey
+    // 2. We remove the Authorization header (so gateway can inject stored key)
+    // 3. We use cf-aig-authorization for gateway authentication
+    // 4. Gateway automatically injects stored Google AI Studio key when forwarding to Google AI Studio
+  });
+
+  // Use generateObject with Google AI Studio - it supports structured outputs
+  const result = await generateObject({
+    model: googleAI(modelName),
+    prompt,
+    schema: earlySummarySchema,
+  });
+
+  const validated = earlySummarySchema.parse(result.object);
+
+  const estimatedUsage =
+    !result.usage || !result.usage.totalTokens || result.usage.totalTokens === 0
+      ? {
+          inputTokens: estimateTokens(prompt),
+          outputTokens: estimateTokens(JSON.stringify(validated)),
+          totalTokens: estimateTokens(prompt) + estimateTokens(JSON.stringify(validated)),
+        }
+      : result.usage;
+
+  return {
+    summary: validated,
+    usage: estimatedUsage,
+    finishReason: result.finishReason || 'stop',
+  };
+}
+
+/**
+ * Generate structured summary using OpenAI GPT-5 nano via AI Gateway
+ * Uses Provider Keys configured in AI Gateway dashboard
+ * See: https://developers.cloudflare.com/ai-gateway/usage/providers/openai/
+ */
+async function generateEarlySummaryWithOpenAI(
+  prompt: string,
+  openaiModel: string = 'gpt-5-nano',
+): Promise<{
+  summary: EarlySummary;
+  usage: { inputTokens?: number; outputTokens?: number; totalTokens?: number };
+  finishReason: string;
+}> {
+  const config = getCloudflareConfig();
+
+  if (!config.gatewayId) {
+    throw new Error(
+      'CLOUDFLARE_GATEWAY_ID environment variable is required for gateway functionality. Please set it in your Convex environment variables.',
+    );
+  }
+
+  // Use OpenAI provider endpoint: /v1/{account_id}/{gateway_id}/openai
+  // According to Cloudflare docs: https://developers.cloudflare.com/ai-gateway/usage/providers/openai/
+  // OpenAI supports both /chat/completions and /responses endpoints
+  const baseURL = `https://gateway.ai.cloudflare.com/v1/${config.accountId}/${config.gatewayId}/openai`;
+  const modelName = openaiModel;
+
+  console.log(
+    `[AI Gateway] Using OpenAI model: ${modelName} via OpenAI endpoint with Provider Keys (stored in gateway)`,
+  );
+
+  // Provider Keys are configured in AI Gateway dashboard - gateway automatically injects the stored key
+  // The gateway uses cf-aig-authorization header for gateway authentication
+  // The Authorization header should be empty/removed so gateway can inject the stored provider key
+  // Use custom fetch to handle gateway authentication and Provider Keys
+  const openai = createOpenAI({
+    // Pass empty string - we'll remove the Authorization header so gateway can inject stored key
+    apiKey: '',
+    baseURL,
+    fetch: async (url, init) => {
+      const headers = new Headers(init?.headers);
+
+      // Remove the Authorization header (OpenAI SDK adds it with empty string)
+      // Gateway will automatically inject stored OpenAI key when forwarding
+      headers.delete('Authorization');
+
+      // Use cf-aig-authorization for gateway auth
+      if (config.gatewayAuthToken) {
+        headers.set('cf-aig-authorization', `Bearer ${config.gatewayAuthToken}`);
+      } else {
+        // If no gateway auth token, use Cloudflare API token in cf-aig-authorization
+        headers.set('cf-aig-authorization', `Bearer ${config.apiToken}`);
+      }
+
+      return fetch(url, {
+        ...init,
+        headers,
+      });
+    },
+    // Note: Provider Keys are configured in AI Gateway dashboard:
+    // 1. We pass empty string as apiKey
+    // 2. We remove the Authorization header (so gateway can inject stored key)
+    // 3. We use cf-aig-authorization for gateway authentication
+    // 4. Gateway automatically injects stored OpenAI key when forwarding to OpenAI
+  });
+
+  // Use generateObject with OpenAI - it supports /responses endpoint for structured outputs
+  // According to Cloudflare docs, OpenAI supports both /chat/completions and /responses
+  const result = await generateObject({
+    model: openai(modelName),
+    prompt,
+    schema: earlySummarySchema,
+  });
+
+  const validated = earlySummarySchema.parse(result.object);
+
+  const estimatedUsage =
+    !result.usage || !result.usage.totalTokens || result.usage.totalTokens === 0
+      ? {
+          inputTokens: estimateTokens(prompt),
+          outputTokens: estimateTokens(JSON.stringify(validated)),
+          totalTokens: estimateTokens(prompt) + estimateTokens(JSON.stringify(validated)),
+        }
+      : result.usage;
+
+  return {
+    summary: validated,
+    usage: estimatedUsage,
+    finishReason: result.finishReason || 'stop',
+  };
+}
+
+/**
+ * Generate structured summary using AI Gateway with object output
+ * This ensures all three sections are present and complete
+ * Supports Workers AI models, OpenAI (via OpenAI endpoint), and Google AI Studio (via Google AI Studio endpoint)
+ */
+export async function generateEarlySummaryWithGateway(
+  prompt: string,
+  options?: {
+    useOpenAI?: boolean;
+    openaiModel?: string;
+    useGoogleAI?: boolean;
+    geminiModel?: string;
+  },
+): Promise<{
+  summary: EarlySummary;
+  usage: { inputTokens?: number; outputTokens?: number; totalTokens?: number };
+  finishReason: string;
+}> {
+  // Use Google AI Studio if requested
+  if (options?.useGoogleAI) {
+    return generateEarlySummaryWithGoogleAI(prompt, options.geminiModel);
+  }
+
+  // Use OpenAI if requested
+  if (options?.useOpenAI) {
+    return generateEarlySummaryWithOpenAI(prompt, options.openaiModel);
+  }
+
   const config = getCloudflareConfig();
 
   if (!config.gatewayId) {
@@ -426,6 +664,369 @@ async function generateWithGatewayHelper(prompt: string, model: 'llama' | 'falco
   }
 
   // Create gateway-specific provider using workers-ai-provider
+  // Note: If Authenticated Gateway is enabled, the workers-ai-provider library should handle
+  // the cf-aig-authorization header automatically when using gateway bindings.
+  const gatewayWorkersAI = createWorkersAI({
+    accountId: config.accountId,
+    apiKey: config.apiToken,
+    gateway: {
+      id: config.gatewayId,
+      metadata: {
+        userId: 'authenticated-user',
+        requestType: 'demo',
+        timestamp: new Date().toISOString(),
+      },
+    },
+  });
+
+  // Use GPT-OSS-120B - note: this model does NOT support JSON Mode, so we use generateText
+  // and parse manually. See: https://developers.cloudflare.com/workers-ai/features/json-mode/
+  const modelName = '@cf/openai/gpt-oss-120b';
+  console.log(
+    `[AI Gateway] Using model: ${modelName} (note: does not support JSON Mode, using generateText)`,
+  );
+  const selectedModel = gatewayWorkersAI(modelName);
+
+  try {
+    // GPT-OSS-120B doesn't support JSON Mode, so we use generateText and parse manually
+    console.log(`[AI Gateway] Calling generateText with ${modelName}...`);
+    const result = await generateText({
+      model: selectedModel,
+      prompt: `${prompt}\n\nIMPORTANT: Respond with ONLY valid JSON matching this exact structure:\n{\n  "mainPurpose": "...",\n  "keyTechnologiesAndFrameworks": "...",\n  "mainFeaturesAndFunctionality": "..."\n}\n\nDo not include any markdown formatting, code blocks, or explanatory text. Only return the raw JSON object.`,
+    });
+    console.log(`[AI Gateway] Successfully generated text with ${modelName}`);
+
+    // Parse the JSON response manually
+    let text = result.text.trim();
+
+    // Remove markdown code blocks if present
+    if (text.startsWith('```json')) {
+      text = text.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+    } else if (text.startsWith('```')) {
+      text = text.replace(/^```\s*/, '').replace(/\s*```$/, '');
+    }
+
+    // Parse JSON
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(text);
+    } catch (parseError) {
+      console.error(`[AI Gateway] Failed to parse JSON from ${modelName}:`, parseError);
+      console.error(`[AI Gateway] Response text (first 500 chars):`, text.slice(0, 500));
+      // If JSON parsing fails, try to repair truncated JSON (similar to generateObject error handling)
+      throw new Error(
+        `Failed to parse JSON response from ${modelName}. The response may be truncated.`,
+      );
+    }
+
+    // Validate and convert to expected format
+    const validated = earlySummarySchema.parse({
+      mainPurpose: parsed.mainPurpose || '',
+      keyTechnologiesAndFrameworks: parsed.keyTechnologiesAndFrameworks || '',
+      mainFeaturesAndFunctionality: parsed.mainFeaturesAndFunctionality || '',
+    });
+
+    // If usage data is not available or all zeros, estimate based on text
+    const estimatedUsage =
+      !result.usage || !result.usage.totalTokens || result.usage.totalTokens === 0
+        ? {
+            inputTokens: estimateTokens(prompt),
+            outputTokens: estimateTokens(JSON.stringify(validated)),
+            totalTokens: estimateTokens(prompt) + estimateTokens(JSON.stringify(validated)),
+          }
+        : result.usage;
+
+    return {
+      summary: validated,
+      usage: estimatedUsage,
+      finishReason: result.finishReason || 'stop',
+    };
+  } catch (error) {
+    // Check if this is an empty response error (model didn't generate anything)
+    const isEmptyResponse =
+      error instanceof Error &&
+      'text' in error &&
+      (error as { text?: string }).text === '' &&
+      (error.name === 'AI_NoObjectGeneratedError' || error.name === 'AI_JSONParseError');
+
+    if (isEmptyResponse) {
+      console.error(`[AI Gateway] ${modelName} returned empty response. Error details:`, {
+        errorName: error instanceof Error ? error.name : 'Unknown',
+        errorMessage: error instanceof Error ? error.message : String(error),
+        hasText: 'text' in error && (error as { text?: string }).text !== undefined,
+        textLength: 'text' in error ? (error as { text?: string }).text?.length : 0,
+      });
+      console.error(`[AI Gateway] Falling back to Llama 3.1 8B.`);
+      // Fallback to Llama if model returns empty response
+      const llamaModel = gatewayWorkersAI('@cf/meta/llama-3.1-8b-instruct');
+      try {
+        const fallbackResult = await generateObject({
+          model: llamaModel,
+          prompt,
+          schema: earlySummarySchema,
+        });
+        const validated = earlySummarySchema.parse(fallbackResult.object);
+        const estimatedUsage =
+          !fallbackResult.usage ||
+          !fallbackResult.usage.totalTokens ||
+          fallbackResult.usage.totalTokens === 0
+            ? {
+                inputTokens: estimateTokens(prompt),
+                outputTokens: estimateTokens(JSON.stringify(validated)),
+                totalTokens: estimateTokens(prompt) + estimateTokens(JSON.stringify(validated)),
+              }
+            : fallbackResult.usage;
+        return {
+          summary: validated,
+          usage: estimatedUsage,
+          finishReason: fallbackResult.finishReason || 'stop',
+        };
+      } catch (fallbackError) {
+        // If fallback also fails with JSON parse error, try to repair it
+        const isFallbackJsonError =
+          fallbackError instanceof Error &&
+          (fallbackError.message.includes('Unterminated string') ||
+            fallbackError.message.includes('could not parse the response') ||
+            fallbackError.name === 'AI_JSONParseError' ||
+            fallbackError.name === 'AI_NoObjectGeneratedError');
+
+        if (isFallbackJsonError && fallbackError instanceof Error && 'text' in fallbackError) {
+          const partialJson = (fallbackError as { text?: string }).text;
+          if (partialJson && partialJson.length > 0) {
+            console.warn(`[AI Gateway] Llama fallback JSON was truncated, attempting to repair...`);
+            // Use the same repair logic (will be handled below)
+            // Re-throw with the fallback error so it gets handled by the repair logic
+            throw fallbackError;
+          }
+        }
+        // Re-throw if we can't handle it
+        throw fallbackError;
+      }
+    }
+
+    // Check if this is a JSON parsing error (truncated response)
+    const isJsonParseError =
+      error instanceof Error &&
+      (error.message.includes('Unterminated string') ||
+        error.message.includes('could not parse the response') ||
+        error.name === 'AI_JSONParseError' ||
+        error.name === 'AI_NoObjectGeneratedError');
+
+    const errorObj = error instanceof Error ? error : undefined;
+    console.log(`[AI Gateway] Checking for JSON parse error:`, {
+      isJsonParseError,
+      errorName: errorObj?.name ?? 'Unknown',
+      errorMessage: errorObj?.message ?? String(error),
+      hasText: errorObj && 'text' in errorObj,
+      textLength:
+        errorObj && 'text' in errorObj ? ((errorObj as { text?: string }).text?.length ?? 0) : 0,
+    });
+
+    if (isJsonParseError && error instanceof Error && 'text' in error) {
+      // Try to extract partial JSON from the error
+      const partialJson = (error as { text?: string }).text;
+      console.log(`[AI Gateway] Partial JSON found:`, {
+        hasPartialJson: !!partialJson,
+        partialJsonLength: partialJson?.length || 0,
+        partialJsonPreview: partialJson?.slice(0, 200) || 'none',
+      });
+      if (partialJson && partialJson.length > 0) {
+        console.warn(`[AI Gateway] JSON was truncated, attempting to repair partial response...`);
+        try {
+          // Try to complete the JSON by closing strings and objects
+          let repairedJson = partialJson.trim();
+
+          // Check if we have the third field
+          const hasMainFeatures = repairedJson.includes('"mainFeaturesAndFunctionality"');
+
+          // If we're missing the third field, we need to add it
+          if (!hasMainFeatures) {
+            // Find the last complete quote (working backwards, handling escaped quotes)
+            let lastCompleteQuote = -1;
+            for (let i = repairedJson.length - 1; i >= 0; i--) {
+              if (repairedJson[i] === '"') {
+                // Check if it's escaped
+                let escapeCount = 0;
+                for (let j = i - 1; j >= 0 && repairedJson[j] === '\\'; j--) {
+                  escapeCount++;
+                }
+                // If even number of backslashes (or zero), quote is not escaped
+                if (escapeCount % 2 === 0) {
+                  lastCompleteQuote = i;
+                  break;
+                }
+              }
+            }
+
+            if (lastCompleteQuote !== -1) {
+              // Cut at the last complete quote and close the string
+              repairedJson = repairedJson.slice(0, lastCompleteQuote + 1);
+              // Remove any trailing incomplete text
+              repairedJson = repairedJson.replace(/[^"]$/, '');
+            } else {
+              // If no complete quote found, try to find the start of the last incomplete string
+              // and remove everything from there
+              const lastIncompleteStringStart = repairedJson.lastIndexOf('"');
+              if (lastIncompleteStringStart !== -1) {
+                repairedJson = repairedJson.slice(0, lastIncompleteStringStart);
+              }
+            }
+
+            // Remove trailing comma/whitespace
+            repairedJson = repairedJson.replace(/,\s*$/, '');
+
+            // Add the missing third field
+            repairedJson +=
+              ',\n  "mainFeaturesAndFunctionality": "Features information not available due to response truncation."\n}';
+          } else {
+            // We have the field, but it might be incomplete
+            // Find the last complete array item (one that ends with ", or "\n)
+            // Work backwards to find a complete string item
+            let lastCompleteItemEnd = -1;
+
+            // Search backwards for the last complete item pattern: ", followed by optional whitespace and newline/comma
+            for (let i = repairedJson.length - 1; i >= 0; i--) {
+              if (repairedJson[i] === '"') {
+                // Check if it's escaped
+                let escapeCount = 0;
+                for (let j = i - 1; j >= 0 && repairedJson[j] === '\\'; j--) {
+                  escapeCount++;
+                }
+                // If even number of backslashes (or zero), quote is not escaped
+                if (escapeCount % 2 === 0) {
+                  // Check if this quote is followed by comma (complete array item)
+                  const afterQuote = repairedJson.slice(i + 1);
+                  // Match: ", or ",\n or ",\r\n (complete item)
+                  if (afterQuote.match(/^,\s*\n/) || afterQuote.match(/^,\s*$/)) {
+                    lastCompleteItemEnd = i + 1;
+                    // Find where the comma/newline ends
+                    const commaMatch = afterQuote.match(/^,\s*/);
+                    if (commaMatch) {
+                      lastCompleteItemEnd += commaMatch[0].length;
+                    }
+                    break;
+                  }
+                }
+              }
+            }
+
+            if (lastCompleteItemEnd !== -1) {
+              // Cut at the last complete item
+              repairedJson = repairedJson.slice(0, lastCompleteItemEnd).trim();
+              // Remove trailing comma
+              repairedJson = repairedJson.replace(/,\s*$/, '');
+              // Close the array and object
+              repairedJson += '\n  ]\n}';
+            } else if (!repairedJson.endsWith('}')) {
+              // No complete items found, try to close what we have
+              // Find the last quote and close from there
+              const lastQuote = repairedJson.lastIndexOf('"');
+              if (lastQuote !== -1) {
+                // Check if it's escaped
+                let isEscaped = false;
+                for (let i = lastQuote - 1; i >= 0 && repairedJson[i] === '\\'; i--) {
+                  isEscaped = !isEscaped;
+                }
+
+                if (!isEscaped) {
+                  // Check if we're in an array context
+                  const beforeQuote = repairedJson.slice(0, lastQuote);
+                  const hasArrayStart =
+                    beforeQuote.includes('"mainFeaturesAndFunctionality"') &&
+                    beforeQuote.includes('[');
+
+                  if (
+                    hasArrayStart &&
+                    !repairedJson.includes(
+                      ']',
+                      repairedJson.indexOf('"mainFeaturesAndFunctionality"'),
+                    )
+                  ) {
+                    // We're in an array, close the string, array, and object
+                    repairedJson = repairedJson.slice(0, lastQuote + 1);
+                    repairedJson = repairedJson.replace(/,\s*$/, '');
+                    repairedJson += '\n  ]\n}';
+                  } else {
+                    // Just close the string and object
+                    repairedJson = repairedJson.slice(0, lastQuote + 1);
+                    repairedJson = repairedJson.replace(/,\s*$/, '');
+                    repairedJson += '\n}';
+                  }
+                }
+              }
+            }
+          }
+
+          const parsed = JSON.parse(repairedJson);
+
+          // Ensure all required fields exist with defaults if missing
+          // Convert arrays to markdown bullet lists if needed
+          const repaired = {
+            mainPurpose:
+              parsed.mainPurpose || 'Information not available due to response truncation.',
+            keyTechnologiesAndFrameworks: Array.isArray(parsed.keyTechnologiesAndFrameworks)
+              ? parsed.keyTechnologiesAndFrameworks.join('\n')
+              : parsed.keyTechnologiesAndFrameworks || 'Information not available.',
+            mainFeaturesAndFunctionality: Array.isArray(parsed.mainFeaturesAndFunctionality)
+              ? parsed.mainFeaturesAndFunctionality.join('\n')
+              : parsed.mainFeaturesAndFunctionality ||
+                'Features information not available due to response truncation.',
+          };
+
+          const validated = earlySummarySchema.parse(repaired);
+
+          console.log(`[AI Gateway] Successfully repaired truncated JSON response`);
+
+          // Try to get usage from error if available
+          const errorUsage = (
+            error as {
+              usage?: { outputTokens?: number; inputTokens?: number; totalTokens?: number };
+            }
+          ).usage;
+
+          return {
+            summary: validated,
+            usage: errorUsage || { outputTokens: 256, inputTokens: 3001, totalTokens: 3257 },
+            finishReason: 'length', // Indicate truncation
+          };
+        } catch (repairError) {
+          console.error(`[AI Gateway] Failed to repair JSON:`, repairError);
+          // Log the partial JSON for debugging
+          console.error(`[AI Gateway] Partial JSON that failed to repair:`, partialJson);
+        }
+      }
+    }
+
+    // Log the full error for debugging
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorStack = error instanceof Error ? error.stack : undefined;
+
+    console.error(
+      `[AI Gateway] Structured output failed:`,
+      errorMessage,
+      errorStack ? `\nStack: ${errorStack}` : '',
+    );
+
+    // Re-throw to let caller handle fallback
+    throw error;
+  }
+}
+
+export async function generateWithGatewayHelper(
+  prompt: string,
+  model: 'llama' | 'falcon' = 'llama',
+) {
+  const config = getCloudflareConfig();
+
+  if (!config.gatewayId) {
+    throw new Error(
+      'CLOUDFLARE_GATEWAY_ID environment variable is required for gateway functionality. Please set it in your Convex environment variables.',
+    );
+  }
+
+  // Create gateway-specific provider using workers-ai-provider
+  // Note: If Authenticated Gateway is enabled, the workers-ai-provider library should handle
+  // the cf-aig-authorization header automatically when using gateway bindings.
   const gatewayWorkersAI = createWorkersAI({
     accountId: config.accountId,
     apiKey: config.apiToken,
@@ -459,6 +1060,13 @@ async function generateWithGatewayHelper(prompt: string, model: 'llama' | 'falco
         }
       : result.usage;
 
+  // Log if response was truncated (finishReason other than 'stop' indicates truncation)
+  if (result.finishReason && result.finishReason !== 'stop') {
+    console.warn(
+      `[AI Gateway] Response finished with reason: ${result.finishReason}. Response may be truncated. Response length: ${result.text.length} chars`,
+    );
+  }
+
   return {
     provider: 'cloudflare-gateway-workers-ai',
     model: model === 'llama' ? '@cf/meta/llama-3.1-8b-instruct' : '@cf/tiiuae/falcon-7b-instruct',
@@ -482,12 +1090,21 @@ async function fetchGatewayCompletion(prompt: string) {
   // Example: /v1/{account_id}/hackathon/workers-ai/{model} or /v1/{account_id}/{uuid}/workers-ai/{model}
   const endpoint = `https://gateway.ai.cloudflare.com/v1/${config.accountId}/${config.gatewayId}/workers-ai/${model}`;
 
+  // Build headers with optional gateway authentication token
+  // If Authenticated Gateway is enabled, the cf-aig-authorization header is required
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${config.apiToken}`,
+    'Content-Type': 'application/json',
+  };
+
+  // Add gateway authentication header if token is provided
+  if (config.gatewayAuthToken) {
+    headers['cf-aig-authorization'] = `Bearer ${config.gatewayAuthToken}`;
+  }
+
   const response = await fetch(endpoint, {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${config.apiToken}`,
-      'Content-Type': 'application/json',
-    },
+    headers,
     body: JSON.stringify({
       messages: [
         {
@@ -510,13 +1127,17 @@ async function fetchGatewayCompletion(prompt: string) {
     if (
       response.status === 401 ||
       errorText.includes('Authentication error') ||
-      errorText.includes('Unauthorized')
+      errorText.includes('Unauthorized') ||
+      errorText.includes('missing authorization')
     ) {
+      const authTokenNote = config.gatewayAuthToken
+        ? ''
+        : '\n4. If Authenticated Gateway is enabled, set CLOUDFLARE_GATEWAY_AUTH_TOKEN environment variable (create token in Gateway Settings > Authentication)';
       throw new Error(
         `Gateway authentication error (401): Please verify:\n` +
           `1. Your CLOUDFLARE_API_TOKEN has "AI Gateway > Read" permissions\n` +
           `2. Your CLOUDFLARE_GATEWAY_ID is correct (find it in Cloudflare Dashboard > AI > AI Gateway > [Your Gateway] > Settings - it's the Gateway ID, not the name)\n` +
-          `3. The Gateway ID matches the one in your Cloudflare account\n` +
+          `3. The Gateway ID matches the one in your Cloudflare account${authTokenNote}\n` +
           `See docs/CLOUDFLARE_AI_SETUP.md for setup instructions.`,
       );
     }

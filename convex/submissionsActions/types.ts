@@ -27,6 +27,9 @@ export type GetSubmissionInternalRef = FunctionReference<
       summarizedAt?: number;
       summaryGenerationStartedAt?: number;
       summaryGenerationCompletedAt?: number;
+      readme?: string;
+      readmeFilename?: string;
+      readmeFetchedAt?: number;
       processingState?: 'downloading' | 'uploading' | 'indexing' | 'generating' | 'complete';
     };
     ai?: {
@@ -63,6 +66,11 @@ export type UpdateSubmissionSourceInternalRef = FunctionReference<
     summarizedAt?: number;
     summaryGenerationStartedAt?: number;
     summaryGenerationCompletedAt?: number;
+    screenshotCaptureStartedAt?: number;
+    screenshotCaptureCompletedAt?: number;
+    readme?: string;
+    readmeFilename?: string;
+    readmeFetchedAt?: number;
     processingState?: 'downloading' | 'uploading' | 'indexing' | 'generating' | 'complete';
   },
   { success: boolean }
@@ -71,8 +79,15 @@ export type UpdateSubmissionSourceInternalRef = FunctionReference<
 export type CheckIndexingAndGenerateSummaryRef = FunctionReference<
   'action',
   'internal',
-  { submissionId: Id<'submissions'>; attempt: number },
+  { submissionId: Id<'submissions'>; attempt: number; forceRegenerate?: boolean },
   void
+>;
+
+export type GenerateEarlySummaryRef = FunctionReference<
+  'action',
+  'internal',
+  { submissionId: Id<'submissions'>; forceRegenerate?: boolean },
+  { success: boolean; skipped?: boolean; summary?: string; error?: string; reason?: string }
 >;
 
 export type GetHackathonInternalRef = FunctionReference<

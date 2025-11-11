@@ -22,6 +22,7 @@ import type * as firecrawl from "../firecrawl.js";
 import type * as hackathons from "../hackathons.js";
 import type * as health from "../health.js";
 import type * as http from "../http.js";
+import type * as lib_cloudflareAiHelpers from "../lib/cloudflareAiHelpers.js";
 import type * as submissions from "../submissions.js";
 import type * as submissionsActions_aiSummary from "../submissionsActions/aiSummary.js";
 import type * as submissionsActions_index from "../submissionsActions/index.js";
@@ -52,6 +53,7 @@ declare const fullApi: ApiFromModules<{
   hackathons: typeof hackathons;
   health: typeof health;
   http: typeof http;
+  "lib/cloudflareAiHelpers": typeof lib_cloudflareAiHelpers;
   submissions: typeof submissions;
   "submissionsActions/aiSummary": typeof submissionsActions_aiSummary;
   "submissionsActions/index": typeof submissionsActions_index;

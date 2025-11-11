@@ -152,6 +152,9 @@ export default defineSchema({
         summaryGenerationCompletedAt: v.optional(v.number()),
         screenshotCaptureStartedAt: v.optional(v.number()),
         screenshotCaptureCompletedAt: v.optional(v.number()),
+        readme: v.optional(v.string()),
+        readmeFilename: v.optional(v.string()),
+        readmeFetchedAt: v.optional(v.number()),
         processingState: v.optional(
           v.union(
             v.literal('downloading'),

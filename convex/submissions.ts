@@ -152,6 +152,17 @@ export const processSubmission = internalAction({
   },
   handler: async (ctx, args) => {
     try {
+      // Fetch README first (runs in parallel, doesn't block)
+      try {
+        await ctx.scheduler.runAfter(0, internal.submissionsActions.repoProcessing.fetchReadmeFromGitHub, {
+          submissionId: args.submissionId,
+        });
+      } catch (error) {
+        console.warn(`Failed to schedule README fetch:`, error);
+        // Don't fail - README fetch is optional
+      }
+
+      // Trigger repo processing and summary generation
       const generateRepoSummaryAction = (
         api as unknown as {
           submissionsActions: {
@@ -446,6 +457,9 @@ export const updateSubmissionSourceInternal = internalMutation({
     summaryGenerationCompletedAt: v.optional(v.number()),
     screenshotCaptureStartedAt: v.optional(v.number()),
     screenshotCaptureCompletedAt: v.optional(v.number()),
+    readme: v.optional(v.string()),
+    readmeFilename: v.optional(v.string()),
+    readmeFetchedAt: v.optional(v.number()),
     processingState: v.optional(
       v.union(
         v.literal('downloading'),
@@ -482,6 +496,9 @@ export const updateSubmissionSourceInternal = internalMutation({
         args.screenshotCaptureStartedAt ?? submission.source?.screenshotCaptureStartedAt,
       screenshotCaptureCompletedAt:
         args.screenshotCaptureCompletedAt ?? submission.source?.screenshotCaptureCompletedAt,
+      readme: args.readme ?? submission.source?.readme,
+      readmeFilename: args.readmeFilename ?? submission.source?.readmeFilename,
+      readmeFetchedAt: args.readmeFetchedAt ?? submission.source?.readmeFetchedAt,
       processingState: args.processingState ?? submission.source?.processingState,
     };
 

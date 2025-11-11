@@ -52,6 +52,8 @@
     "analyze": "pnpm build && npx vite-bundle-analyzer dist/client/assets/*.js"
   },
   "dependencies": {
+    "@ai-sdk/google": "^2.0.31",
+    "@ai-sdk/openai": "^2.0.65",
     "@aws-sdk/client-s3": "^3.928.0",
     "@aws-sdk/s3-request-presigner": "^3.928.0",
     "@convex-dev/better-auth": "^0.9.7",
@@ -91,6 +93,8 @@
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-icons": "^5.5.0",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
     "tailwind-merge": "^3.4.0",
     "tailwindcss-animate": "^1.0.7",
     "tsx": "^4.20.6",
@@ -100,6 +104,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.4",
+    "@tailwindcss/typography": "^0.5.19",
     "@tailwindcss/vite": "^4.1.17",
     "@types/adm-zip": "^0.5.7",
     "@types/node": "^24.10.0",
