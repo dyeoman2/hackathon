@@ -77,14 +77,14 @@ export type UpdateSubmissionSourceInternalRef = FunctionReference<
   { success: boolean }
 >;
 
-export type CheckIndexingAndGenerateSummaryRef = FunctionReference<
+export type CheckCloudflareIndexingRef = FunctionReference<
   'action',
   'internal',
   { submissionId: Id<'submissions'>; attempt: number; forceRegenerate?: boolean },
   void
 >;
 
-export type GenerateEarlySummaryRef = FunctionReference<
+export type GenerateSummaryRef = FunctionReference<
   'action',
   'internal',
   { submissionId: Id<'submissions'>; forceRegenerate?: boolean },

@@ -1,9 +1,9 @@
 'use node';
 
 export {
-  checkIndexingAndGenerateSummary,
+  checkCloudflareIndexing,
   diagnoseAISearchPaths,
-  generateEarlySummaryPublic,
+  generateSummaryPublic,
   generateRepoSummary,
 } from './aiSummary';
 export {
@@ -18,7 +18,7 @@ export {
 } from './repoProcessing';
 export { captureScreenshot, deleteScreenshot, deleteScreenshotFromR2 } from './screenshot';
 export type {
-  CheckIndexingAndGenerateSummaryRef,
+  CheckCloudflareIndexingRef,
   GetSubmissionInternalRef,
   UpdateSubmissionSourceInternalRef,
 } from './types';

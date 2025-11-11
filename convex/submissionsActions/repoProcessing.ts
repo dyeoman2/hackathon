@@ -11,7 +11,8 @@ import type { ActionCtx } from '../_generated/server';
 import { internalAction } from '../_generated/server';
 import { guarded } from '../authz/guardFactory';
 import type {
-  GenerateEarlySummaryRef,
+  CheckCloudflareIndexingRef,
+  GenerateSummaryRef,
   GetSubmissionInternalRef,
   UpdateSubmissionSourceInternalRef,
 } from './types';
@@ -135,6 +136,7 @@ export async function checkAISearchJobStatus(
   const jobStatusUrl = `https://api.cloudflare.com/client/v4/accounts/${accountId}/autorag/rags/${aiSearchInstanceId}/jobs/${jobId}`;
 
   try {
+    console.log(`[AI Search] Fetching job status from: ${jobStatusUrl}`);
     const response = await fetch(jobStatusUrl, {
       method: 'GET',
       headers: {
@@ -146,7 +148,7 @@ export async function checkAISearchJobStatus(
     if (!response.ok) {
       if (response.status === 404) {
         // Job not found - might have been cleaned up or never existed
-        console.warn(`[AI Search] Job ${jobId} not found (404)`);
+        console.warn(`[AI Search] Job ${jobId} not found (404) - may have been cleaned up`);
         return null;
       }
       const errorText = await response.text();
@@ -155,9 +157,19 @@ export async function checkAISearchJobStatus(
     }
 
     const jobData = await response.json();
+    console.log(`[AI Search] Job status API response:`, JSON.stringify(jobData, null, 2));
     // Response format: Envelope<{ id, source, end_reason, ended_at, last_seen_at, started_at }>
     // Reference: https://developers.cloudflare.com/api/resources/autorag/methods/sync/
     const job = jobData.result || jobData;
+
+    console.log(`[AI Search] Parsed job data:`, {
+      id: job.id,
+      source: job.source,
+      end_reason: job.end_reason,
+      ended_at: job.ended_at,
+      started_at: job.started_at,
+      last_seen_at: job.last_seen_at,
+    });
 
     // Determine job status based on API response fields:
     // - If ended_at exists, job is finished (check end_reason for success/failure)
@@ -167,20 +179,29 @@ export async function checkAISearchJobStatus(
       // Job has ended - check end_reason to determine if completed or failed
       // end_reason might be "completed", "success", "failed", "error", etc.
       const endReason = (job.end_reason || '').toLowerCase();
+      console.log(
+        `[AI Search] Job ${jobId} has ended_at: ${job.ended_at}, end_reason: ${job.end_reason || 'none'}`,
+      );
       if (endReason.includes('fail') || endReason.includes('error')) {
+        console.log(`[AI Search] Job ${jobId} status: FAILED (end_reason: ${job.end_reason})`);
         return 'failed';
       }
       // If ended_at exists, assume completed (even if end_reason is empty or unknown)
+      console.log(`[AI Search] Job ${jobId} status: COMPLETED`);
       return 'completed';
     }
     if (job.started_at) {
       // Job has started but not ended yet - it's running
+      console.log(
+        `[AI Search] Job ${jobId} status: RUNNING (started_at: ${job.started_at}, no ended_at)`,
+      );
       return 'running';
     }
     // Job exists but hasn't started yet - it's pending
+    console.log(`[AI Search] Job ${jobId} status: PENDING (no started_at)`);
     return 'pending';
   } catch (error) {
-    console.error(`[AI Search] Error checking job status:`, error);
+    console.error(`[AI Search] Error checking job status for ${jobId}:`, error);
     return null;
   }
 }
@@ -492,24 +513,54 @@ export async function downloadAndUploadRepoHelper(
       },
     );
 
-    // Trigger early summary generation (using README + screenshots if available)
+    // Trigger summary generation (using README + screenshots if available)
     // This provides immediate feedback while waiting for AI Search indexing
     try {
       await ctx.scheduler.runAfter(
         0,
         (
           internal.submissionsActions.aiSummary as unknown as {
-            generateEarlySummary: GenerateEarlySummaryRef;
+            generateSummary: GenerateSummaryRef;
           }
-        ).generateEarlySummary,
+        ).generateSummary,
         {
           submissionId: args.submissionId,
         },
       );
     } catch (error) {
-      // Log but don't fail - early summary is optional
+      // Log but don't fail - summary is optional
       console.warn(
-        `[R2 Upload] Failed to schedule early summary generation for submission ${args.submissionId}:`,
+        `[R2 Upload] Failed to schedule summary generation for submission ${args.submissionId}:`,
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+
+    // Schedule the indexing check
+    // This will poll for indexing completion and mark the submission as complete
+    try {
+      console.log(
+        `[R2 Upload] Scheduling indexing check for submission ${args.submissionId} (will start checking in 15 seconds)`,
+      );
+      await ctx.scheduler.runAfter(
+        15000, // Wait 15 seconds before first check to give indexing time to start
+        (
+          internal.submissionsActions.aiSummary as unknown as {
+            checkCloudflareIndexing: CheckCloudflareIndexingRef;
+          }
+        ).checkCloudflareIndexing,
+        {
+          submissionId: args.submissionId,
+          attempt: 0,
+          forceRegenerate: false,
+        },
+      );
+      console.log(
+        `[R2 Upload] ✅ Successfully scheduled indexing check for submission ${args.submissionId}`,
+      );
+    } catch (error) {
+      // Log but don't fail - this is critical but we don't want to fail the upload
+      console.error(
+        `[R2 Upload] ❌ Failed to schedule indexing check for submission ${args.submissionId}:`,
         error instanceof Error ? error.message : String(error),
       );
     }
@@ -565,6 +616,7 @@ export const fetchReadmeFromGitHub = internalAction({
       // Try to get default branch first
       let defaultBranch: string | undefined;
       try {
+        console.log(`[README Fetch] Fetching repo info for ${owner}/${repoName}...`);
         const repoInfoResponse = await fetch(`https://api.github.com/repos/${owner}/${repoName}`, {
           headers,
         });
@@ -572,6 +624,12 @@ export const fetchReadmeFromGitHub = internalAction({
         if (repoInfoResponse.ok) {
           const repoInfo: { default_branch?: string } = await repoInfoResponse.json();
           defaultBranch = repoInfo.default_branch;
+          console.log(`[README Fetch] Default branch: ${defaultBranch || 'not found'}`);
+        } else {
+          const errorText = await repoInfoResponse.text();
+          console.warn(
+            `[README Fetch] Failed to get repo info: ${repoInfoResponse.status} - ${errorText}`,
+          );
         }
       } catch (error) {
         console.warn(`[README Fetch] Failed to get default branch:`, error);
@@ -592,11 +650,15 @@ export const fetchReadmeFromGitHub = internalAction({
       let readmeFilename: string | null = null;
 
       // Try each branch and filename combination
+      console.log(
+        `[README Fetch] Trying branches: ${branchCandidates.join(', ')}, filenames: ${readmeFilenames.join(', ')}`,
+      );
       for (const branch of branchCandidates) {
         for (const filename of readmeFilenames) {
           try {
             // Try GitHub API first (supports private repos with token)
             const apiUrl = `https://api.github.com/repos/${owner}/${repoName}/contents/${filename}?ref=${branch}`;
+            console.log(`[README Fetch] Trying API: ${apiUrl}`);
             const apiResponse = await fetch(apiUrl, { headers });
 
             if (apiResponse.ok) {
@@ -605,23 +667,46 @@ export const fetchReadmeFromGitHub = internalAction({
               if (fileData.content && fileData.encoding === 'base64') {
                 readmeContent = Buffer.from(fileData.content, 'base64').toString('utf-8');
                 readmeFilename = fileData.name || filename;
+                console.log(
+                  `[README Fetch] ✅ Found README via API: ${filename} on branch ${branch}`,
+                );
                 break;
+              } else {
+                console.log(
+                  `[README Fetch] API response OK but content/encoding missing: encoding=${fileData.encoding}, hasContent=${!!fileData.content}`,
+                );
               }
             } else if (apiResponse.status === 404) {
+              console.log(`[README Fetch] 404 for ${filename} on branch ${branch}`);
               // File doesn't exist, try next filename
+            } else {
+              const errorText = await apiResponse.text();
+              console.warn(
+                `[README Fetch] API error ${apiResponse.status} for ${filename} on ${branch}: ${errorText}`,
+              );
             }
-          } catch (_error) {
+          } catch (error) {
+            console.warn(`[README Fetch] API error for ${filename} on ${branch}:`, error);
             // Try raw GitHub URL as fallback
             try {
               const rawUrl = `https://raw.githubusercontent.com/${owner}/${repoName}/${branch}/${filename}`;
+              console.log(`[README Fetch] Trying raw URL: ${rawUrl}`);
               const rawResponse = await fetch(rawUrl, { headers });
 
               if (rawResponse.ok) {
                 readmeContent = await rawResponse.text();
                 readmeFilename = filename;
+                console.log(
+                  `[README Fetch] ✅ Found README via raw URL: ${filename} on branch ${branch}`,
+                );
                 break;
+              } else {
+                console.log(
+                  `[README Fetch] Raw URL ${rawResponse.status} for ${filename} on branch ${branch}`,
+                );
               }
-            } catch (_rawError) {
+            } catch (rawError) {
+              console.warn(`[README Fetch] Raw URL error for ${filename} on ${branch}:`, rawError);
               // Continue to next filename
             }
           }

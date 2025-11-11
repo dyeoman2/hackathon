@@ -447,7 +447,7 @@ export type EarlySummary = z.infer<typeof earlySummarySchema>;
  * Uses Provider Keys configured in AI Gateway dashboard
  * See: https://developers.cloudflare.com/ai-gateway/usage/providers/google-ai-studio/
  */
-async function generateEarlySummaryWithGoogleAI(
+async function generateSummaryWithGoogleAI(
   prompt: string,
   geminiModel: string = 'google-ai-studio/gemini-flash-lite-latest',
 ): Promise<{
@@ -542,7 +542,7 @@ async function generateEarlySummaryWithGoogleAI(
  * Uses Provider Keys configured in AI Gateway dashboard
  * See: https://developers.cloudflare.com/ai-gateway/usage/providers/openai/
  */
-async function generateEarlySummaryWithOpenAI(
+async function generateSummaryWithOpenAI(
   prompt: string,
   openaiModel: string = 'gpt-5-nano',
 ): Promise<{
@@ -634,7 +634,7 @@ async function generateEarlySummaryWithOpenAI(
  * This ensures all three sections are present and complete
  * Supports Workers AI models, OpenAI (via OpenAI endpoint), and Google AI Studio (via Google AI Studio endpoint)
  */
-export async function generateEarlySummaryWithGateway(
+export async function generateSummaryWithGateway(
   prompt: string,
   options?: {
     useOpenAI?: boolean;
@@ -649,12 +649,12 @@ export async function generateEarlySummaryWithGateway(
 }> {
   // Use Google AI Studio if requested
   if (options?.useGoogleAI) {
-    return generateEarlySummaryWithGoogleAI(prompt, options.geminiModel);
+    return generateSummaryWithGoogleAI(prompt, options.geminiModel);
   }
 
   // Use OpenAI if requested
   if (options?.useOpenAI) {
-    return generateEarlySummaryWithOpenAI(prompt, options.openaiModel);
+    return generateSummaryWithOpenAI(prompt, options.openaiModel);
   }
 
   const config = getCloudflareConfig();
@@ -2212,7 +2212,7 @@ async function queryAISearchHelper(options: AISearchQueryOptions): Promise<AISea
   return data;
 }
 
-// Query Cloudflare AI Search
+// Query Cloudflare AI Search (with usage tracking)
 export const queryAISearch = guarded.action(
   'profile.read',
   {
@@ -2289,16 +2289,27 @@ export const queryAISearch = guarded.action(
           : new Error('Failed to finalize AI usage.');
       }
 
+      // Filter documents by path prefix if provided (client-side filtering)
+      // This ensures we only return documents from the specified submission
+      let filteredDocuments = documents as Array<{
+        filename?: string;
+        attributes?: {
+          path?: string;
+        };
+        text?: string;
+        score?: number;
+      }>;
+
+      if (args.pathPrefix) {
+        filteredDocuments = filteredDocuments.filter((doc) => {
+          const docPath = doc.attributes?.path || doc.filename || '';
+          return docPath.startsWith(args.pathPrefix as string);
+        });
+      }
+
       return {
         response: generatedResponse,
-        documents: documents as Array<{
-          filename?: string;
-          attributes?: {
-            path?: string;
-          };
-          text?: string;
-          score?: number;
-        }>,
+        documents: filteredDocuments,
         searchQuery: result.search_query,
         usage: estimatedUsage,
       };
@@ -2306,6 +2317,58 @@ export const queryAISearch = guarded.action(
       await releaseReservation();
       throw error;
     }
+  },
+);
+
+// Query Cloudflare AI Search for Repo Chat (no usage tracking)
+export const queryAISearchForRepoChat = guarded.action(
+  'profile.read',
+  {
+    query: v.string(),
+    model: v.optional(v.string()),
+    maxNumResults: v.optional(v.number()),
+    rewriteQuery: v.optional(v.boolean()),
+    pathPrefix: v.optional(v.string()),
+  },
+  async (_ctx: ActionCtx, args, _role) => {
+    // Skip usage tracking for repo chat queries
+    // Note: Cloudflare AI Search API doesn't support filters parameter
+    // Path filtering must be done client-side after receiving results
+    const result = await queryAISearchHelper({
+      query: args.query,
+      model: args.model,
+      maxNumResults: args.maxNumResults,
+      rewriteQuery: args.rewriteQuery,
+      // filters removed - API doesn't support them
+    });
+
+    // Extract the generated response and documents
+    const generatedResponse = result.response ?? result.result?.response;
+    const documents = result.data ?? result.result?.data ?? [];
+
+    // Filter documents by path prefix if provided (client-side filtering)
+    // This ensures we only return documents from the specified submission
+    let filteredDocuments = documents as Array<{
+      filename?: string;
+      attributes?: {
+        path?: string;
+      };
+      text?: string;
+      score?: number;
+    }>;
+
+    if (args.pathPrefix) {
+      filteredDocuments = filteredDocuments.filter((doc) => {
+        const docPath = doc.attributes?.path || doc.filename || '';
+        return docPath.startsWith(args.pathPrefix as string);
+      });
+    }
+
+    return {
+      response: generatedResponse,
+      documents: filteredDocuments,
+      searchQuery: result.search_query,
+    };
   },
 );
 

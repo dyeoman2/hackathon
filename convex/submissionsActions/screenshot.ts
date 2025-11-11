@@ -15,7 +15,7 @@ import type { ActionCtx } from '../_generated/server';
 import { internalAction } from '../_generated/server';
 import { authComponent } from '../auth';
 import { guarded } from '../authz/guardFactory';
-import type { GenerateEarlySummaryRef, GetSubmissionInternalRef } from './types';
+import type { GenerateSummaryRef, GetSubmissionInternalRef } from './types';
 
 // Helper function to get the Firecrawl API key from environment
 function getFirecrawlApiKey(): string {
@@ -394,9 +394,9 @@ export const captureScreenshot = guarded.action(
             0,
             (
               internal.submissionsActions.aiSummary as unknown as {
-                generateEarlySummary: GenerateEarlySummaryRef;
+                generateSummary: GenerateSummaryRef;
               }
-            ).generateEarlySummary,
+            ).generateSummary,
             {
               submissionId: args.submissionId,
               forceRegenerate: false,
@@ -778,9 +778,9 @@ export const captureScreenshotInternal = internalAction({
             0,
             (
               internal.submissionsActions.aiSummary as unknown as {
-                generateEarlySummary: GenerateEarlySummaryRef;
+                generateSummary: GenerateSummaryRef;
               }
-            ).generateEarlySummary,
+            ).generateSummary,
             {
               submissionId: args.submissionId,
               forceRegenerate: false,

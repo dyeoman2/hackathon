@@ -1,6 +1,6 @@
 import { v } from 'convex/values';
 import { assertUserId } from '../src/lib/shared/user-id';
-import { api, internal } from './_generated/api';
+import { internal } from './_generated/api';
 import {
   internalAction,
   internalMutation,

@@ -124,7 +124,7 @@ export function SubmissionRepositorySummary({
   const [isGeneratingFull, setIsGeneratingFull] = useState(false);
   const toast = useToast();
   const generateQuickSummary = useAction(
-    api.submissionsActions.aiSummary.generateEarlySummaryPublic,
+    api.submissionsActions.aiSummary.generateSummaryPublic,
   );
   const generateFullSummary = useAction(api.submissionsActions.aiSummary.generateRepoSummary);
 
