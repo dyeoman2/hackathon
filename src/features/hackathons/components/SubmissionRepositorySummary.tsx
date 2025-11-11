@@ -7,7 +7,88 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Button } from '~/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~/components/ui/card';
+import { ProcessingLoader } from '~/components/ui/processing-loader';
 import { useToast } from '~/components/ui/toast';
+
+type EarlyProcessingStage =
+  | 'fetching-readme'
+  | 'mapping-urls'
+  | 'capturing-screenshots'
+  | 'generating-summary'
+  | null;
+
+function getEarlyProcessingStage(submission: Doc<'submissions'>): EarlyProcessingStage {
+  const source = submission.source;
+  const hasReadme = !!source?.readmeFetchedAt;
+  const screenshotStarted = !!source?.screenshotCaptureStartedAt;
+  const screenshotCompleted = !!source?.screenshotCaptureCompletedAt;
+  const hasSiteUrl = !!submission.siteUrl;
+  const processingState = submission.source?.processingState;
+  const hasSummary = !!source?.aiSummary && processingState !== 'complete';
+
+  // If summary already exists, no need to show loading
+  if (hasSummary) {
+    return null;
+  }
+
+  // Stage 1: Fetching Readme
+  if (!hasReadme && submission.repoUrl) {
+    return 'fetching-readme';
+  }
+
+  // Stage 2: Mapping Website URLs (only if siteUrl exists)
+  if (hasReadme && hasSiteUrl && !screenshotStarted) {
+    return 'mapping-urls';
+  }
+
+  // Stage 3: Capturing Screenshots
+  if (screenshotStarted && !screenshotCompleted) {
+    return 'capturing-screenshots';
+  }
+
+  // Stage 4: Generating Summary
+  // Show when README is fetched and screenshots are done (or no siteUrl), but summary doesn't exist yet
+  if (hasReadme) {
+    // If there's a siteUrl, wait for screenshots to complete
+    // If there's no siteUrl, we can generate summary right away after README is fetched
+    const screenshotsReady = !hasSiteUrl || screenshotCompleted;
+    if (screenshotsReady && !hasSummary) {
+      return 'generating-summary';
+    }
+  }
+
+  return null;
+}
+
+function getEarlyProcessingMessage(stage: EarlyProcessingStage): {
+  title: string;
+  description: string;
+} | null {
+  switch (stage) {
+    case 'fetching-readme':
+      return {
+        title: 'Fetching Readme',
+        description: 'Fetching README file from repository...',
+      };
+    case 'mapping-urls':
+      return {
+        title: 'Mapping Website URLs',
+        description: 'Mapping website URLs for screenshot capture...',
+      };
+    case 'capturing-screenshots':
+      return {
+        title: 'Capturing Screenshots',
+        description: 'Capturing screenshots from website pages...',
+      };
+    case 'generating-summary':
+      return {
+        title: 'Generating Summary',
+        description: 'Generating summary from README and screenshots...',
+      };
+    default:
+      return null;
+  }
+}
 
 interface SubmissionRepositorySummaryProps {
   submission: Doc<'submissions'>;
@@ -18,8 +99,20 @@ export function SubmissionRepositorySummary({
   submission,
   canEdit = false,
 }: SubmissionRepositorySummaryProps) {
+  // Show early summary (README + screenshots) from aiSummary field
+  // Repository Summary card should only show the early summary, not the AI Search summary
+  // Once AI Search completes (processingState === 'complete'), aiSummary contains the AI Search summary
   const summary = submission.source?.aiSummary;
   const processingState = submission.source?.processingState;
+  const isAISearchComplete = processingState === 'complete';
+
+  // Show early summary only if it exists AND AI Search hasn't completed (which would overwrite it)
+  const showEarlySummary = !!summary && !isAISearchComplete;
+
+  // Check if we're in early processing stages
+  const earlyProcessingStage = getEarlyProcessingStage(submission);
+  const earlyProcessingMessage = getEarlyProcessingMessage(earlyProcessingStage);
+  const isEarlyProcessing = earlyProcessingStage !== null;
   const [isGeneratingQuick, setIsGeneratingQuick] = useState(false);
   const [isGeneratingFull, setIsGeneratingFull] = useState(false);
   const toast = useToast();
@@ -27,9 +120,6 @@ export function SubmissionRepositorySummary({
     api.submissionsActions.aiSummary.generateEarlySummaryPublic,
   );
   const generateFullSummary = useAction(api.submissionsActions.aiSummary.generateRepoSummary);
-
-  // Show processing state if automatic processing is in progress
-  const isProcessing = processingState && processingState !== 'complete' && !summary;
 
   const handleGenerateQuickSummary = useCallback(async () => {
     setIsGeneratingQuick(true);
@@ -75,37 +165,6 @@ export function SubmissionRepositorySummary({
     }
   }, [submission._id, generateFullSummary, toast]);
 
-  const getProcessingMessage = (state: string) => {
-    switch (state) {
-      case 'downloading':
-        return {
-          title: 'Downloading Repository',
-          description: 'Downloading repository files from GitHub...',
-        };
-      case 'uploading':
-        return {
-          title: 'Uploading Repository',
-          description: 'Uploading repository files to Cloudflare R2...',
-        };
-      case 'indexing':
-        return {
-          title: 'Indexing Repository',
-          description:
-            'Indexing repository files in Cloudflare AI Search. This may take a minute...',
-        };
-      case 'generating':
-        return {
-          title: 'Generating Summary',
-          description: 'Generating AI summary from repository files and screenshots...',
-        };
-      default:
-        return {
-          title: 'Processing Repository',
-          description: 'Processing repository...',
-        };
-    }
-  };
-
   return (
     <Card>
       <CardHeader>
@@ -113,7 +172,7 @@ export function SubmissionRepositorySummary({
           <div>
             <CardTitle>Repository Summary</CardTitle>
             <CardDescription>
-              AI-generated summary of the repository based on code analysis, README, and screenshots
+              Generated from the repository README and screenshots of the website.
             </CardDescription>
           </div>
           {canEdit && (
@@ -122,7 +181,7 @@ export function SubmissionRepositorySummary({
                 variant="outline"
                 size="sm"
                 onClick={handleGenerateQuickSummary}
-                disabled={isGeneratingQuick || isGeneratingFull || isProcessing}
+                disabled={isGeneratingQuick || isGeneratingFull}
                 title="Generate quick summary using README and screenshots (fast)"
               >
                 {isGeneratingQuick ? (
@@ -141,7 +200,7 @@ export function SubmissionRepositorySummary({
                 variant="outline"
                 size="sm"
                 onClick={handleGenerateFullSummary}
-                disabled={isGeneratingQuick || isGeneratingFull || isProcessing}
+                disabled={isGeneratingQuick || isGeneratingFull}
                 title="Generate comprehensive summary using AI Search (slower, more detailed)"
               >
                 {isGeneratingFull ? (
@@ -161,28 +220,23 @@ export function SubmissionRepositorySummary({
         </div>
       </CardHeader>
       <CardContent>
-        {isProcessing && processingState && (
-          <div className="rounded-md border bg-muted/50 p-6 text-center">
-            <Loader2 className="h-6 w-6 animate-spin mx-auto mb-3 text-primary" />
-            <p className="text-sm font-medium mb-1">
-              {getProcessingMessage(processingState).title}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              {getProcessingMessage(processingState).description}
-            </p>
-          </div>
-        )}
-
-        {summary && !isProcessing && (
+        {isEarlyProcessing && earlyProcessingMessage ? (
+          <ProcessingLoader
+            title={earlyProcessingMessage.title}
+            description={earlyProcessingMessage.description}
+          />
+        ) : showEarlySummary ? (
           <div className="prose prose-sm max-w-none dark:prose-invert prose-headings:font-semibold prose-headings:text-foreground prose-headings:mt-6 prose-headings:mb-4 prose-h1:text-2xl prose-h2:text-xl prose-h3:text-lg prose-p:text-muted-foreground prose-p:leading-relaxed prose-strong:text-foreground prose-strong:font-semibold prose-code:text-foreground prose-code:bg-muted prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-xs prose-code:font-mono prose-pre:bg-muted prose-pre:border prose-pre:rounded-lg prose-pre:p-4 prose-ul:text-muted-foreground prose-ol:text-muted-foreground prose-li:text-muted-foreground prose-li:my-2 prose-a:text-primary prose-a:underline hover:prose-a:text-primary/80 prose-blockquote:border-l-4 prose-blockquote:border-primary prose-blockquote:pl-4 prose-blockquote:italic">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{summary}</ReactMarkdown>
           </div>
-        )}
-
-        {!summary && !isProcessing && (
+        ) : isAISearchComplete ? (
           <p className="text-sm text-muted-foreground">
-            The repository summary will automatically be generated once the repository files are
-            uploaded and indexed. This may take a few minutes.
+            The comprehensive AI Search summary is now available in the Repo Chat card below.
+          </p>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            The repository summary will automatically be generated once README and screenshots are
+            available. This happens automatically when screenshots are captured.
           </p>
         )}
       </CardContent>

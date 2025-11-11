@@ -478,10 +478,10 @@ export const checkIndexingAndGenerateSummary = internalAction({
       }
 
       // Files are indexed (or we've given up waiting) - proceed with summary generation
-      // Generate AI Search summary (will replace early summary if one exists)
+      // Generate AI Search summary (will replace early summary in aiSummary if one exists)
       // The AI Search summary is more comprehensive as it analyzes all repository files
       let summary: string;
-      const hasEarlySummary = hasSummary && submission.source?.aiSummary;
+      const hasEarlySummary = !!submission.source?.aiSummary;
 
       if (hasEarlySummary) {
         console.log(
@@ -514,7 +514,7 @@ export const checkIndexingAndGenerateSummary = internalAction({
         submission.title,
       );
 
-      // Update submission with summary and record completion time
+      // Update submission with AI Search summary (overwrites early summary in aiSummary field)
       const summaryGenerationCompletedAt = Date.now();
       await ctx.runMutation(
         (
@@ -524,10 +524,10 @@ export const checkIndexingAndGenerateSummary = internalAction({
         ).updateSubmissionSourceInternal,
         {
           submissionId: args.submissionId,
-          aiSummary: summary,
+          aiSummary: summary, // Overwrites early summary
           summarizedAt: summaryGenerationCompletedAt,
           summaryGenerationCompletedAt,
-          processingState: 'generating', // Keep as generating while we generate the review
+          processingState: 'complete', // Mark as complete after AI Search summary is generated
         },
       );
 
@@ -1363,6 +1363,7 @@ async function generateEarlySummaryHelper(
   }
 
   // Check if summary already exists (skip only if not forcing regeneration)
+  // Note: aiSummary can contain either early summary or AI Search summary
   if (submission.source?.aiSummary && !args.forceRegenerate) {
     console.log(`[Early Summary] Submission ${args.submissionId} already has a summary - skipping`);
     return { success: true, skipped: true };
@@ -1425,7 +1426,7 @@ async function generateEarlySummaryHelper(
       submission.source?.r2Key,
     );
 
-    // Update submission with early summary
+    // Update submission with early summary (store in aiSummary field)
     const summaryGenerationCompletedAt = Date.now();
     await ctx.runMutation(
       (

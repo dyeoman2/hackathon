@@ -15,8 +15,8 @@ import { useToast } from '~/components/ui/toast';
 import { useOptimisticMutation } from '~/features/admin/hooks/useOptimisticUpdates';
 import { EditSubmissionModal } from '~/features/hackathons/components/EditSubmissionModal';
 import { SubmissionActionsMenu } from '~/features/hackathons/components/SubmissionActionsMenu';
-import { SubmissionAIReview } from '~/features/hackathons/components/SubmissionAIReview';
 import { SubmissionNavigation } from '~/features/hackathons/components/SubmissionNavigation';
+import { SubmissionRepoChat } from '~/features/hackathons/components/SubmissionRepoChat';
 import { SubmissionRepositorySummary } from '~/features/hackathons/components/SubmissionRepositorySummary';
 import { SubmissionScoring } from '~/features/hackathons/components/SubmissionScoring';
 import { SubmissionScreenshots } from '~/features/hackathons/components/SubmissionScreenshots';
@@ -47,7 +47,7 @@ function SubmissionDetailComponent() {
   const submissions = useQuery(api.submissions.listByHackathon, {
     hackathonId: hackathonId as Id<'hackathons'>,
   });
-  const { review, isReviewing, error, rateLimitRetryAfter } = useAIReply(
+  const { review, isReviewing, rateLimitRetryAfter } = useAIReply(
     submissionId as Id<'submissions'>,
   );
 
@@ -283,18 +283,11 @@ function SubmissionDetailComponent() {
       <div className="space-y-6">
         <SubmissionRepositorySummary submission={submission} canEdit={canEdit} />
 
-        <SubmissionAIReview
-          summary={submission.ai?.summary}
-          isReviewing={isReviewing}
-          inFlight={submission.ai?.inFlight}
-          error={error}
-          rateLimitRetryAfter={rateLimitRetryAfter}
-          processingState={submission.source?.processingState}
-        />
-
-        <SubmissionScoring score={submission.ai?.score} />
-
         <SubmissionScreenshots submission={submission} canEdit={canEdit} />
+
+        <SubmissionRepoChat submission={submission} />
+
+        <SubmissionScoring submission={submission} />
 
         <SubmissionTimeline submission={submission} />
       </div>

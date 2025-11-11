@@ -589,9 +589,8 @@ export const fetchReadmeFromGitHub = internalAction({
               }
             } else if (apiResponse.status === 404) {
               // File doesn't exist, try next filename
-              continue;
             }
-          } catch (error) {
+          } catch (_error) {
             // Try raw GitHub URL as fallback
             try {
               const rawUrl = `https://raw.githubusercontent.com/${owner}/${repoName}/${branch}/${filename}`;
@@ -602,9 +601,8 @@ export const fetchReadmeFromGitHub = internalAction({
                 readmeFilename = filename;
                 break;
               }
-            } catch (rawError) {
+            } catch (_rawError) {
               // Continue to next filename
-              continue;
             }
           }
         }

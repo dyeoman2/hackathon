@@ -15,7 +15,6 @@ import type { ActionCtx } from '../_generated/server';
 import { action, internalAction } from '../_generated/server';
 import { authComponent } from '../auth';
 import type {
-  CheckIndexingAndGenerateSummaryRef,
   GenerateEarlySummaryRef,
   GetSubmissionInternalRef,
 } from './types';
@@ -391,28 +390,11 @@ export const captureScreenshot = action({
           };
         }
 
-        // If repo files are uploaded, trigger full AI Search summary generation
-        if (submission.source?.r2Key) {
+        // Trigger early summary using README + screenshots (AI Search summary is only generated on-demand)
+        // Early summary is saved to aiSummary, and will be overwritten by AI Search summary if user clicks "Full Summary"
+        if (!submission.source?.aiSummary) {
           console.log(
-            `[Screenshot] Repo files uploaded for submission ${args.submissionId} - triggering full AI Search summary`,
-          );
-          await ctx.scheduler.runAfter(
-            0,
-            (
-              internal.submissionsActions.aiSummary as unknown as {
-                checkIndexingAndGenerateSummary: CheckIndexingAndGenerateSummaryRef;
-              }
-            ).checkIndexingAndGenerateSummary,
-            {
-              submissionId: args.submissionId,
-              attempt: 0,
-              forceRegenerate: false,
-            },
-          );
-        } else {
-          // If repo files aren't uploaded yet, trigger early summary using README + screenshots
-          console.log(
-            `[Screenshot] Repo files not uploaded for submission ${args.submissionId} - triggering early summary with screenshots`,
+            `[Screenshot] Triggering early summary with screenshots for submission ${args.submissionId}`,
           );
           await ctx.scheduler.runAfter(
             0,
@@ -792,28 +774,11 @@ export const captureScreenshotInternal = internalAction({
           };
         }
 
-        // If repo files are uploaded, trigger full AI Search summary generation
-        if (submission.source?.r2Key) {
+        // Trigger early summary using README + screenshots (AI Search summary is only generated on-demand)
+        // Early summary is saved to aiSummary, and will be overwritten by AI Search summary if user clicks "Full Summary"
+        if (!submission.source?.aiSummary) {
           console.log(
-            `[Screenshot] Repo files uploaded for submission ${args.submissionId} - triggering full AI Search summary`,
-          );
-          await ctx.scheduler.runAfter(
-            0,
-            (
-              internal.submissionsActions.aiSummary as unknown as {
-                checkIndexingAndGenerateSummary: CheckIndexingAndGenerateSummaryRef;
-              }
-            ).checkIndexingAndGenerateSummary,
-            {
-              submissionId: args.submissionId,
-              attempt: 0,
-              forceRegenerate: false,
-            },
-          );
-        } else {
-          // If repo files aren't uploaded yet, trigger early summary using README + screenshots
-          console.log(
-            `[Screenshot] Repo files not uploaded for submission ${args.submissionId} - triggering early summary with screenshots`,
+            `[Screenshot] Triggering early summary with screenshots for submission ${args.submissionId}`,
           );
           await ctx.scheduler.runAfter(
             0,

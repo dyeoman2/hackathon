@@ -62,6 +62,7 @@ export type UpdateSubmissionSourceInternalRef = FunctionReference<
     aiSearchSyncStartedAt?: number;
     aiSearchSyncCompletedAt?: number;
     aiSearchSyncJobId?: string;
+    earlySummary?: string;
     aiSummary?: string;
     summarizedAt?: number;
     summaryGenerationStartedAt?: number;

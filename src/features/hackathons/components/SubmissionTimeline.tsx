@@ -64,7 +64,7 @@ export function SubmissionTimeline({ submission }: SubmissionTimelineProps) {
   if (submission.source?.summaryGenerationStartedAt) {
     events.push({
       timestamp: submission.source.summaryGenerationStartedAt,
-      label: 'Started generating AI summary and score',
+      label: 'Started generating AI summary',
       color: 'bg-purple-500',
     });
   }
@@ -74,7 +74,7 @@ export function SubmissionTimeline({ submission }: SubmissionTimelineProps) {
     events.push({
       timestamp:
         submission.source?.summaryGenerationCompletedAt ?? submission.source?.summarizedAt ?? 0,
-      label: 'Finished generating AI summary and score',
+      label: 'Finished generating AI summary',
       color: 'bg-purple-600',
     });
   }

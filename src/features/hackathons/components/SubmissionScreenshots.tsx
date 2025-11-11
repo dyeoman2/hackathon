@@ -23,8 +23,76 @@ import {
   CarouselPrevious,
 } from '~/components/ui/carousel';
 import { Dialog, DialogContent } from '~/components/ui/dialog';
+import { ProcessingLoader } from '~/components/ui/processing-loader';
 import { useToast } from '~/components/ui/toast';
 import { useOptimisticMutation } from '~/features/admin/hooks/useOptimisticUpdates';
+
+type ScreenshotProcessingStage =
+  | 'fetching-readme'
+  | 'mapping-urls'
+  | 'capturing-screenshots'
+  | null;
+
+function getScreenshotProcessingStage(submission: Doc<'submissions'>): ScreenshotProcessingStage {
+  const source = submission.source;
+  const hasReadme = !!source?.readmeFetchedAt;
+  const screenshotStarted = !!source?.screenshotCaptureStartedAt;
+  const screenshotCompleted = !!source?.screenshotCaptureCompletedAt;
+  const hasSiteUrl = !!submission.siteUrl;
+  const hasScreenshots = (submission.screenshots?.length ?? 0) > 0;
+
+  // If screenshots already exist, no need to show loading
+  if (hasScreenshots) {
+    return null;
+  }
+
+  // Only show loading stages if there's a siteUrl (screenshots are only relevant for live sites)
+  if (!hasSiteUrl) {
+    return null;
+  }
+
+  // Stage 1: Fetching Readme
+  if (!hasReadme && submission.repoUrl) {
+    return 'fetching-readme';
+  }
+
+  // Stage 2: Mapping Website URLs
+  if (hasReadme && hasSiteUrl && !screenshotStarted) {
+    return 'mapping-urls';
+  }
+
+  // Stage 3: Capturing Screenshots
+  if (screenshotStarted && !screenshotCompleted) {
+    return 'capturing-screenshots';
+  }
+
+  return null;
+}
+
+function getScreenshotProcessingMessage(stage: ScreenshotProcessingStage): {
+  title: string;
+  description: string;
+} | null {
+  switch (stage) {
+    case 'fetching-readme':
+      return {
+        title: 'Fetching Readme',
+        description: 'Fetching README file from repository...',
+      };
+    case 'mapping-urls':
+      return {
+        title: 'Mapping Website URLs',
+        description: 'Mapping website URLs for screenshot capture...',
+      };
+    case 'capturing-screenshots':
+      return {
+        title: 'Capturing Screenshots',
+        description: 'Capturing screenshots from website pages...',
+      };
+    default:
+      return null;
+  }
+}
 
 interface SubmissionScreenshotsProps {
   submission: Doc<'submissions'>;
@@ -37,6 +105,11 @@ export function SubmissionScreenshots({ submission, canEdit = false }: Submissio
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deletingR2Key, setDeletingR2Key] = useState<string | null>(null);
   const [isCapturingScreenshot, setIsCapturingScreenshot] = useState(false);
+
+  // Check if we're in screenshot processing stages
+  const screenshotProcessingStage = getScreenshotProcessingStage(submission);
+  const screenshotProcessingMessage = getScreenshotProcessingMessage(screenshotProcessingStage);
+  const isScreenshotProcessing = screenshotProcessingStage !== null;
 
   const toast = useToast();
   const captureScreenshot = useAction(api.submissionsActions.screenshot.captureScreenshot);
@@ -139,9 +212,7 @@ export function SubmissionScreenshots({ submission, canEdit = false }: Submissio
         <div className="flex items-start justify-between">
           <div>
             <CardTitle>Screenshots</CardTitle>
-            <CardDescription>
-              Visual previews of the live site captured via Firecrawl
-            </CardDescription>
+            <CardDescription>Visual previews of the site captured via Firecrawl</CardDescription>
           </div>
           {canEdit && submission.siteUrl && (
             <Button
@@ -158,7 +229,7 @@ export function SubmissionScreenshots({ submission, canEdit = false }: Submissio
               ) : (
                 <>
                   <Camera className="mr-2 h-4 w-4" />
-                  Capture Screenshot
+                  Capture Screenshots
                 </>
               )}
             </Button>
@@ -166,7 +237,12 @@ export function SubmissionScreenshots({ submission, canEdit = false }: Submissio
         </div>
       </CardHeader>
       <CardContent>
-        {screenshots.length === 0 ? (
+        {isScreenshotProcessing && screenshotProcessingMessage ? (
+          <ProcessingLoader
+            title={screenshotProcessingMessage.title}
+            description={screenshotProcessingMessage.description}
+          />
+        ) : screenshots.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-8 text-center">
             <Camera className="mb-4 h-12 w-12 text-muted-foreground" />
             <p className="text-sm text-muted-foreground mb-4">

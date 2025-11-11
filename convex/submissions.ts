@@ -1,8 +1,6 @@
-import type { FunctionReference } from 'convex/server';
 import { v } from 'convex/values';
 import { assertUserId } from '../src/lib/shared/user-id';
 import { api, internal } from './_generated/api';
-import type { Id } from './_generated/dataModel';
 import {
   internalAction,
   internalMutation,
@@ -12,15 +10,6 @@ import {
 } from './_generated/server';
 import { authComponent } from './auth';
 import { requireHackathonRole } from './hackathons';
-
-// Type definition for action reference (until Convex regenerates types)
-// generateRepoSummary is defined in submissionsActions/aiSummary.ts
-type GenerateRepoSummaryActionRef = FunctionReference<
-  'action',
-  'public',
-  { submissionId: Id<'submissions'> },
-  { scheduled: boolean }
->;
 
 // Status transitions are now unrestricted - any status can transition to any other status
 
@@ -162,20 +151,18 @@ export const processSubmission = internalAction({
         // Don't fail - README fetch is optional
       }
 
-      // Trigger repo processing and summary generation
-      const generateRepoSummaryAction = (
-        api as unknown as {
-          submissionsActions: {
-            aiSummary: {
-              generateRepoSummary: GenerateRepoSummaryActionRef;
-            };
-          };
-        }
-      ).submissionsActions.aiSummary.generateRepoSummary;
-
-      await ctx.runAction(generateRepoSummaryAction, {
-        submissionId: args.submissionId,
-      });
+      // Trigger repo download/upload (but don't generate AI Search summary automatically)
+      // AI Search summary is only generated when user clicks "Full Summary" button
+      // Early summary (README + screenshots) will be generated automatically when screenshots are captured
+      try {
+        // Use the public action (which internally calls the helper)
+        await ctx.runAction(api.submissionsActions.repoProcessing.downloadAndUploadRepo, {
+          submissionId: args.submissionId,
+        });
+      } catch (error) {
+        console.error(`Failed to download/upload repo for submission ${args.submissionId}:`, error);
+        // Don't throw - submission creation should succeed even if repo processing fails
+      }
     } catch (error) {
       console.error(`Failed to process submission ${args.submissionId}:`, error);
       // Don't throw - we want submission creation to succeed even if processing fails
