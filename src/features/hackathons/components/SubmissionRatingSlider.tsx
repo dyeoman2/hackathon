@@ -1,4 +1,7 @@
-import { useState } from 'react';
+import { useMutation, useQuery } from 'convex/react';
+import { useEffect, useState } from 'react';
+import type { Id } from '@convex/_generated/dataModel';
+import { api } from '@convex/_generated/api';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~/components/ui/card';
 import { Slider } from '~/components/ui/slider';
 import { cn } from '~/lib/utils';
@@ -6,30 +9,52 @@ import { cn } from '~/lib/utils';
 const emojiScale = ['💀', '😬', '🥴', '🫠', '😅', '🙂', '🔥', '🚀', '🤯', '👑'];
 
 interface SubmissionRatingSliderProps {
-  value?: number;
-  onChange?: (value: number) => void;
-  disabled?: boolean;
+  submissionId: Id<'submissions'>;
+  hackathonRole?: 'owner' | 'admin' | 'judge' | null;
   className?: string;
 }
 
 export function SubmissionRatingSlider({
-  value = 0,
-  onChange,
-  disabled = false,
+  submissionId,
+  hackathonRole,
   className,
 }: SubmissionRatingSliderProps) {
-  const [displayValue, setDisplayValue] = useState(value);
+  // Fetch current user's rating
+  const userRating = useQuery(api.submissions.getUserRating, { submissionId });
+  const upsertRating = useMutation(api.submissions.upsertRating);
+
+  // Get the current rating value (from server or default to 0)
+  const currentRating = userRating?.rating ?? 0;
+
+  const [displayValue, setDisplayValue] = useState(currentRating);
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Update display value when rating loads from server
+  useEffect(() => {
+    setDisplayValue(currentRating);
+  }, [currentRating]);
 
   const handleValueChange = (values: number[]) => {
     // Update display value for immediate visual feedback during drag
     setDisplayValue(values[0]);
   };
 
-  const handleValueCommit = (values: number[]) => {
+  const handleValueCommit = async (values: number[]) => {
     // Commit the final value when drag completes
     const newValue = values[0];
     setDisplayValue(newValue);
-    onChange?.(newValue);
+
+    // Save to database
+    setIsSaving(true);
+    try {
+      await upsertRating({ submissionId, rating: newValue });
+    } catch (error) {
+      console.error('Failed to save rating:', error);
+      // Revert on error - force slider reset with key change
+      setDisplayValue(currentRating);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const getScoreDisplay = (val: number) => {
@@ -37,16 +62,27 @@ export function SubmissionRatingSlider({
     return `${emojiScale[val - 1]} ${val}/10`;
   };
 
+  // Check if user can rate (owner, admin, or judge)
+  const canRate = hackathonRole === 'owner' || hackathonRole === 'admin' || hackathonRole === 'judge';
+  const isLoading = userRating === undefined;
+  const isDisabled = !canRate || isSaving || isLoading;
+
   return (
     <Card className={className}>
       <CardHeader>
         <div className="flex items-start justify-between gap-4">
           <div>
-            <CardTitle>Rating</CardTitle>
-            <CardDescription>Rate this submission from 0 to 10.</CardDescription>
+            <CardTitle>My Rating</CardTitle>
+            <CardDescription>
+              {canRate
+                ? 'Rate this submission from 0 to 10.'
+                : 'Only owners, admins, and judges can rate submissions.'}
+            </CardDescription>
           </div>
           <div className="text-right">
-            <CardTitle className="text-right">{getScoreDisplay(displayValue)}</CardTitle>
+            <CardTitle className="text-right">
+              {isLoading ? 'Loading...' : getScoreDisplay(displayValue)}
+            </CardTitle>
           </div>
         </div>
       </CardHeader>
@@ -54,13 +90,14 @@ export function SubmissionRatingSlider({
         <div className="w-full space-y-2">
           <div className="relative space-y-4 pt-1">
             <Slider
-              defaultValue={[value]}
+              key={`slider-${currentRating}`}
+              defaultValue={[currentRating]}
               onValueChange={handleValueChange}
               onValueCommit={handleValueCommit}
               min={0}
               max={10}
               step={1}
-              disabled={disabled}
+              disabled={isDisabled}
               className="w-full"
             />
 

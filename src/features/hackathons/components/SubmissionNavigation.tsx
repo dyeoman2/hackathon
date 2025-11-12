@@ -25,7 +25,7 @@ export function SubmissionNavigation({
     return (
       <div className="flex items-center gap-4 mb-2">
         <Button variant="ghost" size="sm" onClick={onBack} className="-ml-2">
-          <ArrowLeft className="mr-2 h-4 w-4" />
+          <ArrowLeft className="h-4 w-4" />
           Back
         </Button>
       </div>
@@ -46,7 +46,7 @@ export function SubmissionNavigation({
   return (
     <div className="flex items-center justify-between gap-4 mb-2 flex-wrap">
       <Button variant="ghost" size="sm" onClick={onBack} className="-ml-2">
-        <ArrowLeft className="mr-2 h-4 w-4" />
+        <ArrowLeft className="h-4 w-4" />
         Back
       </Button>
       <div className="flex items-center gap-1">

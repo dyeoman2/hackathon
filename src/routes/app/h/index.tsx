@@ -74,7 +74,7 @@ function HackathonListComponent() {
         description="Manage your hackathon events"
         actions={
           <Button onClick={() => setIsModalOpen(true)}>
-            <Plus className="mr-2 h-4 w-4" />
+            <Plus className="h-4 w-4" />
             New Hackathon
           </Button>
         }
@@ -87,7 +87,7 @@ function HackathonListComponent() {
               You don't have any hackathons yet. Create your first one to get started!
             </p>
             <Button onClick={() => setIsModalOpen(true)}>
-              <Plus className="mr-2 h-4 w-4" />
+              <Plus className="h-4 w-4" />
               Create Hackathon
             </Button>
           </CardContent>

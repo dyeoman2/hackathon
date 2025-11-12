@@ -38,7 +38,7 @@ export function SubmissionActionsMenu({
       <DropdownMenuContent align="end" className="w-48">
         {canEdit && (
           <DropdownMenuItem onClick={onEdit}>
-            <Edit className="mr-2 h-4 w-4" />
+            <Edit className="h-4 w-4" />
             Edit
           </DropdownMenuItem>
         )}
@@ -46,7 +46,7 @@ export function SubmissionActionsMenu({
           <>
             <DropdownMenuSeparator />
             <DropdownMenuItem variant="destructive" onClick={onDelete}>
-              <Trash2 className="mr-2 h-4 w-4" />
+              <Trash2 className="h-4 w-4" />
               Delete
             </DropdownMenuItem>
           </>

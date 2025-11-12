@@ -32,7 +32,7 @@ export function TruncateDataModal({
       confirmationPlaceholder="TRUNCATE_ALL_DATA"
       deleteText={
         <>
-          <Trash2 className="h-4 w-4 mr-2" />
+          <Trash2 className="h-4 w-4" />
           Truncate All Data
         </>
       }
@@ -43,7 +43,7 @@ export function TruncateDataModal({
     >
       {isTruncating && (
         <div className="flex items-center text-sm text-muted-foreground">
-          <Database className="h-4 w-4 mr-2 animate-spin" />
+          <Database className="h-4 w-4 animate-spin" />
           Processing truncation...
         </div>
       )}

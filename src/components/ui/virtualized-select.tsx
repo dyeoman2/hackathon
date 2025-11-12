@@ -164,7 +164,7 @@
 //         onKeyDown={handleKeyDown}
 //       >
 //         <div className="flex items-center border-b px-3">
-//           <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
+//           <Search className="h-4 w-4 shrink-0 opacity-50" />
 //           <input
 //             type="text"
 //             placeholder={searchPlaceholder}
@@ -235,7 +235,7 @@
 //                         <div className="flex items-center flex-1">
 //                           <Check
 //                             className={cn(
-//                               'mr-2 h-4 w-4 shrink-0',
+//                               'h-4 w-4 shrink-0',
 //                               isSelected && !option.disabled ? 'opacity-100' : 'opacity-0',
 //                             )}
 //                           />

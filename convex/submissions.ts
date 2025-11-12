@@ -53,7 +53,32 @@ export const listByHackathon = query({
       .withIndex('by_hackathonId', (q) => q.eq('hackathonId', args.hackathonId))
       .collect();
 
-    return submissions;
+    // Get all ratings for these submissions
+    const allRatings = await ctx.db
+      .query('ratings')
+      .withIndex('by_hackathonId', (q) => q.eq('hackathonId', args.hackathonId))
+      .collect();
+
+    // Build a map of ratings by submission ID
+    const ratingsBySubmission = new Map<string, { myRating: number | null; averageRating: number | null }>();
+
+    for (const submission of submissions) {
+      const submissionRatings = allRatings.filter((r) => r.submissionId === submission._id);
+      const myRating = submissionRatings.find((r) => r.userId === userId)?.rating ?? null;
+      const averageRating =
+        submissionRatings.length > 0
+          ? submissionRatings.reduce((sum, r) => sum + r.rating, 0) / submissionRatings.length
+          : null;
+
+      ratingsBySubmission.set(submission._id, { myRating, averageRating });
+    }
+
+    // Add rating data to each submission
+    return submissions.map((submission) => ({
+      ...submission,
+      myRating: ratingsBySubmission.get(submission._id)?.myRating ?? null,
+      averageRating: ratingsBySubmission.get(submission._id)?.averageRating ?? null,
+    }));
   },
 });
 
@@ -97,7 +122,23 @@ export const getSubmission = query({
       return null;
     }
 
-    return submission;
+    // Get ratings for this submission
+    const allRatings = await ctx.db
+      .query('ratings')
+      .withIndex('by_submissionId', (q) => q.eq('submissionId', args.submissionId))
+      .collect();
+
+    const myRating = allRatings.find((r) => r.userId === userId)?.rating ?? null;
+    const averageRating =
+      allRatings.length > 0
+        ? allRatings.reduce((sum, r) => sum + r.rating, 0) / allRatings.length
+        : null;
+
+    return {
+      ...submission,
+      myRating,
+      averageRating,
+    };
   },
 });
 
@@ -623,5 +664,110 @@ export const removeScreenshotInternal = internalMutation({
     });
 
     return { success: true };
+  },
+});
+
+/**
+ * Upsert rating for submission
+ * Requires owner/admin/judge role
+ */
+export const upsertRating = mutation({
+  args: {
+    submissionId: v.id('submissions'),
+    rating: v.number(),
+  },
+  handler: async (ctx, args) => {
+    // Validate rating is between 0 and 10
+    if (args.rating < 0 || args.rating > 10) {
+      throw new Error('Rating must be between 0 and 10');
+    }
+
+    const submission = await ctx.db.get(args.submissionId);
+    if (!submission) {
+      throw new Error('Submission not found');
+    }
+
+    // Check membership - only owners, admins, and judges can rate
+    const { userId } = await requireHackathonRole(ctx, submission.hackathonId, [
+      'owner',
+      'admin',
+      'judge',
+    ]);
+
+    const now = Date.now();
+
+    // Check if rating already exists
+    const existingRating = await ctx.db
+      .query('ratings')
+      .withIndex('by_userId_submissionId', (q) =>
+        q.eq('userId', userId).eq('submissionId', args.submissionId),
+      )
+      .first();
+
+    if (existingRating) {
+      // Update existing rating
+      await ctx.db.patch(existingRating._id, {
+        rating: args.rating,
+        updatedAt: now,
+      });
+      return { ratingId: existingRating._id };
+    }
+
+    // Create new rating
+    const ratingId = await ctx.db.insert('ratings', {
+      submissionId: args.submissionId,
+      hackathonId: submission.hackathonId,
+      userId,
+      rating: args.rating,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    return { ratingId };
+  },
+});
+
+/**
+ * Get current user's rating for a submission
+ *
+ * ACCESS CONTROL: Returns null if user is not authenticated or doesn't have access
+ */
+export const getUserRating = query({
+  args: {
+    submissionId: v.id('submissions'),
+  },
+  handler: async (ctx, args) => {
+    const authUser = await authComponent.getAuthUser(ctx);
+    if (!authUser) {
+      return null;
+    }
+
+    const userId = assertUserId(authUser, 'User ID not found');
+
+    const submission = await ctx.db.get(args.submissionId);
+    if (!submission) {
+      return null;
+    }
+
+    // Check membership
+    const membership = await ctx.db
+      .query('memberships')
+      .withIndex('by_hackathonId', (q) => q.eq('hackathonId', submission.hackathonId))
+      .filter((q) => q.eq(q.field('userId'), userId))
+      .first();
+
+    if (!membership || membership.status !== 'active') {
+      return null;
+    }
+
+    // Get user's rating
+    const rating = await ctx.db
+      .query('ratings')
+      .withIndex('by_userId_submissionId', (q) =>
+        q.eq('userId', userId).eq('submissionId', args.submissionId),
+      )
+      .first();
+
+    return rating;
   },
 });

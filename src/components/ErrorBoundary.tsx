@@ -70,7 +70,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
           <CardContent className="space-y-4">
             <div className="flex gap-2">
               <Button onClick={this.handleRetry} variant="outline" size="sm">
-                <RefreshCw className="h-4 w-4 mr-2" />
+                <RefreshCw className="h-4 w-4" />
                 Try Again
               </Button>
               <Button onClick={() => window.location.reload()} variant="outline" size="sm">

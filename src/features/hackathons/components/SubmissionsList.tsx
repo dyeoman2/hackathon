@@ -30,7 +30,6 @@ export function SubmissionsList({ hackathonId }: SubmissionsListProps) {
   const hackathon = useQuery(api.hackathons.getHackathon, { hackathonId });
   const submissions = useQuery(api.submissions.listByHackathon, { hackathonId });
 
-
   const deleteSubmissionOptimistic = useOptimisticMutation(api.submissions.deleteSubmission, {
     onSuccess: () => {
       toast.showToast('Submission deleted successfully', 'success');
@@ -54,7 +53,6 @@ export function SubmissionsList({ hackathonId }: SubmissionsListProps) {
       params: { id: hackathonId, submissionId },
     });
   };
-
 
   // Memoize permission check to avoid recalculation on every render
   const canDelete = useMemo(
@@ -97,7 +95,7 @@ export function SubmissionsList({ hackathonId }: SubmissionsListProps) {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="text-2xl font-semibold">Submissions</h2>
         <Button onClick={() => setIsNewSubmissionModalOpen(true)} className="w-full sm:w-auto">
-          <Plus className="mr-2 h-4 w-4" />
+          <Plus className="h-4 w-4" />
           New Submission
         </Button>
       </div>
@@ -106,7 +104,7 @@ export function SubmissionsList({ hackathonId }: SubmissionsListProps) {
         <div className="rounded-md border bg-card p-12 text-center">
           <p className="text-muted-foreground mb-4">No submissions yet.</p>
           <Button onClick={() => setIsNewSubmissionModalOpen(true)}>
-            <Plus className="mr-2 h-4 w-4" />
+            <Plus className="h-4 w-4" />
             Add Submission
           </Button>
         </div>
@@ -117,7 +115,9 @@ export function SubmissionsList({ hackathonId }: SubmissionsListProps) {
               <TableRow>
                 <TableHead>Title</TableHead>
                 <TableHead>Team</TableHead>
-                <TableHead>AI Score</TableHead>
+                <TableHead>My Rating</TableHead>
+                <TableHead>AI Rating</TableHead>
+                <TableHead>Overall Rating</TableHead>
                 <TableHead>Created</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
@@ -132,10 +132,22 @@ export function SubmissionsList({ hackathonId }: SubmissionsListProps) {
                   <TableCell className="font-medium">{submission.title}</TableCell>
                   <TableCell>{submission.team}</TableCell>
                   <TableCell>
+                    {submission.myRating !== null && submission.myRating !== undefined ? (
+                      <Badge variant="default">{submission.myRating.toFixed(1)}</Badge>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
                     {submission.ai?.score !== undefined ? (
-                      <Badge variant="secondary">
-                        {submission.ai.score.toFixed(1)}
-                      </Badge>
+                      <Badge variant="secondary">{submission.ai.score.toFixed(1)}</Badge>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {submission.averageRating !== null && submission.averageRating !== undefined ? (
+                      <Badge variant="outline">{submission.averageRating.toFixed(1)}</Badge>
                     ) : (
                       <span className="text-muted-foreground">—</span>
                     )}

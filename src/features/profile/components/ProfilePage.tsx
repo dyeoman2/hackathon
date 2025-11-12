@@ -152,7 +152,7 @@ export function ProfilePage() {
         actions={
           !isEditing && (
             <Button variant="outline" size="sm" onClick={() => setIsEditing(true)}>
-              <Edit className="mr-2 h-4 w-4" />
+              <Edit className="h-4 w-4" />
               Edit
             </Button>
           )

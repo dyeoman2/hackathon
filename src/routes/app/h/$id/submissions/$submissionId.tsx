@@ -262,7 +262,10 @@ function SubmissionDetailComponent() {
       />
 
       <div className="space-y-6">
-        <SubmissionRatingSlider />
+        <SubmissionRatingSlider
+          submissionId={submissionId as Id<'submissions'>}
+          hackathonRole={hackathon.role}
+        />
 
         <SubmissionRepositorySummary submission={submission} canEdit={canEdit} />
 

@@ -48,7 +48,7 @@ function RouteErrorBoundary({
               size="sm"
               variant="outline"
             >
-              <RefreshCw className="h-4 w-4 mr-2" />
+              <RefreshCw className="h-4 w-4" />
               Try Again
             </Button>
 
@@ -57,7 +57,7 @@ function RouteErrorBoundary({
             </Button>
 
             <Button onClick={() => window.history.back()} size="sm" variant="outline">
-              <ArrowLeft className="h-4 w-4 mr-2" />
+              <ArrowLeft className="h-4 w-4" />
               Go Back
             </Button>
 

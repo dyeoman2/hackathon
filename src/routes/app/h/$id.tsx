@@ -69,12 +69,12 @@ function HackathonWorkspaceComponent() {
                     });
                   }}
                 >
-                  <Users className="mr-2 h-4 w-4" />
+                  <Users className="h-4 w-4" />
                   Manage Judges
                 </Button>
               )}
               <Button variant="outline" onClick={() => setIsSettingsModalOpen(true)}>
-                <Settings className="mr-2 h-4 w-4" />
+                <Settings className="h-4 w-4" />
                 Settings
               </Button>
             </div>

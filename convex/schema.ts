@@ -130,6 +130,7 @@ export default defineSchema({
     team: v.string(),
     repoUrl: v.string(),
     siteUrl: v.optional(v.string()),
+    status: v.optional(v.string()), // Legacy field - kept for backward compatibility
     source: v.optional(
       v.object({
         r2Key: v.optional(v.string()),
@@ -183,5 +184,17 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   })
+    .index('by_hackathonId', ['hackathonId']),
+
+  ratings: defineTable({
+    submissionId: v.id('submissions'),
+    hackathonId: v.id('hackathons'),
+    userId: v.string(), // References Better Auth user.id
+    rating: v.number(), // 0-10
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_submissionId', ['submissionId'])
+    .index('by_userId_submissionId', ['userId', 'submissionId'])
     .index('by_hackathonId', ['hackathonId']),
 });

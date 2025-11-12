@@ -67,11 +67,11 @@ function JudgeManagementComponent() {
                 });
               }}
             >
-              <ArrowLeft className="mr-2 h-4 w-4" />
+              <ArrowLeft className="h-4 w-4" />
               Back
             </Button>
             <Button onClick={() => setIsInviteModalOpen(true)}>
-              <Plus className="mr-2 h-4 w-4" />
+              <Plus className="h-4 w-4" />
               Invite Judge
             </Button>
           </div>
