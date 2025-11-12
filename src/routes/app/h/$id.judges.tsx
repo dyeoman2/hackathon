@@ -1,7 +1,7 @@
 import { api } from '@convex/_generated/api';
 import type { Id } from '@convex/_generated/dataModel';
 import { createFileRoute, useRouter } from '@tanstack/react-router';
-import { useQuery } from 'convex/react';
+import { useMutation, useQuery } from 'convex/react';
 import { ArrowLeft, Mail, Plus } from 'lucide-react';
 import { useState } from 'react';
 import { NotFound } from '~/components/NotFound';
@@ -18,6 +18,7 @@ import {
   TableHeader,
   TableRow,
 } from '~/components/ui/table';
+import { useToast } from '~/components/ui/toast';
 import { InviteJudgeModal } from '~/features/hackathons/components/InviteJudgeModal';
 import { usePerformanceMonitoring } from '~/hooks/use-performance-monitoring';
 
@@ -29,11 +30,45 @@ function JudgeManagementComponent() {
   usePerformanceMonitoring('JudgeManagement');
   const router = useRouter();
   const { id } = Route.useParams();
+  const toast = useToast();
   const hackathon = useQuery(api.hackathons.getHackathon, { hackathonId: id as Id<'hackathons'> });
   const memberships = useQuery(api.hackathons.getHackathonMemberships, {
     hackathonId: id as Id<'hackathons'>,
   });
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
+  const [resendingId, setResendingId] = useState<Id<'memberships'> | null>(null);
+  const [revokingId, setRevokingId] = useState<Id<'memberships'> | null>(null);
+
+  const resendInvite = useMutation(api.hackathons.resendInvite);
+  const revokeInvite = useMutation(api.hackathons.revokeInvite);
+
+  const capitalizeRole = (role: string) => {
+    return role.charAt(0).toUpperCase() + role.slice(1);
+  };
+
+  const handleResend = async (membershipId: Id<'memberships'>) => {
+    setResendingId(membershipId);
+    try {
+      await resendInvite({ membershipId, appUrl: window.location.origin });
+      toast.showToast('Invite resent successfully!', 'success');
+    } catch (error) {
+      toast.showToast(error instanceof Error ? error.message : 'Failed to resend invite', 'error');
+    } finally {
+      setResendingId(null);
+    }
+  };
+
+  const handleRevoke = async (membershipId: Id<'memberships'>) => {
+    setRevokingId(membershipId);
+    try {
+      await revokeInvite({ membershipId });
+      toast.showToast('Invite revoked successfully', 'success');
+    } catch (error) {
+      toast.showToast(error instanceof Error ? error.message : 'Failed to revoke invite', 'error');
+    } finally {
+      setRevokingId(null);
+    }
+  };
 
   if (hackathon === undefined || memberships === undefined) {
     return (
@@ -106,7 +141,7 @@ function JudgeManagementComponent() {
                         {membership.userEmail || membership.invitedEmail || '—'}
                       </TableCell>
                       <TableCell>
-                        <Badge variant="outline">{membership.role}</Badge>
+                        <Badge variant="outline">{capitalizeRole(membership.role)}</Badge>
                       </TableCell>
                       <TableCell>
                         <Badge variant="success">Active</Badge>
@@ -163,18 +198,29 @@ function JudgeManagementComponent() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Badge variant="outline">{membership.role}</Badge>
+                        <Badge variant="outline">{capitalizeRole(membership.role)}</Badge>
                       </TableCell>
                       <TableCell>
                         <Badge variant="warning">Invited</Badge>
                       </TableCell>
                       <TableCell>{new Date(membership.createdAt).toLocaleDateString()}</TableCell>
                       <TableCell className="text-right">
-                        <Button variant="ghost" size="sm" className="mr-2">
-                          Resend
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="mr-2"
+                          onClick={() => handleResend(membership._id)}
+                          disabled={resendingId === membership._id || revokingId === membership._id}
+                        >
+                          {resendingId === membership._id ? 'Resending...' : 'Resend'}
                         </Button>
-                        <Button variant="ghost" size="sm">
-                          Revoke
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleRevoke(membership._id)}
+                          disabled={resendingId === membership._id || revokingId === membership._id}
+                        >
+                          {revokingId === membership._id ? 'Revoking...' : 'Revoke'}
                         </Button>
                       </TableCell>
                     </TableRow>

@@ -183,8 +183,7 @@ export default defineSchema({
     ),
     createdAt: v.number(),
     updatedAt: v.number(),
-  })
-    .index('by_hackathonId', ['hackathonId']),
+  }).index('by_hackathonId', ['hackathonId']),
 
   ratings: defineTable({
     submissionId: v.id('submissions'),

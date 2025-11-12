@@ -60,7 +60,10 @@ export const listByHackathon = query({
       .collect();
 
     // Build a map of ratings by submission ID
-    const ratingsBySubmission = new Map<string, { myRating: number | null; averageRating: number | null }>();
+    const ratingsBySubmission = new Map<
+      string,
+      { myRating: number | null; averageRating: number | null }
+    >();
 
     for (const submission of submissions) {
       const submissionRatings = allRatings.filter((r) => r.submissionId === submission._id);
@@ -301,7 +304,6 @@ export const updateSubmission = mutation({
     return { success: true };
   },
 });
-
 
 /**
  * Delete submission (owner/admin only)

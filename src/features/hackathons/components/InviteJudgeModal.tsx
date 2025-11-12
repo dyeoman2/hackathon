@@ -1,7 +1,7 @@
 import { api } from '@convex/_generated/api';
 import type { Id } from '@convex/_generated/dataModel';
 import { useForm } from '@tanstack/react-form';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { z } from 'zod';
 import { Button } from '~/components/ui/button';
 import {
@@ -64,6 +64,7 @@ export function InviteJudgeModal({ hackathonId, open, onClose }: InviteJudgeModa
           hackathonId,
           email: value.email.trim().toLowerCase(),
           role: value.role,
+          appUrl: window.location.origin,
         });
 
         toast.showToast('Judge invite sent successfully!', 'success');
@@ -76,6 +77,14 @@ export function InviteJudgeModal({ hackathonId, open, onClose }: InviteJudgeModa
       }
     },
   });
+
+  // Reset form state when modal opens to clear any previous validation errors
+  useEffect(() => {
+    if (open) {
+      form.reset();
+      setSubmitError(null);
+    }
+  }, [open, form]);
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
@@ -98,7 +107,10 @@ export function InviteJudgeModal({ hackathonId, open, onClose }: InviteJudgeModa
           <form.Field
             name="email"
             validators={{
-              onChange: inviteSchema.shape.email,
+              onBlur: ({ value }) => {
+                const result = inviteSchema.shape.email.safeParse(value);
+                return result.success ? undefined : result.error.issues[0]?.message;
+              },
             }}
           >
             {(field) => (
@@ -121,11 +133,9 @@ export function InviteJudgeModal({ hackathonId, open, onClose }: InviteJudgeModa
           <form.Field
             name="role"
             validators={{
-              onChange: (value: unknown) => {
-                if (value !== 'admin' && value !== 'judge') {
-                  return 'Role must be admin or judge';
-                }
-                return undefined;
+              onChange: ({ value }) => {
+                const result = inviteSchema.shape.role.safeParse(value);
+                return result.success ? undefined : 'Role must be admin or judge';
               },
             }}
           >

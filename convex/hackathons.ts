@@ -439,6 +439,7 @@ export const inviteJudge = mutation({
     hackathonId: v.id('hackathons'),
     email: v.string(),
     role: v.union(v.literal('admin'), v.literal('judge')),
+    appUrl: v.string(),
   },
   handler: async (ctx, args) => {
     const { userId } = await requireHackathonRole(ctx, args.hackathonId, ['owner', 'admin']);
@@ -486,17 +487,169 @@ export const inviteJudge = mutation({
       tokenHash,
     });
 
-    // TODO: Send email via Resend with invite link containing token
-    // For now, just return success
-    // The token should be sent in email: /app/invite/${encodeURIComponent(token)}
-    // await ctx.scheduler.runAfter(0, internal.emails.sendJudgeInviteEmail, {
-    //   membershipId,
-    //   hackathonTitle: hackathon.title,
-    //   inviterName: inviterName,
-    //   inviteToken: token,
-    // });
+    // Get inviter name from Better Auth
+    let inviterName = 'Hackathon Team';
+    try {
+      const rawResult: unknown = await ctx.runQuery(components.betterAuth.adapter.findMany, {
+        model: 'user',
+        paginationOpts: {
+          cursor: null,
+          numItems: 1,
+          id: 0,
+        },
+      });
 
-    return { success: true, membershipId, token }; // Return token for testing - remove in production
+      const normalized = normalizeAdapterFindManyResult<BetterAuthAdapterUserDoc>(rawResult);
+      const { page } = normalized;
+
+      for (const authUser of page) {
+        try {
+          const authUserId = assertUserId(authUser, 'Better Auth user missing id');
+          if (authUserId === userId) {
+            inviterName = authUser.name || authUser.email || 'Hackathon Team';
+            break;
+          }
+        } catch {
+          // Continue searching
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch inviter name:', error);
+      // Continue with default name
+    }
+
+    // Schedule email to be sent (same pattern as password reset)
+    await ctx.scheduler.runAfter(0, internal.emails.sendJudgeInviteEmailMutation, {
+      email: args.email,
+      hackathonTitle: hackathon.title,
+      role: args.role,
+      inviterName,
+      inviteToken: token,
+      appUrl: args.appUrl,
+    });
+
+    return { success: true, membershipId };
+  },
+});
+
+/**
+ * Resend invite to judge
+ */
+export const resendInvite = mutation({
+  args: {
+    membershipId: v.id('memberships'),
+    appUrl: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const membership = await ctx.db.get(args.membershipId);
+    if (!membership) {
+      throw new Error('Membership not found');
+    }
+
+    // Check permissions and get current user
+    const { userId } = await requireHackathonRole(ctx, membership.hackathonId, ['owner', 'admin']);
+
+    if (membership.status !== 'invited') {
+      throw new Error('Can only resend invites for pending invitations');
+    }
+
+    if (!membership.invitedEmail) {
+      throw new Error('Membership missing invited email');
+    }
+
+    // Validate role (invites can only be for admin or judge, not owner)
+    if (membership.role !== 'admin' && membership.role !== 'judge') {
+      throw new Error('Can only resend invites for admin or judge roles');
+    }
+
+    // Get hackathon for email content
+    const hackathon = await ctx.db.get(membership.hackathonId);
+    if (!hackathon) {
+      throw new Error('Hackathon not found');
+    }
+
+    // Generate new token
+    const tokenExpiresAt = Date.now() + 7 * 24 * 60 * 60 * 1000; // 7 days
+    const inviteTokenSecret =
+      process.env.INVITE_TOKEN_SECRET || 'default-secret-change-in-production';
+    const token = `${membership._id}-${membership.hackathonId}-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
+    const tokenHash = await hashToken(token, inviteTokenSecret);
+
+    // Update membership with new token
+    await ctx.db.patch(args.membershipId, {
+      tokenHash,
+      tokenExpiresAt,
+    });
+
+    // Get current user name from Better Auth
+    let inviterName = 'Hackathon Team';
+    try {
+      const rawResult: unknown = await ctx.runQuery(components.betterAuth.adapter.findMany, {
+        model: 'user',
+        paginationOpts: {
+          cursor: null,
+          numItems: 1,
+          id: 0,
+        },
+      });
+
+      const normalized = normalizeAdapterFindManyResult<BetterAuthAdapterUserDoc>(rawResult);
+      const { page } = normalized;
+
+      for (const authUser of page) {
+        try {
+          const authUserId = assertUserId(authUser, 'Better Auth user missing id');
+          if (authUserId === userId) {
+            inviterName = authUser.name || authUser.email || 'Hackathon Team';
+            break;
+          }
+        } catch {
+          // Continue searching
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch inviter name:', error);
+      // Continue with default name
+    }
+
+    // Schedule email to be sent (same pattern as password reset)
+    await ctx.scheduler.runAfter(0, internal.emails.sendJudgeInviteEmailMutation, {
+      email: membership.invitedEmail,
+      hackathonTitle: hackathon.title,
+      role: membership.role,
+      inviterName,
+      inviteToken: token,
+      appUrl: args.appUrl,
+    });
+
+    return { success: true };
+  },
+});
+
+/**
+ * Revoke invite (delete pending membership)
+ */
+export const revokeInvite = mutation({
+  args: {
+    membershipId: v.id('memberships'),
+  },
+  handler: async (ctx, args) => {
+    const membership = await ctx.db.get(args.membershipId);
+    if (!membership) {
+      throw new Error('Membership not found');
+    }
+
+    // Check permissions
+    await requireHackathonRole(ctx, membership.hackathonId, ['owner', 'admin']);
+
+    if (membership.status !== 'invited') {
+      throw new Error('Can only revoke pending invitations');
+    }
+
+    // Delete the membership
+    await ctx.db.delete(args.membershipId);
+
+    return { success: true };
   },
 });
 

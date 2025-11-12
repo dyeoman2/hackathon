@@ -141,7 +141,6 @@ function SubmissionDetailComponent() {
     isDeleteDialogOpen,
   ]);
 
-
   const handleNavigateToSubmission = (targetSubmissionId: Id<'submissions'>) => {
     void navigate({
       to: '/app/h/$id/submissions/$submissionId',

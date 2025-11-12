@@ -1,7 +1,7 @@
 import { Resend } from '@convex-dev/resend';
 import { v } from 'convex/values';
 import { components, internal } from './_generated/api';
-import { action, internalMutation, query } from './_generated/server';
+import { action, internalAction, internalMutation, query } from './_generated/server';
 import { authComponent } from './auth';
 
 /**
@@ -169,5 +169,102 @@ export const sendPasswordResetEmail = action({
     // Schedule the mutation immediately (0ms delay)
     // The Resend component will handle queueing and delivery
     await ctx.scheduler.runAfter(0, internal.emails.sendPasswordResetEmailMutation, args);
+  },
+});
+
+/**
+ * Internal mutation that sends judge invite email using the Resend component
+ * Can only be called from within Convex (actions/mutations)
+ */
+export const sendJudgeInviteEmailMutation = internalMutation({
+  args: {
+    email: v.string(),
+    hackathonTitle: v.string(),
+    role: v.union(v.literal('admin'), v.literal('judge')),
+    inviterName: v.string(),
+    inviteToken: v.string(),
+    appUrl: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const appName = process.env.APP_NAME || 'Hackathon';
+    const emailSender = process.env.RESEND_EMAIL_SENDER || 'onboarding@resend.dev';
+    const inviteLink = `${args.appUrl}/app/invite/${encodeURIComponent(args.inviteToken)}`;
+
+    const htmlContent = `
+    <div style="background: #f8fafc; padding: 30px; border-radius: 8px; margin-bottom: 20px;">
+      <h2 style="color: #1f2937; margin: 0 0 15px 0; font-size: 20px;">Invitation to judge hackathon</h2>
+      <p style="margin: 0 0 15px 0; color: #4b5563;">Hi there,</p>
+      <p style="margin: 0 0 20px 0; color: #4b5563;">
+        You have been invited to judge ${args.hackathonTitle}.
+        If you did not expect this invitation, you can safely ignore this email.
+      </p>
+      <p style="margin: 0 0 25px 0; color: #4b5563;">
+        Click the button below to accept your invitation. This link will expire in 7 days for security reasons.
+      </p>
+
+      <div style="text-align: center; margin: 30px 0;">
+        <a href="${inviteLink}"
+           style="background-color: #2563eb; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; font-weight: 500; display: inline-block;">
+          Accept Invitation
+        </a>
+      </div>
+
+      <p style="margin: 25px 0 15px 0; color: #6b7280; font-size: 14px;">
+        If the button doesn't work, you can copy and paste this link into your browser:
+      </p>
+      <p style="margin: 0; color: #2563eb; word-break: break-all; font-size: 14px;">
+        ${inviteLink}
+      </p>
+    </div>
+
+    <div style="border-top: 1px solid #e5e7eb; padding-top: 20px; margin-top: 30px;">
+      <p style="margin: 0; color: #6b7280; font-size: 12px; text-align: center;">
+        This invitation link will expire in 7 days.<br>
+        If you did not expect this invitation, please ignore this email.
+      </p>
+    </div>
+  `;
+
+    const textContent = `
+Hi there,
+
+You have been invited to judge ${args.hackathonTitle}.
+If you did not expect this invitation, you can safely ignore this email.
+
+To accept your invitation, please visit: ${inviteLink}
+
+This link will expire in 7 days for security reasons.
+
+If you did not expect this invitation, please ignore this email.
+  `;
+
+    // Use the official Resend component for reliable email delivery
+    await resend.sendEmail(ctx, {
+      from: `${appName} <${emailSender}>`,
+      to: args.email,
+      subject: `Invitation to judge ${args.hackathonTitle}`,
+      html: createBaseHtmlTemplate(htmlContent, 'Invitation to judge', appName),
+      text: createBaseTextTemplate(textContent, appName),
+    });
+  },
+});
+
+/**
+ * Internal action wrapper that schedules the judge invite email mutation
+ * Called from mutations via scheduler
+ */
+export const sendJudgeInviteEmail = internalAction({
+  args: {
+    email: v.string(),
+    hackathonTitle: v.string(),
+    role: v.union(v.literal('admin'), v.literal('judge')),
+    inviterName: v.string(),
+    inviteToken: v.string(),
+    appUrl: v.string(),
+  },
+  handler: async (ctx, args) => {
+    // Schedule the mutation immediately (0ms delay)
+    // The Resend component will handle queueing and delivery
+    await ctx.scheduler.runAfter(0, internal.emails.sendJudgeInviteEmailMutation, args);
   },
 });

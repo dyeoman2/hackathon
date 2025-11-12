@@ -1,7 +1,7 @@
+import { api } from '@convex/_generated/api';
+import type { Id } from '@convex/_generated/dataModel';
 import { useMutation, useQuery } from 'convex/react';
 import { useEffect, useState } from 'react';
-import type { Id } from '@convex/_generated/dataModel';
-import { api } from '@convex/_generated/api';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~/components/ui/card';
 import { Slider } from '~/components/ui/slider';
 import { cn } from '~/lib/utils';
@@ -63,7 +63,8 @@ export function SubmissionRatingSlider({
   };
 
   // Check if user can rate (owner, admin, or judge)
-  const canRate = hackathonRole === 'owner' || hackathonRole === 'admin' || hackathonRole === 'judge';
+  const canRate =
+    hackathonRole === 'owner' || hackathonRole === 'admin' || hackathonRole === 'judge';
   const isLoading = userRating === undefined;
   const isDisabled = !canRate || isSaving || isLoading;
 
