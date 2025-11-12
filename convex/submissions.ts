@@ -124,7 +124,6 @@ export const createSubmission = mutation({
       team: args.team.trim(),
       repoUrl: args.repoUrl.trim(),
       siteUrl: args.siteUrl?.trim(),
-      status: 'submitted',
       source: {
         processingState: 'downloading', // Start with downloading state
       },
@@ -262,38 +261,6 @@ export const updateSubmission = mutation({
   },
 });
 
-/**
- * Update submission status (validates allowed transitions)
- */
-export const updateSubmissionStatus = mutation({
-  args: {
-    submissionId: v.id('submissions'),
-    status: v.union(
-      v.literal('submitted'),
-      v.literal('review'),
-      v.literal('shortlist'),
-      v.literal('winner'),
-      v.literal('rejected'),
-    ),
-  },
-  handler: async (ctx, args) => {
-    const submission = await ctx.db.get(args.submissionId);
-    if (!submission) {
-      throw new Error('Submission not found');
-    }
-
-    // Check membership
-    await requireHackathonRole(ctx, submission.hackathonId, ['owner', 'admin', 'judge']);
-
-    // Status transitions are unrestricted - allow any status to transition to any other status
-    await ctx.db.patch(args.submissionId, {
-      status: args.status,
-      updatedAt: Date.now(),
-    });
-
-    return { success: true };
-  },
-});
 
 /**
  * Delete submission (owner/admin only)

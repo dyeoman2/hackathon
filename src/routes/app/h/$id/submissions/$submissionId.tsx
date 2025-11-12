@@ -21,10 +21,6 @@ import { SubmissionRepoChat } from '~/features/hackathons/components/SubmissionR
 import { SubmissionRepositorySummary } from '~/features/hackathons/components/SubmissionRepositorySummary';
 import { SubmissionScoring } from '~/features/hackathons/components/SubmissionScoring';
 import { SubmissionScreenshots } from '~/features/hackathons/components/SubmissionScreenshots';
-import {
-  type SubmissionStatus,
-  SubmissionStatusBadge,
-} from '~/features/hackathons/components/SubmissionStatusBadge';
 import { SubmissionTimeline } from '~/features/hackathons/components/SubmissionTimeline';
 import { usePerformanceMonitoring } from '~/hooks/use-performance-monitoring';
 
@@ -67,20 +63,9 @@ function SubmissionDetailComponent() {
     },
   });
 
-  const updateStatusOptimistic = useOptimisticMutation(api.submissions.updateSubmissionStatus, {
-    onSuccess: () => {
-      toast.showToast('Submission status updated successfully', 'success');
-    },
-    onError: (error) => {
-      console.error('Failed to update status:', error);
-      toast.showToast(error instanceof Error ? error.message : 'Failed to update status', 'error');
-    },
-  });
-
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
 
   // Memoize permission checks to avoid recalculation on every render
   const canEdit = useMemo(
@@ -156,20 +141,6 @@ function SubmissionDetailComponent() {
     isDeleteDialogOpen,
   ]);
 
-  const handleStatusChange = async (newStatus: SubmissionStatus) => {
-    setIsUpdatingStatus(true);
-    try {
-      // Optimistic mutation - Convex automatically updates cache and handles rollback on error
-      await updateStatusOptimistic({
-        submissionId: submissionId as Id<'submissions'>,
-        status: newStatus,
-      });
-    } catch {
-      // Error handling is done in the onError callback
-    } finally {
-      setIsUpdatingStatus(false);
-    }
-  };
 
   const handleNavigateToSubmission = (targetSubmissionId: Id<'submissions'>) => {
     void navigate({
@@ -272,12 +243,6 @@ function SubmissionDetailComponent() {
               )}
             </div>
             <div className="flex items-center gap-2">
-              <SubmissionStatusBadge
-                status={submission.status}
-                canEdit={canEdit}
-                isUpdating={isUpdatingStatus}
-                onStatusChange={handleStatusChange}
-              />
               <div className="hidden sm:block">
                 <SubmissionActionsMenu
                   canEdit={canEdit}

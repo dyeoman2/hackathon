@@ -129,7 +129,6 @@ export function SubmissionTimeline({ submission }: SubmissionTimelineProps) {
         timestamp: submission.updatedAt,
         label: 'Last Updated',
         color: 'bg-muted-foreground',
-        details: submission.status !== 'submitted' ? `Status: ${submission.status}` : undefined,
       });
       // Re-sort after adding Last Updated
       events.sort((a, b) => {

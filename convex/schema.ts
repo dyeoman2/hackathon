@@ -130,13 +130,6 @@ export default defineSchema({
     team: v.string(),
     repoUrl: v.string(),
     siteUrl: v.optional(v.string()),
-    status: v.union(
-      v.literal('submitted'),
-      v.literal('review'),
-      v.literal('shortlist'),
-      v.literal('winner'),
-      v.literal('rejected'),
-    ),
     source: v.optional(
       v.object({
         r2Key: v.optional(v.string()),
@@ -190,6 +183,5 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   })
-    .index('by_hackathonId', ['hackathonId'])
-    .index('by_hackathonId_status', ['hackathonId', 'status']),
+    .index('by_hackathonId', ['hackathonId']),
 });

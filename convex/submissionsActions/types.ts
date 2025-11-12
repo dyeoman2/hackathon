@@ -14,7 +14,6 @@ export type GetSubmissionInternalRef = FunctionReference<
     team: string;
     repoUrl: string;
     siteUrl?: string;
-    status: 'submitted' | 'review' | 'shortlist' | 'winner';
     source?: {
       r2Key?: string;
       uploadedAt?: number;
