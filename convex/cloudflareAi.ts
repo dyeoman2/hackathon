@@ -2405,6 +2405,131 @@ export const queryAISearchForRepoChat = guarded.action(
   },
 );
 
+// Streaming version of queryAISearchForRepoChat (no usage tracking)
+// Simulates streaming by chunking the response text
+export const streamAISearchForRepoChat = guarded.action(
+  'profile.read',
+  {
+    query: v.string(),
+    model: v.optional(v.string()),
+    maxNumResults: v.optional(v.number()),
+    rewriteQuery: v.optional(v.boolean()),
+    pathPrefix: v.optional(v.string()),
+    requestId: v.string(),
+  },
+  async (
+    ctx: ActionCtx,
+    args,
+    _role,
+  ): Promise<{
+    responseId: Id<'aiResponses'>;
+  }> => {
+    const authUser = await authComponent.getAuthUser(ctx);
+    if (!authUser) {
+      throw new Error('Unauthorized');
+    }
+
+    const userId = assertUserId(authUser, 'Unable to resolve user id.');
+
+    // Create response record
+    const { responseId } = (await ctx.runMutation(internal.aiResponses.createResponse, {
+      userId,
+      requestKey: args.requestId,
+      method: 'direct',
+      provider: 'cloudflare-ai-search',
+      model: args.model ?? '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+    })) as { responseId: Id<'aiResponses'> };
+
+    const markError = async (message: string) => {
+      await ctx.runMutation(internal.aiResponses.markError, {
+        responseId,
+        errorMessage: message,
+      });
+    };
+
+    try {
+      // Query AI Search (returns full response at once)
+      const result = await queryAISearchHelper({
+        query: args.query,
+        model: args.model,
+        maxNumResults: args.maxNumResults,
+        rewriteQuery: args.rewriteQuery,
+        pathPrefix: args.pathPrefix,
+      });
+
+      // Extract the generated response
+      const generatedResponse = result.response ?? result.result?.response ?? '';
+
+      // Update metadata
+      await ctx.runMutation(internal.aiResponses.updateMetadata, {
+        responseId,
+        provider: 'cloudflare-ai-search',
+        model: args.model ?? '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+      });
+
+      // Simulate streaming by chunking the response
+      // Split into chunks of approximately STREAMING_FLUSH_CHAR_TARGET characters
+      const chunkSize = STREAMING_FLUSH_CHAR_TARGET;
+      let bufferedContent = '';
+      let lastFlushTime = Date.now();
+
+      const flushBufferedContent = async () => {
+        if (!bufferedContent) {
+          return;
+        }
+        await ctx.runMutation(internal.aiResponses.appendChunk, {
+          responseId,
+          content: bufferedContent,
+        });
+        bufferedContent = '';
+        lastFlushTime = Date.now();
+      };
+
+      // Process response in chunks
+      for (let i = 0; i < generatedResponse.length; i += chunkSize) {
+        const chunk = generatedResponse.slice(i, i + chunkSize);
+        bufferedContent += chunk;
+
+        // Flush if we've accumulated enough or enough time has passed
+        const shouldFlush =
+          bufferedContent.length >= STREAMING_FLUSH_CHAR_TARGET ||
+          Date.now() - lastFlushTime >= STREAMING_FLUSH_INTERVAL_MS;
+
+        if (shouldFlush) {
+          await flushBufferedContent();
+        }
+
+        // Small delay to simulate real streaming
+        if (i + chunkSize < generatedResponse.length) {
+          await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+      }
+
+      // Flush any remaining content
+      await flushBufferedContent();
+
+      // Mark as complete
+      const estimatedUsage = {
+        inputTokens: estimateTokens(args.query),
+        outputTokens: estimateTokens(generatedResponse),
+        totalTokens: estimateTokens(args.query) + estimateTokens(generatedResponse),
+      };
+
+      await ctx.runMutation(internal.aiResponses.markComplete, {
+        responseId,
+        response: generatedResponse,
+        usage: estimatedUsage,
+        finishReason: 'stop',
+      });
+
+      return { responseId };
+    } catch (error) {
+      await markError(error instanceof Error ? error.message : 'Failed to query AI Search');
+      throw error;
+    }
+  },
+);
+
 // Test AI Search connectivity
 export const testAISearchConnectivity = guarded.action(
   'profile.read',

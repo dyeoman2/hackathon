@@ -1,6 +1,6 @@
 import { api } from '@convex/_generated/api';
 import type { Doc } from '@convex/_generated/dataModel';
-import { useAction } from 'convex/react';
+import { useAction, useQuery } from 'convex/react';
 import { useLayoutEffect, useRef, useState } from 'react';
 import { SiGithub } from 'react-icons/si';
 import ReactMarkdown from 'react-markdown';
@@ -24,7 +24,7 @@ interface Message {
 export function SubmissionRepoChat({ submission }: SubmissionRepoChatProps) {
   const processingState = submission.source?.processingState;
   const r2PathPrefix = submission.source?.r2Key;
-  const queryAISearch = useAction(api.cloudflareAi.queryAISearchForRepoChat);
+  const streamAISearch = useAction(api.cloudflareAi.streamAISearchForRepoChat);
 
   // Get GitHub repo base URL for file links
   const getGitHubRepoBase = () => {
@@ -42,46 +42,237 @@ export function SubmissionRepoChat({ submission }: SubmissionRepoChatProps) {
   // Transform file paths in message content from R2 paths to GitHub paths
   const transformFilePaths = (content: string): string => {
     if (!r2PathPrefix || !githubRepoBase) return content;
-    // Replace R2 paths like "repos/{submissionId}/files/path/to/file" with GitHub URLs
-    // Handle paths in various contexts: plain text, markdown links, code blocks, etc.
-    // Also remove parentheses around file paths
-    const escapedSubmissionId = submission._id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-    // First, replace all file paths (with or without parentheses) with markdown links
-    const r2PathRegex = new RegExp(`repos/${escapedSubmissionId}/files/([^\\s<>"'(]+)`, 'g');
-    let transformed = content.replace(r2PathRegex, (_match, filePath) => {
+    // Use r2PathPrefix to match paths (e.g., "repos/{submissionId}/files/")
+    // Escape special regex characters in the prefix
+    const escapedPrefix = r2PathPrefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+    // Simple approach: replace R2 paths with GitHub links
+    // Match: repos/{submissionId}/files/path/to/file
+    // Stop at whitespace, parentheses, brackets, commas, or end of string
+    // Use a more permissive pattern that allows matching paths even when followed by )
+    // First try with the exact prefix
+    const r2PathPattern = new RegExp(`${escapedPrefix}([^\\s<>"'\\],]+?)(?=\\s|$|,|\\)|\\])`, 'g');
+
+    // Also try matching the general pattern in case prefix doesn't match exactly
+    // This handles cases where the path might be from a different submission or format
+    const generalR2Pattern = /repos\/[^/]+\/files\/([^\s<>"'),\]]+?)(?=\s|$|,|\)|\])/g;
+
+    const transformPath = (
+      match: string,
+      filePath: string,
+      offset: number,
+      fullContent: string,
+    ): string => {
+      // Don't transform if already inside a markdown link
+      // Check if there's a ]( before this match
+      const beforeMatch = fullContent.substring(Math.max(0, offset - 100), offset);
+      if (beforeMatch.includes('](')) {
+        // Check if we're inside a link by finding the last ]( before us
+        const lastLinkStart = beforeMatch.lastIndexOf('](');
+        const afterLastLink = fullContent.substring(offset - 100 + lastLinkStart + 2, offset);
+        // If there's no closing ) before our match, we're inside a link
+        if (!afterLastLink.includes(')')) {
+          return match;
+        }
+      }
+
       const cleanPath = filePath.replace(/\/$/, '').replace(/^\/+/, '');
-      // Encode each path segment properly for GitHub URLs
-      // GitHub URLs use forward slashes between segments, so we encode each segment individually
+      // Encode path segments for URL
       const encodedPath = cleanPath
         .split('/')
         .map((segment: string) => encodeURIComponent(segment))
         .join('/');
-      // Use 'main' as default branch - GitHub will redirect if the repo uses 'master' or another branch
+
       return `[${cleanPath}](${githubRepoBase}/blob/main/${encodedPath})`;
+    };
+
+    // First try with the exact prefix
+    let transformed = content.replace(r2PathPattern, (match, filePath, offset) =>
+      transformPath(match, filePath, offset, content),
+    );
+
+    // Also try the general pattern to catch any R2 paths that might not match the prefix
+    transformed = transformed.replace(generalR2Pattern, (match, filePath, offset) => {
+      // Only transform if it's not already a markdown link
+      if (!match.startsWith('[')) {
+        return transformPath(match, filePath, offset, transformed);
+      }
+      return match;
     });
 
-    // Then, remove parentheses that now only contain markdown links (and optional commas/whitespace)
-    // This handles cases like: (CLOUDFLARE_AI_SETUP.md) or (CLOUDFLARE_AI_SETUP.md, src/routes/app/ai-playground.tsx)
+    // Handle multiple links in parentheses: ( [link1](url1), [link2](url2) )
+    // Also handles trailing punctuation: text ( [link1](url1), [link2](url2) ). or ):
+    // Remove parentheses and commas, replace commas with spaces
+    // Ensure proper spacing between links for ReactMarkdown to parse correctly
     transformed = transformed.replace(
-      /\((\s*\[[^\]]+\]\([^)]+\)(?:\s*,\s*\[[^\]]+\]\([^)]+\))*\s*)\)/g,
-      (_match, innerContent) => innerContent.trim(),
-    );
+      /\((\s*\[[^\]]+\]\([^)]+\)(?:\s*,\s*\[[^\]]+\]\([^)]+\))+)\s*\)([.:])?/g,
+      (match, linksContent, trailingPunct) => {
+        // Verify it's only links and commas
+        const trimmed = linksContent.trim();
+        const linkPattern = /\[[^\]]+\]\([^)]+\)/g;
+        const allLinks = trimmed.match(linkPattern);
+        const withoutLinks = trimmed.replace(linkPattern, '').replace(/,/g, '').trim();
 
-    // Also handle cases where there's text before/after the links in parentheses
-    // Like: (some text [link1](url1), [link2](url2))
-    transformed = transformed.replace(
-      /\(([^)]*?)(\[[^\]]+\]\([^)]+\)(?:\s*,\s*\[[^\]]+\]\([^)]+\))*)([^)]*?)\)/g,
-      (_match, before, links, after) => {
-        // Only remove parens if the content is mostly links
-        const linkCount = (links.match(/\[/g) || []).length;
-        const totalLength = before.length + links.length + after.length;
-        if (linkCount > 0 && links.length / totalLength > 0.5) {
-          return `${before.trim()} ${links} ${after.trim()}`.trim();
+        if (allLinks && allLinks.length > 0 && withoutLinks === '') {
+          // Remove commas and replace with spaces, remove parentheses
+          // Ensure there's a space between links for proper markdown parsing
+          const linksWithoutCommas = trimmed.replace(/,\s*/g, ' ').replace(/\s+/g, ' ');
+          return linksWithoutCommas + (trailingPunct ? ` ${trailingPunct}` : '');
         }
-        return _match;
+        return match;
       },
     );
+
+    // Also handle links that are already outside parentheses but have commas between them
+    // Pattern: [link1](url1), [link2](url2), [link3](url3) -> [link1](url1) [link2](url2) [link3](url3)
+    // This handles any number of links separated by commas
+    // Ensure proper spacing for ReactMarkdown parsing
+    transformed = transformed.replace(
+      /(\[[^\]]+\]\([^)]+\))\s*,\s*(\[[^\]]+\]\([^)]+\))/g,
+      (_match, link1, link2) => {
+        // Ensure there's exactly one space between links
+        return `${link1} ${link2}`;
+      },
+    );
+
+    // Clean up any remaining multiple spaces between links
+    transformed = transformed.replace(/(\[[^\]]+\]\([^)]+\))\s{2,}(\[[^\]]+\]\([^)]+\))/g, '$1 $2');
+
+    // Convert plain file names in backticks and parentheses to GitHub links
+    // Pattern: `filename.ext` or (filename.ext, filename2.ext) -> [filename.ext](url) [filename2.ext](url)
+    // Only match if not already a markdown link
+    // Common file extensions for codebases
+    const fileExtensionPattern =
+      /\.(ts|tsx|js|jsx|md|json|txt|yml|yaml|css|html|py|java|cpp|c|h|go|rs|rb|php|sh|bat|cmd|sql|graphql|gql|xml|svg|png|jpg|jpeg|gif|webp|ico|pdf)$/i;
+
+    const convertFileToLink = (fileName: string): string => {
+      const commonPaths = ['', 'docs/', 'src/', 'convex/'];
+      const basePath = commonPaths[0]; // Start with root
+      const fullPath = basePath + fileName;
+      const encodedPath = fullPath
+        .split('/')
+        .map((segment) => encodeURIComponent(segment))
+        .join('/');
+      return `[${fileName}](${githubRepoBase}/blob/main/${encodedPath})`;
+    };
+
+    // Convert file names in parentheses FIRST (to catch backtick-wrapped files inside parentheses)
+    // Pattern: (filename.ext) or (document `filename.ext`, `filename2.ext`) -> [filename.ext](url) [filename2.ext](url)
+    // Also handles cases like: (text filename.ext, filename2.ext)
+    // Handle trailing punctuation: (document `file.ext`). -> document [file.ext](url) .
+    transformed = transformed.replace(
+      /\(([^)]+)\)([.,:;])?/g,
+      (match, content, trailingPunct, offset) => {
+        // Skip if this is already part of a markdown link
+        const beforeMatch = transformed.substring(Math.max(0, offset - 50), offset);
+        if (beforeMatch.includes('](')) {
+          return match;
+        }
+
+        // Extract file names from content - they might be in backticks or plain
+        // Pattern: look for backtick-wrapped filenames or plain filenames
+        const backtickFiles = content.match(/`([^`]+)`/g) || [];
+        const plainFiles: string[] = [];
+
+        // Also check for plain file names (not in backticks)
+        // Split by comma and check each part
+        const parts = content.split(',').map((p: string) => p.trim());
+        for (const part of parts) {
+          // Remove backticks if present and check if it's a filename
+          const cleaned = part.replace(/^`|`$/g, '').trim();
+          // Check if it looks like a filename (has extension, no spaces, or spaces only from "document" prefix)
+          if (fileExtensionPattern.test(cleaned) && /^[a-zA-Z0-9_\-./]+$/.test(cleaned)) {
+            plainFiles.push(cleaned);
+          }
+        }
+
+        // Combine files from backticks and plain text
+        const allFiles: string[] = [];
+
+        // Extract from backticks
+        for (const bt of backtickFiles) {
+          const fileName = bt.replace(/^`|`$/g, '').trim();
+          if (fileExtensionPattern.test(fileName) && /^[a-zA-Z0-9_\-./]+$/.test(fileName)) {
+            allFiles.push(fileName);
+          }
+        }
+
+        // Add plain files that weren't already in backticks
+        for (const pf of plainFiles) {
+          if (!allFiles.includes(pf)) {
+            allFiles.push(pf);
+          }
+        }
+
+        if (allFiles.length > 0) {
+          // Convert each file name to a GitHub link
+          const links = allFiles.map(convertFileToLink);
+          // Check if there was text like "document" before the file names
+          // Remove backticks and file names to check for prefix text
+          const contentWithoutFiles = content
+            .replace(/`[^`]+`/g, '') // Remove backtick-wrapped content
+            .replace(
+              /[a-zA-Z0-9_\-./]+\.(ts|tsx|js|jsx|md|json|txt|yml|yaml|css|html|py|java|cpp|c|h|go|rs|rb|php|sh|bat|cmd|sql|graphql|gql|xml|svg|png|jpg|jpeg|gif|webp|ico|pdf)/gi,
+              '',
+            ) // Remove file names
+            .replace(/,/g, '') // Remove commas
+            .trim()
+            .toLowerCase();
+
+          const linkText = contentWithoutFiles.startsWith('document')
+            ? `document ${links.join(' ')}`
+            : links.join(' ');
+
+          // Return with trailing punctuation (no extra spacing needed)
+          return trailingPunct ? `${linkText}${trailingPunct}` : linkText;
+        }
+
+        return match;
+      },
+    );
+
+    // Handle single link in parentheses: ( [filename](url) ) becomes [filename](url)
+    // Also handles: text ( [link](url) ). or text ( [link](url) ):
+    // Put trailing punctuation outside the link to avoid it being included in the button
+    transformed = transformed.replace(
+      /\((\s*\[[^\]]+\]\([^)]+\))\s*\)([.:])?/g,
+      (match, linkContent, trailingPunct) => {
+        // Make sure it's just a link, no other text
+        const trimmed = linkContent.trim();
+        if (trimmed.match(/^\[[^\]]+\]\([^)]+\)$/)) {
+          return trimmed + (trailingPunct ? ` ${trailingPunct}` : '');
+        }
+        return match;
+      },
+    );
+
+    // Convert standalone file names in backticks (not already converted): `filename.ext` -> [filename.ext](url)
+    // Handle multiple files separated by commas: `file1.ext`, `file2.ext` -> [file1.ext](url) [file2.ext](url)
+    transformed = transformed.replace(/`([^`]+)`/g, (match, content, offset) => {
+      // Skip if this is already part of a markdown link
+      const beforeMatch = transformed.substring(Math.max(0, offset - 50), offset);
+      if (beforeMatch.includes('](')) {
+        return match;
+      }
+
+      // Check if content looks like file names (has extension and possibly commas)
+      const files = content
+        .split(',')
+        .map((f: string) => f.trim())
+        .filter((f: string) => {
+          // Must have a file extension and look like a filename
+          return fileExtensionPattern.test(f) && /^[a-zA-Z0-9_\-./]+$/.test(f);
+        });
+
+      if (files.length > 0) {
+        // Convert each file name to a GitHub link
+        const links = files.map(convertFileToLink);
+        return links.join(' ');
+      }
+
+      return match;
+    });
 
     return transformed;
   };
@@ -90,7 +281,14 @@ export function SubmissionRepoChat({ submission }: SubmissionRepoChatProps) {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [currentRequestId, setCurrentRequestId] = useState<string | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+
+  // Watch for streaming response updates
+  const streamingResponse = useQuery(
+    api.aiResponses.getResponseByRequestKey,
+    currentRequestId ? { requestKey: currentRequestId } : 'skip',
+  );
 
   // Auto-scroll to bottom when messages change (only scroll the messages container, not the page)
   useLayoutEffect(() => {
@@ -98,6 +296,98 @@ export function SubmissionRepoChat({ submission }: SubmissionRepoChatProps) {
       messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
     }
   });
+
+  // Update messages when streaming response changes
+  useLayoutEffect(() => {
+    if (!streamingResponse || !currentRequestId) return;
+
+    setMessages((prev) => {
+      // Find the assistant message for this request
+      const assistantMessageIndex = prev.findIndex(
+        (msg) => msg.id === `assistant-${currentRequestId}`,
+      );
+
+      if (streamingResponse.status === 'error') {
+        // Handle error
+        const errorContent = `Error: ${streamingResponse.errorMessage || 'Failed to get AI response'}`;
+        if (assistantMessageIndex >= 0) {
+          const updated = [...prev];
+          updated[assistantMessageIndex] = {
+            ...updated[assistantMessageIndex],
+            content: errorContent,
+          };
+          return updated;
+        } else {
+          return [
+            ...prev,
+            {
+              id: `assistant-${currentRequestId}`,
+              role: 'assistant',
+              content: errorContent,
+              timestamp: new Date(),
+            },
+          ];
+        }
+      } else if (streamingResponse.status === 'complete') {
+        // Update with final response
+        const finalContent = streamingResponse.response || 'No response generated.';
+        if (assistantMessageIndex >= 0) {
+          const updated = [...prev];
+          updated[assistantMessageIndex] = {
+            ...updated[assistantMessageIndex],
+            content: finalContent,
+          };
+          return updated;
+        } else {
+          return [
+            ...prev,
+            {
+              id: `assistant-${currentRequestId}`,
+              role: 'assistant',
+              content: finalContent,
+              timestamp: new Date(),
+            },
+          ];
+        }
+      } else if (streamingResponse.status === 'pending') {
+        // Update with streaming content
+        const currentContent = streamingResponse.response || '';
+        // Only create/update message if there's actual content
+        // This prevents empty message bubbles from appearing
+        if (currentContent.trim() === '') {
+          return prev;
+        }
+
+        if (assistantMessageIndex >= 0) {
+          const updated = [...prev];
+          updated[assistantMessageIndex] = {
+            ...updated[assistantMessageIndex],
+            content: currentContent,
+          };
+          return updated;
+        } else {
+          // Create new message only when we have content
+          return [
+            ...prev,
+            {
+              id: `assistant-${currentRequestId}`,
+              role: 'assistant',
+              content: currentContent,
+              timestamp: new Date(),
+            },
+          ];
+        }
+      }
+
+      return prev;
+    });
+
+    // Update loading state and clear request ID when complete or error
+    if (streamingResponse.status === 'complete' || streamingResponse.status === 'error') {
+      setIsLoading(false);
+      setCurrentRequestId(null);
+    }
+  }, [streamingResponse, currentRequestId]);
 
   // Show processing state if automatic processing is in progress (same logic as Scoring section)
   const isProcessing = processingState && processingState !== 'complete';
@@ -128,6 +418,11 @@ export function SubmissionRepoChat({ submission }: SubmissionRepoChatProps) {
     }
   };
 
+  const createRequestId = () =>
+    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : `repo-chat-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
   const handleSend = async () => {
     if (!input.trim() || isLoading || !r2PathPrefix) return;
 
@@ -139,6 +434,8 @@ export function SubmissionRepoChat({ submission }: SubmissionRepoChatProps) {
     };
 
     setMessages((prev) => [...prev, userMessage]);
+    const requestId = createRequestId();
+    setCurrentRequestId(requestId);
     setInput('');
     setIsLoading(true);
     setError(null);
@@ -147,21 +444,15 @@ export function SubmissionRepoChat({ submission }: SubmissionRepoChatProps) {
       // Build query that includes path prefix context
       const queryWithContext = `${input.trim()}\n\nIMPORTANT: Only analyze files from the path "${r2PathPrefix}". Ignore any files from other repositories or submissions.`;
 
-      const result = await queryAISearch({
+      await streamAISearch({
         query: queryWithContext,
         model: 'google-ai-studio/gemini-2.5-flash',
         maxNumResults: 20,
         pathPrefix: r2PathPrefix,
+        requestId,
       });
 
-      const assistantMessage: Message = {
-        id: `assistant-${Date.now()}`,
-        role: 'assistant',
-        content: result.response || 'No response generated.',
-        timestamp: new Date(),
-      };
-
-      setMessages((prev) => [...prev, assistantMessage]);
+      // The response will be updated via useQuery subscription
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to get AI response';
       setError(errorMessage);
@@ -172,8 +463,8 @@ export function SubmissionRepoChat({ submission }: SubmissionRepoChatProps) {
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, errorMsg]);
-    } finally {
       setIsLoading(false);
+      setCurrentRequestId(null);
     }
   };
 
@@ -279,23 +570,70 @@ export function SubmissionRepoChat({ submission }: SubmissionRepoChatProps) {
                                 ? filePath.replace(/^docs\//, '')
                                 : filePath;
 
+                              // Extract trailing punctuation and commas from children if present
+                              // ReactMarkdown may include punctuation in the link text when markdown has [link](url).
+                              const childrenStr =
+                                typeof children === 'string'
+                                  ? children
+                                  : Array.isArray(children)
+                                    ? children.map((c) => (typeof c === 'string' ? c : '')).join('')
+                                    : displayPath;
+
+                              // Check if link text ends with punctuation: . : , or )
+                              // Handle cases like: [link](url), [link](url). [link](url): or [link](url))
+                              // ReactMarkdown may include trailing ) in link text when markdown has [link](url))
+                              let linkText = childrenStr || displayPath;
+                              let trailingPunct: string | null = null;
+
+                              // Remove trailing punctuation - be aggressive to catch all cases
+                              // Match one or more of: comma, period, colon, closing parenthesis
+                              // Use non-greedy match to avoid removing valid characters from the path
+                              // Important: match ) first since it's most common issue with multiple links
+                              const punctMatch = linkText.match(/^(.+?)([,.:)]+)$/);
+                              if (punctMatch) {
+                                linkText = punctMatch[1];
+                                trailingPunct = punctMatch[2];
+                              } else {
+                                // Also check if displayPath itself has trailing punctuation
+                                // (in case childrenStr doesn't match but displayPath does)
+                                const pathPunctMatch = displayPath.match(/^(.+?)([,.:)]+)$/);
+                                if (pathPunctMatch && linkText === displayPath) {
+                                  linkText = pathPunctMatch[1];
+                                  trailingPunct = pathPunctMatch[2];
+                                }
+                              }
+
+                              // Special handling: if linkText ends with just ), it's likely from malformed markdown
+                              // like [link](url)) where the second ) got included in the link text
+                              if (linkText.endsWith(')') && !trailingPunct) {
+                                // Check if this ) is actually part of the path (unlikely but possible)
+                                // If the path doesn't naturally end with ), remove it
+                                if (!displayPath.endsWith(')')) {
+                                  linkText = linkText.slice(0, -1);
+                                  trailingPunct = ')';
+                                }
+                              }
+
                               return (
-                                <Button
-                                  asChild
-                                  variant="outline"
-                                  size="sm"
-                                  className="h-6 py-0.5 px-1.5 text-xs font-normal inline-flex items-center gap-1 my-0.5 mx-0 -mr-1"
-                                >
-                                  <a
-                                    href={href}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    {...props}
+                                <>
+                                  <Button
+                                    asChild
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-6 py-0.5 px-1.5 text-xs font-normal inline-flex items-center gap-1 my-0.5"
                                   >
-                                    <SiGithub className="size-3" />
-                                    <span className="truncate max-w-[150px]">{displayPath}</span>
-                                  </a>
-                                </Button>
+                                    <a
+                                      href={href}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      {...props}
+                                    >
+                                      <SiGithub className="size-3" />
+                                      <span className="truncate max-w-[150px]">{linkText}</span>
+                                    </a>
+                                  </Button>
+                                  {trailingPunct && <span>{trailingPunct}</span>}
+                                </>
                               );
                             }
                             // Regular links
@@ -319,13 +657,34 @@ export function SubmissionRepoChat({ submission }: SubmissionRepoChatProps) {
               </div>
             ))
           )}
-          {isLoading && (
-            <div className="flex justify-start w-full">
-              <div className="max-w-[85%] bg-muted border border-border rounded-lg px-4 py-3 shadow-sm">
-                <p className="text-sm text-muted-foreground">Thinking...</p>
+          {isLoading &&
+            currentRequestId &&
+            (!streamingResponse ||
+              (streamingResponse.status === 'pending' &&
+                (!streamingResponse.response || streamingResponse.response.trim() === ''))) &&
+            !messages.some((msg) => msg.id === `assistant-${currentRequestId}`) && (
+              <div className="flex justify-start w-full">
+                <div className="max-w-[85%] bg-muted border border-border rounded-lg px-4 py-3 shadow-sm">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-sm text-muted-foreground">Thinking</span>
+                    <div className="flex gap-1">
+                      <span
+                        className="h-1.5 w-1.5 bg-muted-foreground/60 rounded-full animate-pulse"
+                        style={{ animationDelay: '0ms', animationDuration: '1.4s' }}
+                      />
+                      <span
+                        className="h-1.5 w-1.5 bg-muted-foreground/60 rounded-full animate-pulse"
+                        style={{ animationDelay: '200ms', animationDuration: '1.4s' }}
+                      />
+                      <span
+                        className="h-1.5 w-1.5 bg-muted-foreground/60 rounded-full animate-pulse"
+                        style={{ animationDelay: '400ms', animationDuration: '1.4s' }}
+                      />
+                    </div>
+                  </div>
+                </div>
               </div>
-            </div>
-          )}
+            )}
         </div>
 
         {/* Input */}

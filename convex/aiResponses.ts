@@ -186,6 +186,32 @@ export const listUserResponses = query({
   },
 });
 
+export const getResponseByRequestKey = query({
+  args: {
+    requestKey: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const authUser = await authComponent.getAuthUser(ctx);
+    if (!authUser) {
+      return null;
+    }
+
+    const userId = assertUserId(authUser, 'Unable to resolve user id.');
+
+    const response = await ctx.db
+      .query('aiResponses')
+      .withIndex('by_requestKey', (q) => q.eq('requestKey', args.requestKey))
+      .first();
+
+    // Ensure the response belongs to the current user
+    if (response && response.userId === userId) {
+      return response;
+    }
+
+    return null;
+  },
+});
+
 export const deleteAllUserResponses = mutation({
   args: {},
   handler: async (ctx) => {
