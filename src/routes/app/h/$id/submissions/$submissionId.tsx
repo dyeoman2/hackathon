@@ -16,6 +16,7 @@ import { useOptimisticMutation } from '~/features/admin/hooks/useOptimisticUpdat
 import { EditSubmissionModal } from '~/features/hackathons/components/EditSubmissionModal';
 import { SubmissionActionsMenu } from '~/features/hackathons/components/SubmissionActionsMenu';
 import { SubmissionNavigation } from '~/features/hackathons/components/SubmissionNavigation';
+import { SubmissionRatingSlider } from '~/features/hackathons/components/SubmissionRatingSlider';
 import { SubmissionRepoChat } from '~/features/hackathons/components/SubmissionRepoChat';
 import { SubmissionRepositorySummary } from '~/features/hackathons/components/SubmissionRepositorySummary';
 import { SubmissionScoring } from '~/features/hackathons/components/SubmissionScoring';
@@ -296,6 +297,8 @@ function SubmissionDetailComponent() {
       />
 
       <div className="space-y-6">
+        <SubmissionRatingSlider />
+
         <SubmissionRepositorySummary submission={submission} canEdit={canEdit} />
 
         <SubmissionScreenshots submission={submission} canEdit={canEdit} />
