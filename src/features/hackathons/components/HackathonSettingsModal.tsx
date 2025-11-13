@@ -1,10 +1,9 @@
 import { api } from '@convex/_generated/api';
 import type { Id } from '@convex/_generated/dataModel';
 import { useForm } from '@tanstack/react-form';
-import { useRouter } from '@tanstack/react-router';
 import { useQuery } from 'convex/react';
-import { AlertTriangle } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
+import { AlertTriangle } from 'lucide-react';
 import { z } from 'zod';
 import { Alert, AlertDescription } from '~/components/ui/alert';
 import { Button } from '~/components/ui/button';
@@ -40,7 +39,6 @@ export function HackathonSettingsModal({
   onClose,
 }: HackathonSettingsModalProps) {
   const toast = useToast();
-  const router = useRouter();
   const hackathon = useQuery(api.hackathons.getHackathon, { hackathonId });
 
   // Use optimistic mutations for better UX - Convex automatically handles cache updates and rollback
@@ -55,26 +53,9 @@ export function HackathonSettingsModal({
     },
   });
 
-  const deleteHackathonOptimistic = useOptimisticMutation(api.hackathons.deleteHackathon, {
-    onSuccess: () => {
-      toast.showToast('Hackathon deleted successfully', 'success');
-      onClose();
-      // Navigate away using router instead of window.location
-      void router.navigate({ to: '/app/h' });
-    },
-    onError: (error) => {
-      console.error('Failed to delete hackathon:', error);
-      setSubmitError(error instanceof Error ? error.message : 'Failed to delete hackathon');
-    },
-  });
-
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
-  // Memoize permission check to avoid recalculation on every render - must be called before early returns
-  const canDelete = useMemo(() => hackathon?.role === 'owner', [hackathon?.role]);
 
   const form = useForm({
     defaultValues: {
@@ -112,21 +93,6 @@ export function HackathonSettingsModal({
     }
   }, [open, hackathon, form]);
 
-  const handleDelete = async () => {
-    setIsDeleting(true);
-    setSubmitError(null);
-
-    try {
-      // Optimistic mutation - Convex automatically removes from cache and handles rollback on error
-      await deleteHackathonOptimistic({ hackathonId });
-      // Navigation is handled in the onSuccess callback
-    } catch {
-      // Error handling is done in the onError callback
-    } finally {
-      setIsDeleting(false);
-      setShowDeleteConfirm(false);
-    }
-  };
 
   if (hackathon === undefined) {
     return null; // Don't show modal while loading
@@ -217,50 +183,8 @@ export function HackathonSettingsModal({
             </Alert>
           )}
 
-          {showDeleteConfirm && (
-            <Alert variant="destructive">
-              <AlertTriangle className="h-4 w-4" />
-              <AlertDescription>
-                Are you sure you want to delete this hackathon? This action cannot be undone. All
-                submissions and data will be permanently deleted.
-              </AlertDescription>
-            </Alert>
-          )}
 
-          <DialogFooter className="flex-col sm:flex-row gap-2">
-            {canDelete && (
-              <div className="flex-1">
-                {!showDeleteConfirm ? (
-                  <Button
-                    type="button"
-                    variant="destructive"
-                    onClick={() => setShowDeleteConfirm(true)}
-                    disabled={isSubmitting || isDeleting}
-                  >
-                    Delete Hackathon
-                  </Button>
-                ) : (
-                  <div className="flex gap-2">
-                    <Button
-                      type="button"
-                      variant="destructive"
-                      onClick={handleDelete}
-                      disabled={isSubmitting || isDeleting}
-                    >
-                      {isDeleting ? 'Deleting...' : 'Confirm Delete'}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => setShowDeleteConfirm(false)}
-                      disabled={isSubmitting || isDeleting}
-                    >
-                      Cancel
-                    </Button>
-                  </div>
-                )}
-              </div>
-            )}
+          <DialogFooter>
             <div className="flex gap-2">
               <Button type="button" variant="outline" onClick={onClose} disabled={isSubmitting}>
                 Cancel
@@ -269,7 +193,7 @@ export function HackathonSettingsModal({
                 {([canSubmit, isFormSubmitting]) => (
                   <Button
                     type="submit"
-                    disabled={!canSubmit || isSubmitting || isFormSubmitting || showDeleteConfirm}
+                    disabled={!canSubmit || isSubmitting || isFormSubmitting}
                   >
                     {isSubmitting || isFormSubmitting ? 'Saving...' : 'Save Changes'}
                   </Button>

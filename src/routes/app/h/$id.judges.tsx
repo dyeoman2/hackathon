@@ -89,7 +89,7 @@ function JudgeManagementComponent() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Judge Management"
+        title="Judges"
         description={hackathon.title}
         actions={
           <div className="flex gap-2">
