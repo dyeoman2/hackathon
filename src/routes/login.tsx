@@ -1,5 +1,7 @@
+import { api } from '@convex/_generated/api';
 import { useForm } from '@tanstack/react-form';
 import { createFileRoute, Link, redirect, useNavigate, useRouter } from '@tanstack/react-router';
+import { useMutation } from 'convex/react';
 import { Lock, Mail } from 'lucide-react';
 import { useEffect, useId, useState } from 'react';
 import { z } from 'zod';
@@ -25,6 +27,7 @@ export const Route = createFileRoute('/login')({
       .string()
       .regex(/^\/|https?:\/\/.*$/)
       .optional(),
+    message: z.string().optional(),
   }),
 });
 
@@ -36,28 +39,33 @@ const REDIRECT_TARGETS = [
   '/app/admin/stats',
 ] as const;
 
-type RedirectTarget = (typeof REDIRECT_TARGETS)[number];
-
-function resolveRedirectTarget(value?: string | null): RedirectTarget {
+function resolveRedirectTarget(value?: string | null): string {
   if (!value) {
     return '/app';
   }
 
   const [path] = value.split('?');
-  const match = REDIRECT_TARGETS.find((route) => route === path);
 
-  return (match ?? '/app') as RedirectTarget;
+  // Allow invite routes
+  if (path.startsWith('/invite/')) {
+    return path;
+  }
+
+  // Check other allowed routes
+  const match = REDIRECT_TARGETS.find((route) => route === path || path.startsWith(`${route}/`));
+  return match ?? '/app';
 }
 
 function LoginPage() {
-  const { email: emailFromQuery, reset, redirect: redirectParam } = Route.useSearch();
+  const { email: emailFromQuery, reset, redirect: redirectParam, message } = Route.useSearch();
   const redirectTarget = resolveRedirectTarget(redirectParam);
   const navigate = useNavigate();
   const router = useRouter();
   const { isAuthenticated, isPending } = useAuthState();
+  const acceptInvite = useMutation(api.hackathons.acceptInvite);
 
   const [error, setError] = useState('');
-  const [successMessage, setSuccessMessage] = useState('');
+  const [successMessage, setSuccessMessage] = useState(message || '');
   const emailId = useId();
   const passwordId = useId();
 
@@ -68,7 +76,7 @@ function LoginPage() {
     },
     onSubmit: async ({ value }) => {
       setError('');
-      setSuccessMessage('');
+      // Don't clear success message on form submission - let it persist
 
       // Validate form fields
       const errors: string[] = [];
@@ -118,10 +126,34 @@ function LoginPage() {
 
         if (data) {
           await router.invalidate();
-          // Small delay to ensure invalidation settles before navigation
-          setTimeout(() => {
-            navigate({ to: redirectTarget });
-          }, 50);
+
+          // Handle invite redirects specially - accept invite and redirect to hackathon
+          if (redirectTarget.startsWith('/invite/')) {
+            try {
+              // Extract token from invite URL
+              const token = redirectTarget.replace('/invite/', '');
+              const decodedToken = decodeURIComponent(token);
+
+              // Accept the invite
+              const result = await acceptInvite({ token: decodedToken });
+
+              // Redirect directly to the hackathon page
+              setTimeout(() => {
+                navigate({ to: '/app/h/$id', params: { id: result.hackathonId } });
+              }, 50);
+            } catch (inviteError) {
+              console.error('Failed to accept invite after login:', inviteError);
+              // Fallback to regular redirect if invite acceptance fails
+              setTimeout(() => {
+                navigate({ to: '/app' });
+              }, 50);
+            }
+          } else {
+            // Small delay to ensure invalidation settles before navigation
+            setTimeout(() => {
+              navigate({ to: redirectTarget });
+            }, 50);
+          }
         } else {
           setError('An unexpected error occurred. Please try again.');
         }
@@ -233,10 +265,14 @@ function LoginPage() {
                     placeholder="Email address"
                     value={field.state.value}
                     onChange={(e) => {
-                      field.handleChange(e.target.value);
-                      setCurrentEmail(e.target.value);
+                      if (!emailFromQuery) {
+                        field.handleChange(e.target.value);
+                        setCurrentEmail(e.target.value);
+                      }
                     }}
                     onBlur={field.handleBlur}
+                    readOnly={!!emailFromQuery}
+                    className={emailFromQuery ? "bg-muted cursor-not-allowed" : ""}
                   />
                 </InputGroup>
                 {field.state.meta.errors.length > 0 && (

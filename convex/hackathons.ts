@@ -139,7 +139,10 @@ export const listHackathons = query({
       }),
     );
 
-    return hackathons.filter((h): h is NonNullable<typeof h> => h !== null);
+    // Filter out nulls and sort by createdAt descending (newest first)
+    return hackathons
+      .filter((h): h is NonNullable<typeof h> => h !== null)
+      .sort((a, b) => b.createdAt - a.createdAt);
   },
 });
 
@@ -667,21 +670,45 @@ async function hashToken(token: string, secret: string): Promise<string> {
 /**
  * Validate invite token (returns membership info if valid)
  */
+// Simple test query to check if Convex is working
+export const testQuery = query({
+  args: {},
+  handler: async (_ctx) => {
+    console.log('testQuery called - Convex is working!');
+    return { message: 'Convex is working', timestamp: Date.now() };
+  },
+});
+
 export const validateInviteToken = query({
   args: {
     token: v.string(),
   },
   handler: async (ctx, args) => {
+    console.log('validateInviteToken called with token:', args.token);
+
     // Hash the provided token to compare with stored hash
     const inviteTokenSecret =
       process.env.INVITE_TOKEN_SECRET || 'default-secret-change-in-production';
+    console.log('Using token secret:', inviteTokenSecret ? 'configured' : 'default');
+
     const tokenHash = await hashToken(args.token, inviteTokenSecret);
+    console.log('Generated token hash:', tokenHash);
 
     // Find membership by token hash
     const membership = await ctx.db
       .query('memberships')
       .withIndex('by_tokenHash', (q) => q.eq('tokenHash', tokenHash))
       .first();
+
+    console.log('Membership found:', membership ? 'YES' : 'NO');
+    if (membership) {
+      console.log('Membership details:', {
+        id: membership._id,
+        status: membership.status,
+        tokenExpiresAt: membership.tokenExpiresAt,
+        invitedEmail: membership.invitedEmail,
+      });
+    }
 
     if (!membership) {
       return { status: 'invalid' as const };
@@ -701,15 +728,48 @@ export const validateInviteToken = query({
       return { status: 'invalid' as const };
     }
 
-    // Get inviter info (simplified - just use name from userId if available)
-    // For full user info, would need to query Better Auth adapter findMany
-    const inviterName = membership.invitedByUserId ? 'Hackathon Owner' : null;
+    // Get inviter info from Better Auth
+    let inviterName = 'Hackathon Owner'; // Default fallback
+    if (membership.invitedByUserId) {
+      try {
+        // Query for the specific user by ID
+        const rawResult: unknown = await ctx.runQuery(components.betterAuth.adapter.findMany, {
+          model: 'user',
+          paginationOpts: {
+            cursor: null,
+            numItems: 1000,
+            id: 0,
+          },
+        });
+
+        const normalized = normalizeAdapterFindManyResult<BetterAuthAdapterUserDoc>(rawResult);
+        const { page } = normalized;
+
+        // Find the user with matching ID
+        const authUser = page.find(user => {
+          try {
+            const userId = assertUserId(user, 'Better Auth user missing id');
+            return userId === membership.invitedByUserId;
+          } catch {
+            return false;
+          }
+        });
+
+        if (authUser?.name) {
+          inviterName = authUser.name;
+        }
+      } catch (error) {
+        console.error('Error fetching inviter info:', error);
+        // Keep default fallback
+      }
+    }
 
     return {
       status: 'valid' as const,
       hackathonTitle: hackathon.title,
       inviterName: inviterName || 'Hackathon Owner',
       membershipId: membership._id,
+      invitedEmail: membership.invitedEmail,
     };
   },
 });

@@ -2,14 +2,14 @@ import { api } from '@convex/_generated/api';
 import { createFileRoute, useRouter } from '@tanstack/react-router';
 import { useMutation, useQuery } from 'convex/react';
 import { AlertCircle, CheckCircle2 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Alert, AlertDescription } from '~/components/ui/alert';
 import { Button } from '~/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~/components/ui/card';
 import { Skeleton } from '~/components/ui/skeleton';
 import { useAuth } from '~/features/auth/hooks/useAuth';
 
-export const Route = createFileRoute('/app/invite/$token')({
+export const Route = createFileRoute('/invite/$token')({
   component: InviteAcceptComponent,
 });
 
@@ -17,39 +17,69 @@ function InviteAcceptComponent() {
   const router = useRouter();
   const { token } = Route.useParams();
   const { isAuthenticated } = useAuth();
+  const decodedToken = decodeURIComponent(token);
+
   const tokenValidation = useQuery(api.hackathons.validateInviteToken, {
-    token: decodeURIComponent(token),
+    token: decodedToken,
   });
+
+  // Check if the invited email exists (always call the hook for consistent order)
+  const emailExistsQuery = useQuery(
+    api.auth.checkEmailExists,
+    { email: tokenValidation?.invitedEmail || '' }
+  );
+
+  // Only use the result if we have a valid token and email
+  const emailExistsCheck = (tokenValidation?.status === 'valid' && tokenValidation.invitedEmail)
+    ? emailExistsQuery
+    : { exists: false };
+
   const acceptInvite = useMutation(api.hackathons.acceptInvite);
   const [isAccepting, setIsAccepting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Redirect to login if not authenticated
-  useEffect(() => {
-    if (isAuthenticated === false) {
-      void router.navigate({
-        to: '/login',
-        search: { redirect: `/app/invite/${token}` },
-      });
-    }
-  }, [isAuthenticated, router, token]);
-
   const handleAccept = async () => {
-    setIsAccepting(true);
-    setError(null);
+    if (isAuthenticated) {
+      // If authenticated, accept the invite immediately and redirect to hackathon
+      setIsAccepting(true);
+      setError(null);
 
-    try {
-      const result = await acceptInvite({ token: decodeURIComponent(token) });
-      // Redirect to hackathon workspace
-      await router.navigate({
-        to: '/app/h/$id',
-        params: { id: result.hackathonId },
-      });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to accept invite');
-      setIsAccepting(false);
+      try {
+        const result = await acceptInvite({ token: decodedToken });
+        // Redirect to hackathon workspace
+        await router.navigate({
+          to: '/app/h/$id',
+          params: { id: result.hackathonId },
+        });
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to accept invite');
+        setIsAccepting(false);
+      }
+      return;
+    }
+
+    // If not authenticated, check if email exists and redirect appropriately
+    if (tokenValidation && tokenValidation.status === 'valid' && tokenValidation.invitedEmail) {
+      // Wait for email existence check to complete
+      if (emailExistsCheck === undefined) {
+        setIsAccepting(true); // Show loading while checking
+        return;
+      }
+
+      setIsAccepting(false); // Reset loading
+
+      if (emailExistsCheck.exists) {
+        // Email exists - redirect to login
+        const url = `/login?redirect=${encodeURIComponent(`/invite/${token}`)}&email=${encodeURIComponent(tokenValidation.invitedEmail)}&message=${encodeURIComponent(`Login to accept your invitation to join ${tokenValidation.hackathonTitle}`)}`;
+        window.location.href = url;
+      } else {
+        // Email doesn't exist - redirect to register
+        const url = `/register?redirect=${encodeURIComponent(`/invite/${token}`)}&email=${encodeURIComponent(tokenValidation.invitedEmail)}&message=${encodeURIComponent(`Create an account to accept your invitation to join ${tokenValidation.hackathonTitle}`)}`;
+        window.location.href = url;
+      }
     }
   };
+
 
   if (tokenValidation === undefined) {
     return (
@@ -144,7 +174,7 @@ function InviteAcceptComponent() {
     );
   }
 
-  // Valid invite
+  // Valid invite - show different UI based on authentication status
   return (
     <div className="container mx-auto py-8">
       <Card className="max-w-2xl mx-auto">
@@ -179,7 +209,7 @@ function InviteAcceptComponent() {
             <Button
               variant="outline"
               onClick={() => {
-                void router.navigate({ to: '/app/h' });
+                void router.navigate({ to: '/' });
               }}
               disabled={isAccepting}
             >

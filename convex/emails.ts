@@ -188,7 +188,14 @@ export const sendJudgeInviteEmailMutation = internalMutation({
   handler: async (ctx, args) => {
     const appName = process.env.APP_NAME || 'Hackathon';
     const emailSender = process.env.RESEND_EMAIL_SENDER || 'onboarding@resend.dev';
-    const inviteLink = `${args.appUrl}/app/invite/${encodeURIComponent(args.inviteToken)}`;
+    const inviteLink = `${args.appUrl}/invite/${encodeURIComponent(args.inviteToken)}`;
+
+    // In local development (when using npx convex dev), log the invite link instead of sending email
+    // Development deployments have URLs ending in .convex.site
+    if (process.env.CONVEX_SITE_URL?.endsWith('.convex.site')) {
+      console.log(`[LOCAL DEV] Judge invite link: ${inviteLink}`);
+      return;
+    }
 
     const htmlContent = `
     <div style="background: #f8fafc; padding: 30px; border-radius: 8px; margin-bottom: 20px;">

@@ -6,6 +6,4 @@ if (!convexUrl) {
   throw new Error('VITE_CONVEX_URL environment variable is required');
 }
 
-export const convexClient = new ConvexReactClient(convexUrl, {
-  expectAuth: true,
-});
+export const convexClient = new ConvexReactClient(convexUrl);

@@ -1,7 +1,7 @@
 import { api } from '@convex/_generated/api';
 import { useForm } from '@tanstack/react-form';
 import { createFileRoute, Link, useNavigate, useRouter } from '@tanstack/react-router';
-import { useQuery } from 'convex/react';
+import { useMutation, useQuery } from 'convex/react';
 import { Crown, Lock, Mail, ShieldCheck, User } from 'lucide-react';
 import { useEffect, useId, useState } from 'react';
 import { z } from 'zod';
@@ -24,11 +24,33 @@ export const Route = createFileRoute('/register')({
       .string()
       .regex(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)
       .optional(),
+    redirect: z
+      .string()
+      .regex(/^\/|https?:\/\/.*$/)
+      .optional(),
+    message: z.string().optional(),
   }),
 });
 
+function resolveRedirectTarget(value?: string | null): string {
+  if (!value) {
+    return '/app';
+  }
+
+  const [path] = value.split('?');
+
+  // Allow invite routes
+  if (path.startsWith('/invite/')) {
+    return path;
+  }
+
+  // Default to app
+  return '/app';
+}
+
 function RegisterPage() {
-  const { email: emailFromQuery } = Route.useSearch();
+  const { email: emailFromQuery, redirect: redirectParam, message } = Route.useSearch();
+  const redirectTarget = resolveRedirectTarget(redirectParam);
   const uid = useId();
   const nameId = `${uid}-name`;
   const emailId = `${uid}-email`;
@@ -36,13 +58,14 @@ function RegisterPage() {
   const { isAuthenticated, isPending } = useAuthState();
   const navigate = useNavigate();
   const router = useRouter();
+  const acceptInvite = useMutation(api.hackathons.acceptInvite);
 
   // Use Convex query directly instead of server function wrapper
   const userCountResult = useQuery(api.users.getUserCount, {});
   const isFirstUser = userCountResult?.isFirstUser ?? false;
 
   const [error, setError] = useState('');
-  const [successMessage, setSuccessMessage] = useState('');
+  const [successMessage, setSuccessMessage] = useState(message || '');
 
   const form = useForm({
     defaultValues: {
@@ -132,10 +155,33 @@ function RegisterPage() {
             // Invalidate router to refresh auth state
             await router.invalidate();
 
-            // Navigate to the app after showing success message
-            setTimeout(() => {
-              navigate({ to: '/app' });
-            }, 2000);
+            // Handle invite redirects specially - accept invite and redirect to hackathon
+            if (redirectTarget.startsWith('/invite/')) {
+              try {
+                // Extract token from invite URL
+                const token = redirectTarget.replace('/invite/', '');
+                const decodedToken = decodeURIComponent(token);
+
+                // Accept the invite
+                const result = await acceptInvite({ token: decodedToken });
+
+                // Redirect directly to the hackathon page after showing success message
+                setTimeout(() => {
+                  navigate({ to: '/app/h/$id', params: { id: result.hackathonId } });
+                }, 2000);
+              } catch (inviteError) {
+                console.error('Failed to accept invite after registration:', inviteError);
+                // Fallback to regular redirect if invite acceptance fails
+                setTimeout(() => {
+                  navigate({ to: '/app' });
+                }, 2000);
+              }
+            } else {
+              // Navigate to the redirect target after showing success message
+              setTimeout(() => {
+                navigate({ to: redirectTarget });
+              }, 2000);
+            }
           } else {
             throw new Error('Sign-in returned no data');
           }
@@ -179,8 +225,8 @@ function RegisterPage() {
       return;
     }
 
-    void navigate({ to: '/app', replace: true });
-  }, [isAuthenticated, navigate]);
+    void navigate({ to: redirectTarget, replace: true });
+  }, [isAuthenticated, navigate, redirectTarget]);
 
   if (isPending || isAuthenticated) {
     return <AuthSkeleton />;
@@ -303,10 +349,14 @@ function RegisterPage() {
                       placeholder="Email address"
                       value={field.state.value}
                       onChange={(e) => {
-                        field.handleChange(e.target.value);
-                        setCurrentEmail(e.target.value);
+                        if (!emailFromQuery) {
+                          field.handleChange(e.target.value);
+                          setCurrentEmail(e.target.value);
+                        }
                       }}
                       onBlur={field.handleBlur}
+                      readOnly={!!emailFromQuery}
+                      className={emailFromQuery ? "bg-muted cursor-not-allowed" : ""}
                     />
                   </InputGroup>
                   {field.state.meta.errors.length > 0 && (

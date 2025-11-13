@@ -12,6 +12,41 @@ const secret = getBetterAuthSecret();
 
 export const authComponent = createClient<DataModel>(components.betterAuth);
 
+/**
+ * Check if an email exists in the auth system
+ */
+export const checkEmailExists = query({
+  args: {
+    email: v.string(),
+  },
+  handler: async (ctx, args) => {
+    try {
+      // Query all users and check if email exists
+      // This is a simplified approach - in production you'd want better indexing
+      const rawResult: unknown = await ctx.runQuery(components.betterAuth.adapter.findMany, {
+        model: 'user',
+        paginationOpts: {
+          cursor: null,
+          numItems: 1000, // Get a reasonable number of users
+          id: 0,
+        },
+      });
+
+      // The result is an array of user objects
+      const users = Array.isArray(rawResult) ? rawResult : [];
+
+      // Check if any user has the target email
+      const emailExists = users.some((user: any) => user?.email === args.email);
+
+      return { exists: emailExists };
+    } catch (error) {
+      console.error('Error checking email existence:', error);
+      // On error, assume email doesn't exist to be safe
+      return { exists: false };
+    }
+  },
+});
+
 export const createAuth = (
   ctx: GenericCtx<DataModel>,
   { optionsOnly } = { optionsOnly: false },

@@ -113,7 +113,7 @@ function AuthProvider({ children }: AuthProviderProps) {
 
   return (
     <AuthContext.Provider value={{ authContext, isAuthLoading: isPending }}>
-      {children}
+      {isAuthenticated ? <AutumnClientProvider>{children}</AutumnClientProvider> : children}
     </AuthContext.Provider>
   );
 }
@@ -126,18 +126,16 @@ export function Providers({ children }: { children: ReactNode }) {
       showDetails={false}
     >
       <ConvexBetterAuthProvider client={convexClient} authClient={authClient}>
-        <AutumnClientProvider>
-          <AuthProvider>
-            <ThemeProvider
-              attribute="class"
-              defaultTheme="system"
-              enableSystem
-              disableTransitionOnChange
-            >
-              <ToastProvider>{children}</ToastProvider>
-            </ThemeProvider>
-          </AuthProvider>
-        </AutumnClientProvider>
+        <AuthProvider>
+          <ThemeProvider
+            attribute="class"
+            defaultTheme="system"
+            enableSystem
+            disableTransitionOnChange
+          >
+            <ToastProvider>{children}</ToastProvider>
+          </ThemeProvider>
+        </AuthProvider>
       </ConvexBetterAuthProvider>
     </ErrorBoundaryWrapper>
   );
