@@ -97,7 +97,6 @@ export function SubmissionTimeline({ submission }: SubmissionTimelineProps) {
     });
   }
 
-
   // Sort by timestamp, then by label for same timestamp
   events.sort((a, b) => {
     if (a.timestamp !== b.timestamp) {

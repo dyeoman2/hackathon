@@ -36,7 +36,12 @@ export const checkEmailExists = query({
       const users = Array.isArray(rawResult) ? rawResult : [];
 
       // Check if any user has the target email
-      const emailExists = users.some((user: any) => user?.email === args.email);
+      const emailExists = users.some((user: unknown) => {
+        if (typeof user === 'object' && user !== null && 'email' in user) {
+          return user.email === args.email;
+        }
+        return false;
+      });
 
       return { exists: emailExists };
     } catch (error) {

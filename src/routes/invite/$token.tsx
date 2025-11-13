@@ -24,15 +24,15 @@ function InviteAcceptComponent() {
   });
 
   // Check if the invited email exists (always call the hook for consistent order)
-  const emailExistsQuery = useQuery(
-    api.auth.checkEmailExists,
-    { email: tokenValidation?.invitedEmail || '' }
-  );
+  const emailExistsQuery = useQuery(api.auth.checkEmailExists, {
+    email: tokenValidation?.invitedEmail || '',
+  });
 
   // Only use the result if we have a valid token and email
-  const emailExistsCheck = (tokenValidation?.status === 'valid' && tokenValidation.invitedEmail)
-    ? emailExistsQuery
-    : { exists: false };
+  const emailExistsCheck =
+    tokenValidation?.status === 'valid' && tokenValidation.invitedEmail
+      ? emailExistsQuery
+      : { exists: false };
 
   const acceptInvite = useMutation(api.hackathons.acceptInvite);
   const [isAccepting, setIsAccepting] = useState(false);
@@ -79,7 +79,6 @@ function InviteAcceptComponent() {
       }
     }
   };
-
 
   if (tokenValidation === undefined) {
     return (

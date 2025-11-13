@@ -746,7 +746,7 @@ export const validateInviteToken = query({
         const { page } = normalized;
 
         // Find the user with matching ID
-        const authUser = page.find(user => {
+        const authUser = page.find((user) => {
           try {
             const userId = assertUserId(user, 'Better Auth user missing id');
             return userId === membership.invitedByUserId;

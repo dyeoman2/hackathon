@@ -10,7 +10,6 @@ import { assertUserId } from '../src/lib/shared/user-id';
 import { api, internal } from './_generated/api';
 import type { Id } from './_generated/dataModel';
 import type { ActionCtx } from './_generated/server';
-import { internalAction } from './_generated/server';
 import { authComponent } from './auth';
 import { guarded } from './authz/guardFactory';
 import { isAutumnConfigured } from './autumn';
@@ -184,14 +183,14 @@ function extractUsageMetadata(
   };
 }
 
-function clampScore(score: number | null | undefined, min = 0, max = 10) {
+function _clampScore(score: number | null | undefined, min = 0, max = 10) {
   if (typeof score !== 'number' || Number.isNaN(score)) {
     return null;
   }
   return Math.min(max, Math.max(min, score));
 }
 
-function extractJsonSnippet(payload: string) {
+function _extractJsonSnippet(payload: string) {
   const cleaned = payload.replace(/```json|```/gi, '').trim();
   const start = cleaned.indexOf('{');
   const end = cleaned.lastIndexOf('}');
@@ -200,7 +199,6 @@ function extractJsonSnippet(payload: string) {
   }
   return cleaned.slice(start, end + 1);
 }
-
 
 async function ensureAuthenticatedUser(ctx: ActionCtx) {
   const authUser = await authComponent.getAuthUser(ctx);
@@ -1036,7 +1034,7 @@ export async function generateWithGatewayHelper(
   };
 }
 
-async function fetchGatewayCompletion(prompt: string) {
+async function _fetchGatewayCompletion(prompt: string) {
   const config = getCloudflareConfig();
 
   if (!config.gatewayId) {
@@ -1858,8 +1856,6 @@ export const compareInferenceMethods = guarded.action(
     }
   },
 );
-
-});
 
 // Check if Cloudflare AI Search is configured
 export const isAISearchConfigured = guarded.action(

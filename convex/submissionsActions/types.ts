@@ -34,6 +34,10 @@ export type GetSubmissionInternalRef = FunctionReference<
     ai?: {
       summary?: string;
       lastReviewedAt?: number;
+      inFlight?: boolean;
+      score?: number;
+      scoreGenerationStartedAt?: number;
+      scoreGenerationCompletedAt?: number;
     };
     screenshots?: Array<{
       r2Key: string;
@@ -111,4 +115,3 @@ export type UpdateSubmissionAIInternalRef = FunctionReference<
   },
   { success: boolean }
 >;
-

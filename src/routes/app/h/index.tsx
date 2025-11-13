@@ -95,41 +95,41 @@ function HackathonListComponent() {
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {hackathons.map((hackathon) => (
-              <Card
-                key={hackathon._id}
-                className="cursor-pointer transition-shadow hover:shadow-md"
-                onClick={() => {
-                  void router.navigate({
-                    to: '/app/h/$id',
-                    params: { id: hackathon._id },
-                  });
-                }}
-              >
-                <CardHeader>
-                  <div className="flex items-start justify-between gap-2">
-                    <CardTitle className="flex-1 min-w-0 wrap-break-word leading-normal">
-                      {hackathon.title}
-                    </CardTitle>
-                    <Badge
-                      variant={getRoleBadgeVariant(hackathon.role)}
-                      className="shrink-0 capitalize"
-                    >
-                      {hackathon.role}
-                    </Badge>
-                  </div>
-                  {hackathon.description && (
-                    <CardDescription className="line-clamp-2 mt-2">
-                      {hackathon.description}
-                    </CardDescription>
-                  )}
-                </CardHeader>
-                <CardContent>
-                  <div className="text-sm text-muted-foreground">
-                    Created {new Date(hackathon.createdAt).toLocaleDateString()}
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+            <Card
+              key={hackathon._id}
+              className="cursor-pointer transition-shadow hover:shadow-md"
+              onClick={() => {
+                void router.navigate({
+                  to: '/app/h/$id',
+                  params: { id: hackathon._id },
+                });
+              }}
+            >
+              <CardHeader>
+                <div className="flex items-start justify-between gap-2">
+                  <CardTitle className="flex-1 min-w-0 wrap-break-word leading-normal">
+                    {hackathon.title}
+                  </CardTitle>
+                  <Badge
+                    variant={getRoleBadgeVariant(hackathon.role)}
+                    className="shrink-0 capitalize"
+                  >
+                    {hackathon.role}
+                  </Badge>
+                </div>
+                {hackathon.description && (
+                  <CardDescription className="line-clamp-2 mt-2">
+                    {hackathon.description}
+                  </CardDescription>
+                )}
+              </CardHeader>
+              <CardContent>
+                <div className="text-sm text-muted-foreground">
+                  Created {new Date(hackathon.createdAt).toLocaleDateString()}
+                </div>
+              </CardContent>
+            </Card>
+          ))}
         </div>
       )}
 

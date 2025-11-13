@@ -164,6 +164,10 @@ export default defineSchema({
       v.object({
         summary: v.optional(v.string()),
         lastReviewedAt: v.optional(v.number()),
+        inFlight: v.optional(v.boolean()),
+        score: v.optional(v.float64()),
+        scoreGenerationStartedAt: v.optional(v.float64()),
+        scoreGenerationCompletedAt: v.optional(v.float64()),
       }),
     ),
     screenshots: v.optional(

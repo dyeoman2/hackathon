@@ -272,7 +272,7 @@ function LoginPage() {
                     }}
                     onBlur={field.handleBlur}
                     readOnly={!!emailFromQuery}
-                    className={emailFromQuery ? "bg-muted cursor-not-allowed" : ""}
+                    className={emailFromQuery ? 'bg-muted cursor-not-allowed' : ''}
                   />
                 </InputGroup>
                 {field.state.meta.errors.length > 0 && (

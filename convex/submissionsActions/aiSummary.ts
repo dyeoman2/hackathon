@@ -10,8 +10,6 @@ import { guarded } from '../authz/guardFactory';
 import { checkAISearchJobStatus, downloadAndUploadRepoHelper } from './repoProcessing';
 import type {
   CheckCloudflareIndexingRef,
-  GenerateSubmissionReviewInternalRef,
-  GetHackathonInternalRef,
   GetSubmissionInternalRef,
   UpdateSubmissionAIInternalRef,
   UpdateSubmissionSourceInternalRef,
@@ -668,7 +666,6 @@ export const checkCloudflareIndexing = internalAction({
       console.log(
         `[AI Search] ✅ Indexing complete - marking processing state as complete at ${new Date().toISOString()}`,
       );
-
 
       // Set processing state to complete (final check - in case score generation didn't update it)
       console.log(
