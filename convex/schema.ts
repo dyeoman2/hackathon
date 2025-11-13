@@ -196,4 +196,23 @@ export default defineSchema({
     .index('by_submissionId', ['submissionId'])
     .index('by_userId_submissionId', ['userId', 'submissionId'])
     .index('by_hackathonId', ['hackathonId']),
+
+  revealState: defineTable({
+    hackathonId: v.id('hackathons'),
+    phase: v.union(
+      v.literal('idle'),
+      v.literal('countdown'),
+      v.literal('tally'),
+      v.literal('podiumReady'),
+      v.literal('reveal3rd'),
+      v.literal('reveal2nd'),
+      v.literal('reveal1st'),
+      v.literal('complete'),
+    ),
+    startedAt: v.optional(v.number()), // Timestamp when current phase started
+    revealedRanks: v.array(v.number()), // Array of ranks already revealed [3, 2, 1]
+    controlledBy: v.optional(v.string()), // User ID of presenter
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index('by_hackathonId', ['hackathonId']),
 });

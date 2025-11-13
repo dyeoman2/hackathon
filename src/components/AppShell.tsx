@@ -4,6 +4,11 @@ import { useEffect, useRef } from 'react';
 import { AppNavigation } from '~/components/AppNavigation';
 import { ClientOnly } from '~/components/ClientOnly';
 import { useAuthContext } from '~/components/Providers';
+import {
+  flushPendingSubmissionRatingsWithTimeout,
+  hasPendingSubmissionRatings,
+} from '~/features/hackathons/hooks/useSubmissionRatingQueue';
+import { cn } from '~/lib/utils';
 
 /**
  * Application shell component following TanStack Start best practices
@@ -24,6 +29,17 @@ export function AppShell() {
 
   // Listen for router navigation events
   useEffect(() => {
+    const unblock = router.history.block({
+      enableBeforeUnload: false,
+      blockerFn: async () => {
+        if (!hasPendingSubmissionRatings()) {
+          return false;
+        }
+        await flushPendingSubmissionRatingsWithTimeout();
+        return false;
+      },
+    });
+
     const unsubscribeBeforeLoad = router.subscribe('onBeforeLoad', () => {
       // Handle before load events if needed
     });
@@ -33,6 +49,7 @@ export function AppShell() {
     });
 
     return () => {
+      unblock();
       unsubscribeBeforeLoad();
       unsubscribeOnLoad();
     };
@@ -45,18 +62,23 @@ export function AppShell() {
     });
   }, [authContext, router]);
 
-  // Hide navigation on auth routes
+  // Special-casing routes that should disable the default chrome
   const isAuthRoute = ['/login', '/register', '/forgot-password', '/reset-password'].includes(
     location.pathname,
+  );
+  const isRevealRoute = /^\/app\/h\/[^/]+\/reveal\/?$/.test(location.pathname);
+  const showNavigation = !isAuthRoute && !isRevealRoute;
+
+  const mainClasses = cn(
+    isRevealRoute ? 'min-h-screen w-full p-0' : 'max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8',
+    isAuthRoute && !isRevealRoute ? 'pt-12' : '',
   );
 
   return (
     <>
-      <div className="min-h-screen bg-background">
-        {!isAuthRoute && <AppNavigation />}
-        <main
-          className={`max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8 ${isAuthRoute ? 'pt-12' : ''}`}
-        >
+      <div className={cn('min-h-screen', isRevealRoute ? 'bg-slate-950' : 'bg-background')}>
+        {showNavigation && <AppNavigation />}
+        <main className={mainClasses}>
           <Outlet />
         </main>
       </div>

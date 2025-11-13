@@ -100,6 +100,13 @@ function HackathonWorkspaceComponent() {
                 });
               }}
               onInviteJudge={() => setIsInviteJudgeModalOpen(true)}
+              onStartReveal={() => {
+                void router.navigate({
+                  to: '/app/h/$id/reveal',
+                  params: { id },
+                  search: { autostart: true },
+                });
+              }}
               onDelete={() => setIsDeleteDialogOpen(true)}
             />
           }

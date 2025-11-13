@@ -1,4 +1,4 @@
-import { Edit, MoreVertical, Scale, Send, Trash2 } from 'lucide-react';
+import { Edit, MoreVertical, Presentation, Scale, Send, Trash2 } from 'lucide-react';
 import { Button } from '~/components/ui/button';
 import {
   DropdownMenu,
@@ -14,6 +14,7 @@ interface HackathonActionsMenuProps {
   onEdit: () => void;
   onManageJudges: () => void;
   onInviteJudge: () => void;
+  onStartReveal: () => void;
   onDelete: () => void;
 }
 
@@ -23,6 +24,7 @@ export function HackathonActionsMenu({
   onEdit,
   onManageJudges,
   onInviteJudge,
+  onStartReveal,
   onDelete,
 }: HackathonActionsMenuProps) {
   return (
@@ -48,6 +50,12 @@ export function HackathonActionsMenu({
           <DropdownMenuItem onClick={onInviteJudge}>
             <Send className="h-4 w-4" />
             Invite Judge
+          </DropdownMenuItem>
+        )}
+        {canManageJudges && (
+          <DropdownMenuItem onClick={onStartReveal}>
+            <Presentation className="h-4 w-4" />
+            Start Reveal
           </DropdownMenuItem>
         )}
         {canDelete && (

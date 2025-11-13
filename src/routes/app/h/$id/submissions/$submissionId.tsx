@@ -21,6 +21,7 @@ import { SubmissionRepoChat } from '~/features/hackathons/components/SubmissionR
 import { SubmissionRepositorySummary } from '~/features/hackathons/components/SubmissionRepositorySummary';
 import { SubmissionScreenshots } from '~/features/hackathons/components/SubmissionScreenshots';
 import { SubmissionTimeline } from '~/features/hackathons/components/SubmissionTimeline';
+import { flushPendingSubmissionRatingsWithTimeout } from '~/features/hackathons/hooks/useSubmissionRatingQueue';
 import { usePerformanceMonitoring } from '~/hooks/use-performance-monitoring';
 
 export const Route = createFileRoute('/app/h/$id/submissions/$submissionId')({
@@ -43,15 +44,24 @@ function SubmissionDetailComponent() {
     hackathonId: hackathonId as Id<'hackathons'>,
   });
 
+  const runWithRatingFlush = useCallback((task: () => Promise<void> | void) => {
+    void (async () => {
+      await flushPendingSubmissionRatingsWithTimeout();
+      await task();
+    })();
+  }, []);
+
   // Use optimistic mutations for better UX - Convex automatically handles cache updates and rollback
   const deleteSubmissionOptimistic = useOptimisticMutation(api.submissions.deleteSubmission, {
     onSuccess: () => {
       toast.showToast('Submission deleted successfully', 'success');
       // Navigate back to hackathon page after deletion
-      void navigate({
-        to: '/app/h/$id',
-        params: { id: hackathonId },
-      });
+      runWithRatingFlush(() =>
+        navigate({
+          to: '/app/h/$id',
+          params: { id: hackathonId },
+        }),
+      );
     },
     onError: (error) => {
       console.error('Failed to delete submission:', error);
@@ -94,11 +104,13 @@ function SubmissionDetailComponent() {
   }, [submissions, submission, submissionId]);
 
   const handleBack = useCallback(() => {
-    void navigate({
-      to: '/app/h/$id',
-      params: { id: hackathonId },
-    });
-  }, [navigate, hackathonId]);
+    runWithRatingFlush(() =>
+      navigate({
+        to: '/app/h/$id',
+        params: { id: hackathonId },
+      }),
+    );
+  }, [runWithRatingFlush, navigate, hackathonId]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -116,16 +128,20 @@ function SubmissionDetailComponent() {
       // Arrow keys for navigation
       if (e.key === 'ArrowLeft' && previousSubmissionId) {
         e.preventDefault();
-        void navigate({
-          to: '/app/h/$id/submissions/$submissionId',
-          params: { id: hackathonId, submissionId: previousSubmissionId },
-        });
+        runWithRatingFlush(() =>
+          navigate({
+            to: '/app/h/$id/submissions/$submissionId',
+            params: { id: hackathonId, submissionId: previousSubmissionId },
+          }),
+        );
       } else if (e.key === 'ArrowRight' && nextSubmissionId) {
         e.preventDefault();
-        void navigate({
-          to: '/app/h/$id/submissions/$submissionId',
-          params: { id: hackathonId, submissionId: nextSubmissionId },
-        });
+        runWithRatingFlush(() =>
+          navigate({
+            to: '/app/h/$id/submissions/$submissionId',
+            params: { id: hackathonId, submissionId: nextSubmissionId },
+          }),
+        );
       }
     };
 
@@ -135,17 +151,23 @@ function SubmissionDetailComponent() {
     previousSubmissionId,
     nextSubmissionId,
     hackathonId,
+    runWithRatingFlush,
     navigate,
     isEditModalOpen,
     isDeleteDialogOpen,
   ]);
 
-  const handleNavigateToSubmission = (targetSubmissionId: Id<'submissions'>) => {
-    void navigate({
-      to: '/app/h/$id/submissions/$submissionId',
-      params: { id: hackathonId, submissionId: targetSubmissionId },
-    });
-  };
+  const handleNavigateToSubmission = useCallback(
+    (targetSubmissionId: Id<'submissions'>) => {
+      runWithRatingFlush(() =>
+        navigate({
+          to: '/app/h/$id/submissions/$submissionId',
+          params: { id: hackathonId, submissionId: targetSubmissionId },
+        }),
+      );
+    },
+    [hackathonId, runWithRatingFlush, navigate],
+  );
 
   const handleDelete = async () => {
     setIsDeleting(true);

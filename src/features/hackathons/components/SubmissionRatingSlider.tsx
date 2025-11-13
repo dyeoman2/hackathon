@@ -1,9 +1,13 @@
 import { api } from '@convex/_generated/api';
 import type { Id } from '@convex/_generated/dataModel';
-import { useMutation, useQuery } from 'convex/react';
-import { useEffect, useState } from 'react';
+import { useQuery } from 'convex/react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~/components/ui/card';
 import { Slider } from '~/components/ui/slider';
+import {
+  queueSubmissionRatingSave,
+  usePendingSubmissionRating,
+} from '~/features/hackathons/hooks/useSubmissionRatingQueue';
 import { cn } from '~/lib/utils';
 
 const emojiScale = ['💀', '😬', '🥴', '🫠', '😅', '🙂', '🔥', '🚀', '🤯', '👑'];
@@ -21,41 +25,39 @@ export function SubmissionRatingSlider({
 }: SubmissionRatingSliderProps) {
   // Fetch current user's rating
   const userRating = useQuery(api.submissions.getUserRating, { submissionId });
-  const upsertRating = useMutation(api.submissions.upsertRating);
 
   // Get the current rating value (from server or default to 0)
   const currentRating = userRating?.rating ?? 0;
 
   const [displayValue, setDisplayValue] = useState(currentRating);
-  const [isSaving, setIsSaving] = useState(false);
+  const pendingState = usePendingSubmissionRating(submissionId);
+  const pendingRating = pendingState?.rating ?? null;
+  const isSaving = pendingState !== null;
+  const isFlushing = pendingState?.isFlushing ?? false;
+  const savingError = pendingState?.error;
 
-  // Update display value when rating loads from server
   useEffect(() => {
-    setDisplayValue(currentRating);
-  }, [currentRating]);
+    const nextValue = pendingRating ?? currentRating;
+    setDisplayValue((prev) => (prev === nextValue ? prev : nextValue));
+  }, [pendingRating, currentRating]);
 
-  const handleValueChange = (values: number[]) => {
-    // Update display value for immediate visual feedback during drag
+  const handleValueChange = useCallback((values: number[]) => {
     setDisplayValue(values[0]);
-  };
+  }, []);
 
-  const handleValueCommit = async (values: number[]) => {
-    // Commit the final value when drag completes
-    const newValue = values[0];
-    setDisplayValue(newValue);
+  const handleValueCommit = useCallback(
+    (values: number[]) => {
+      const newValue = values[0];
+      setDisplayValue(newValue);
 
-    // Save to database
-    setIsSaving(true);
-    try {
-      await upsertRating({ submissionId, rating: newValue });
-    } catch (error) {
-      console.error('Failed to save rating:', error);
-      // Revert on error - force slider reset with key change
-      setDisplayValue(currentRating);
-    } finally {
-      setIsSaving(false);
-    }
-  };
+      queueSubmissionRatingSave(submissionId, newValue).catch((error) => {
+        console.error('Failed to save rating:', error);
+      });
+    },
+    [submissionId],
+  );
+
+  const sliderValue = useMemo(() => [displayValue], [displayValue]);
 
   const getScoreDisplay = (val: number) => {
     if (val === 0) return 'Unranked';
@@ -66,7 +68,7 @@ export function SubmissionRatingSlider({
   const canRate =
     hackathonRole === 'owner' || hackathonRole === 'admin' || hackathonRole === 'judge';
   const isLoading = userRating === undefined;
-  const isDisabled = !canRate || isSaving || isLoading;
+  const isDisabled = !canRate || isLoading;
 
   return (
     <Card className={className}>
@@ -91,8 +93,7 @@ export function SubmissionRatingSlider({
         <div className="w-full space-y-2">
           <div className="relative space-y-4 pt-1">
             <Slider
-              key={`slider-${currentRating}`}
-              defaultValue={[currentRating]}
+              value={sliderValue}
               onValueChange={handleValueChange}
               onValueCommit={handleValueCommit}
               min={0}
@@ -141,6 +142,15 @@ export function SubmissionRatingSlider({
                 );
               })}
             </div>
+          </div>
+          <div className="min-h-5 text-xs">
+            {savingError ? (
+              <span className="text-destructive">Unable to save rating. Please try again.</span>
+            ) : isSaving ? (
+              <span className="text-muted-foreground">
+                {isFlushing ? 'Saving rating...' : 'Waiting to sync rating...'}
+              </span>
+            ) : null}
           </div>
         </div>
       </CardContent>

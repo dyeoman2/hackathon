@@ -2,8 +2,8 @@ import { api } from '@convex/_generated/api';
 import type { Id } from '@convex/_generated/dataModel';
 import { useForm } from '@tanstack/react-form';
 import { useQuery } from 'convex/react';
-import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { z } from 'zod';
 import { Alert, AlertDescription } from '~/components/ui/alert';
 import { Button } from '~/components/ui/button';
@@ -56,7 +56,6 @@ export function HackathonSettingsModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-
   const form = useForm({
     defaultValues: {
       title: '',
@@ -92,7 +91,6 @@ export function HackathonSettingsModal({
       form.setFieldValue('rubric', hackathon.rubric);
     }
   }, [open, hackathon, form]);
-
 
   if (hackathon === undefined) {
     return null; // Don't show modal while loading
@@ -183,7 +181,6 @@ export function HackathonSettingsModal({
             </Alert>
           )}
 
-
           <DialogFooter>
             <div className="flex gap-2">
               <Button type="button" variant="outline" onClick={onClose} disabled={isSubmitting}>
@@ -191,10 +188,7 @@ export function HackathonSettingsModal({
               </Button>
               <form.Subscribe selector={(state) => [state.canSubmit, state.isSubmitting]}>
                 {([canSubmit, isFormSubmitting]) => (
-                  <Button
-                    type="submit"
-                    disabled={!canSubmit || isSubmitting || isFormSubmitting}
-                  >
+                  <Button type="submit" disabled={!canSubmit || isSubmitting || isFormSubmitting}>
                     {isSubmitting || isFormSubmitting ? 'Saving...' : 'Save Changes'}
                   </Button>
                 )}
