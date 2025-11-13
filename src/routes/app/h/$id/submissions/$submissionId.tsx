@@ -19,7 +19,6 @@ import { SubmissionNavigation } from '~/features/hackathons/components/Submissio
 import { SubmissionRatingSlider } from '~/features/hackathons/components/SubmissionRatingSlider';
 import { SubmissionRepoChat } from '~/features/hackathons/components/SubmissionRepoChat';
 import { SubmissionRepositorySummary } from '~/features/hackathons/components/SubmissionRepositorySummary';
-import { SubmissionScoring } from '~/features/hackathons/components/SubmissionScoring';
 import { SubmissionScreenshots } from '~/features/hackathons/components/SubmissionScreenshots';
 import { SubmissionTimeline } from '~/features/hackathons/components/SubmissionTimeline';
 import { usePerformanceMonitoring } from '~/hooks/use-performance-monitoring';
@@ -271,8 +270,6 @@ function SubmissionDetailComponent() {
         <SubmissionScreenshots submission={submission} canEdit={canEdit} />
 
         <SubmissionRepoChat submission={submission} />
-
-        <SubmissionScoring submission={submission} />
 
         <SubmissionTimeline submission={submission} />
       </div>

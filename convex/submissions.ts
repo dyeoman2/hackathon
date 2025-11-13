@@ -343,15 +343,13 @@ export const deleteSubmission = mutation({
 });
 
 /**
- * Update AI review results (clears inFlight flag)
+ * Update AI summary results
  * Requires hackathon membership (owner/admin/judge)
  */
 export const updateSubmissionAI = mutation({
   args: {
     submissionId: v.id('submissions'),
     summary: v.optional(v.string()),
-    score: v.optional(v.number()),
-    inFlight: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const submission = await ctx.db.get(args.submissionId);
@@ -365,9 +363,7 @@ export const updateSubmissionAI = mutation({
     const aiData = {
       ...submission.ai,
       summary: args.summary ?? submission.ai?.summary,
-      score: args.score ?? submission.ai?.score,
-      lastReviewedAt: args.summary || args.score ? Date.now() : submission.ai?.lastReviewedAt,
-      inFlight: args.inFlight ?? false,
+      lastReviewedAt: args.summary ? Date.now() : submission.ai?.lastReviewedAt,
     };
 
     await ctx.db.patch(args.submissionId, {
@@ -380,16 +376,12 @@ export const updateSubmissionAI = mutation({
 });
 
 /**
- * Internal mutation to update AI review results (no auth check)
+ * Internal mutation to update AI summary results (no auth check)
  */
 export const updateSubmissionAIInternal = internalMutation({
   args: {
     submissionId: v.id('submissions'),
     summary: v.optional(v.string()),
-    score: v.optional(v.number()),
-    scoreGenerationStartedAt: v.optional(v.number()),
-    scoreGenerationCompletedAt: v.optional(v.number()),
-    inFlight: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const submission = await ctx.db.get(args.submissionId);
@@ -400,13 +392,7 @@ export const updateSubmissionAIInternal = internalMutation({
     const aiData = {
       ...submission.ai,
       summary: args.summary ?? submission.ai?.summary,
-      score: args.score ?? submission.ai?.score,
-      scoreGenerationStartedAt:
-        args.scoreGenerationStartedAt ?? submission.ai?.scoreGenerationStartedAt,
-      scoreGenerationCompletedAt:
-        args.scoreGenerationCompletedAt ?? submission.ai?.scoreGenerationCompletedAt,
-      lastReviewedAt: args.summary || args.score ? Date.now() : submission.ai?.lastReviewedAt,
-      inFlight: args.inFlight ?? false,
+      lastReviewedAt: args.summary ? Date.now() : submission.ai?.lastReviewedAt,
     };
 
     await ctx.db.patch(args.submissionId, {

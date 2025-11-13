@@ -33,11 +33,7 @@ export type GetSubmissionInternalRef = FunctionReference<
     };
     ai?: {
       summary?: string;
-      score?: number;
       lastReviewedAt?: number;
-      scoreGenerationStartedAt?: number;
-      scoreGenerationCompletedAt?: number;
-      inFlight?: boolean;
     };
     screenshots?: Array<{
       r2Key: string;
@@ -112,54 +108,7 @@ export type UpdateSubmissionAIInternalRef = FunctionReference<
   {
     submissionId: Id<'submissions'>;
     summary?: string;
-    score?: number;
-    scoreGenerationStartedAt?: number;
-    scoreGenerationCompletedAt?: number;
-    inFlight?: boolean;
   },
   { success: boolean }
 >;
 
-export type GenerateSubmissionReviewRef = FunctionReference<
-  'action',
-  'public',
-  {
-    submissionId: Id<'submissions'>;
-    submissionTitle: string;
-    team: string;
-    repoUrl: string;
-    siteUrl?: string;
-    repoSummary: string;
-    rubric: string;
-  },
-  {
-    score: number | null;
-    summary: string;
-    rawResponse?: string;
-    provider?: string;
-    model?: string;
-    usage?: unknown;
-  }
->;
-
-export type GenerateSubmissionReviewInternalRef = FunctionReference<
-  'action',
-  'internal',
-  {
-    submissionId: Id<'submissions'>;
-    submissionTitle: string;
-    team: string;
-    repoUrl: string;
-    siteUrl?: string;
-    repoSummary: string;
-    rubric: string;
-  },
-  {
-    score: number | null;
-    summary: string;
-    rawResponse?: string;
-    provider?: string;
-    model?: string;
-    usage?: unknown;
-  }
->;

@@ -51,25 +51,24 @@ export const checkCloudflareIndexing = internalAction({
         throw new Error('Submission not found');
       }
 
-      // Early exit: If summary and score already exist and we're not forcing regeneration, we're done
+      // Early exit: If summary already exists and we're not forcing regeneration, we're done
       // Check if processing is already complete to avoid unnecessary retries
       // This prevents the function from continuing to retry after completion
       // BUT: If forceRegenerate is true, always regenerate regardless of existing summary
       const hasSummary = !!submission.source?.aiSummary;
-      const hasScore = submission.ai?.score !== undefined;
       const isComplete = submission.source?.processingState === 'complete';
 
-      if (hasSummary && hasScore && isComplete && !args.forceRegenerate) {
+      if (hasSummary && isComplete && !args.forceRegenerate) {
         console.log(
-          `[AI Search] Submission ${args.submissionId} already has summary and score - skipping (attempt ${args.attempt})`,
+          `[AI Search] Submission ${args.submissionId} already has summary - skipping (attempt ${args.attempt})`,
         );
         return; // Already complete, don't reschedule (unless forcing regeneration)
       }
 
-      // If forcing regeneration, clear existing summary and score first
-      if (args.forceRegenerate && (hasSummary || hasScore)) {
+      // If forcing regeneration, clear existing summary first
+      if (args.forceRegenerate && hasSummary) {
         console.log(
-          `[AI Search] Force regenerating summary for submission ${args.submissionId} - clearing existing summary and score`,
+          `[AI Search] Force regenerating summary for submission ${args.submissionId} - clearing existing summary`,
         );
         await ctx.runMutation(
           (
@@ -95,25 +94,14 @@ export const checkCloudflareIndexing = internalAction({
           {
             submissionId: args.submissionId,
             summary: undefined,
-            score: undefined,
-            scoreGenerationStartedAt: undefined,
-            scoreGenerationCompletedAt: undefined,
           },
         );
       }
 
-      // Also check if we have summary but are still in generating state
-      // This can happen if score generation failed but summary succeeded
-      // In this case, we should still try to generate the score, but not re-generate the summary
-      if (hasSummary && !hasScore && isComplete) {
+      // Check if we have summary but processing state isn't marked complete - fix the state
+      if (hasSummary && !isComplete) {
         console.log(
-          `[AI Search] Submission ${args.submissionId} has summary but no score - will attempt score generation`,
-        );
-        // Continue to score generation section below
-      } else if (hasSummary && hasScore && !isComplete) {
-        // Summary and score exist but state isn't marked complete - fix the state
-        console.log(
-          `[AI Search] Submission ${args.submissionId} has summary and score but state not complete - fixing state`,
+          `[AI Search] Submission ${args.submissionId} has summary but state not complete - fixing state`,
         );
         await ctx.runMutation(
           (
@@ -127,12 +115,6 @@ export const checkCloudflareIndexing = internalAction({
           },
         );
         return; // State fixed, we're done
-      } else if (hasSummary && !hasScore && !isComplete) {
-        // Has summary but no score and not complete - continue to generate score
-        console.log(
-          `[AI Search] Submission ${args.submissionId} has summary but no score - will generate score`,
-        );
-        // Continue to score generation section below
       }
 
       // If repo hasn't been uploaded, do it now (same file, can call helper directly)
@@ -687,111 +669,6 @@ export const checkCloudflareIndexing = internalAction({
         `[AI Search] ✅ Indexing complete - marking processing state as complete at ${new Date().toISOString()}`,
       );
 
-      // Get the summary for score generation (if needed)
-      const summaryText = submission.source?.aiSummary || '';
-      const hasSummaryText = !!summaryText;
-
-      if (!hasSummaryText) {
-        console.warn(
-          `[AI Search] ⚠️ No summary found for submission ${args.submissionId} - score generation will be skipped`,
-        );
-      }
-
-      // Automatically generate AI review (score) after indexing is complete
-      // Only generate score if it doesn't already exist and we have a summary
-      if (!hasScore && hasSummaryText) {
-        try {
-          // Get hackathon to get rubric
-          const hackathon = await ctx.runQuery(
-            (internal.hackathons as unknown as { getHackathonInternal: GetHackathonInternalRef })
-              .getHackathonInternal,
-            {
-              hackathonId: submission.hackathonId,
-            },
-          );
-
-          if (hackathon) {
-            // Automatically generate AI review (score) after summary is complete
-            // Call the review generation action - it will handle AI reservation
-            // Note: This requires auth, but for automated processes we'll handle errors gracefully
-            const scoreGenerationStartedAt = Date.now();
-            try {
-              // Record score generation start time
-              await ctx.runMutation(
-                (
-                  internal.submissions as unknown as {
-                    updateSubmissionAIInternal: UpdateSubmissionAIInternalRef;
-                  }
-                ).updateSubmissionAIInternal,
-                {
-                  submissionId: args.submissionId,
-                  scoreGenerationStartedAt,
-                },
-              );
-
-              const reviewResult = await ctx.runAction(
-                (
-                  internal.cloudflareAi as unknown as {
-                    generateSubmissionReviewInternal: GenerateSubmissionReviewInternalRef;
-                  }
-                ).generateSubmissionReviewInternal,
-                {
-                  submissionId: args.submissionId,
-                  submissionTitle: submission.title,
-                  team: submission.team,
-                  repoUrl: submission.repoUrl,
-                  siteUrl: submission.siteUrl ?? undefined,
-                  repoSummary: summaryText, // Use the summary that was already generated
-                  rubric: hackathon.rubric ?? 'No rubric provided',
-                },
-              );
-
-              // Update submission with review results and record completion time
-              const scoreGenerationCompletedAt = Date.now();
-              await ctx.runMutation(
-                (
-                  internal.submissions as unknown as {
-                    updateSubmissionAIInternal: UpdateSubmissionAIInternalRef;
-                  }
-                ).updateSubmissionAIInternal,
-                {
-                  submissionId: args.submissionId,
-                  summary: reviewResult.summary,
-                  score: reviewResult.score ?? undefined,
-                  scoreGenerationCompletedAt,
-                },
-              );
-            } catch (reviewError) {
-              // If review generation fails (e.g., auth issues), log but don't fail the whole process
-              // The review can be generated manually later via the UI
-              console.warn(
-                `[AI Review] Could not auto-generate review for submission ${args.submissionId}. Error:`,
-                reviewError instanceof Error ? reviewError.message : String(reviewError),
-              );
-            }
-          } else {
-            console.log(
-              `[AI Review] Hackathon not found for submission ${args.submissionId} - skipping score generation`,
-            );
-          }
-        } catch (reviewError) {
-          // Log error but don't fail the whole process
-          // The review can be generated manually later via the UI
-          console.warn(
-            `[AI Review] Error getting hackathon or generating review for submission ${args.submissionId}:`,
-            reviewError instanceof Error ? reviewError.message : String(reviewError),
-          );
-          // Continue to mark as complete even if review generation failed
-        }
-      } else if (hasScore) {
-        console.log(
-          `[AI Review] Submission ${args.submissionId} already has score - skipping generation`,
-        );
-      } else {
-        console.log(
-          `[AI Review] Submission ${args.submissionId} has no summary - skipping score generation`,
-        );
-      }
 
       // Set processing state to complete (final check - in case score generation didn't update it)
       console.log(

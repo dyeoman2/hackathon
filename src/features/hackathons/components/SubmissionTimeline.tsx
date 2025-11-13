@@ -97,18 +97,6 @@ export function SubmissionTimeline({ submission }: SubmissionTimelineProps) {
     });
   }
 
-  // Fallback: AI Reviewed (for backwards compatibility with old data)
-  if (
-    submission.ai?.lastReviewedAt &&
-    !submission.source?.summaryGenerationCompletedAt &&
-    !submission.ai?.scoreGenerationCompletedAt
-  ) {
-    events.push({
-      timestamp: submission.ai.lastReviewedAt,
-      label: 'AI Summary and Score Generated',
-      color: 'bg-blue-500',
-    });
-  }
 
   // Sort by timestamp, then by label for same timestamp
   events.sort((a, b) => {

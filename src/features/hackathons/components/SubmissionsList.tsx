@@ -116,7 +116,6 @@ export function SubmissionsList({ hackathonId }: SubmissionsListProps) {
                 <TableHead>Title</TableHead>
                 <TableHead>Team</TableHead>
                 <TableHead>My Rating</TableHead>
-                <TableHead>AI Rating</TableHead>
                 <TableHead>Overall Rating</TableHead>
                 <TableHead>Created</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
@@ -134,13 +133,6 @@ export function SubmissionsList({ hackathonId }: SubmissionsListProps) {
                   <TableCell>
                     {submission.myRating !== null && submission.myRating !== undefined ? (
                       <Badge variant="default">{submission.myRating.toFixed(1)}</Badge>
-                    ) : (
-                      <span className="text-muted-foreground">—</span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    {submission.ai?.score !== undefined ? (
-                      <Badge variant="secondary">{submission.ai.score.toFixed(1)}</Badge>
                     ) : (
                       <span className="text-muted-foreground">—</span>
                     )}

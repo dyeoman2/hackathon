@@ -163,11 +163,7 @@ export default defineSchema({
     ai: v.optional(
       v.object({
         summary: v.optional(v.string()),
-        score: v.optional(v.number()),
         lastReviewedAt: v.optional(v.number()),
-        scoreGenerationStartedAt: v.optional(v.number()),
-        scoreGenerationCompletedAt: v.optional(v.number()),
-        inFlight: v.optional(v.boolean()),
       }),
     ),
     screenshots: v.optional(
