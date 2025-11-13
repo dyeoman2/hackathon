@@ -4,6 +4,7 @@ import { DefaultCatchBoundary } from '~/components/DefaultCatchBoundary';
 import { NotFound } from '~/components/NotFound';
 import { Providers } from '~/components/Providers';
 import { seo } from '~/lib/seo';
+import { getAppName } from '~/lib/utils';
 import appCss from '~/styles/app.css?url';
 
 const convexPreconnect =
@@ -20,9 +21,8 @@ export const Route = createRootRoute({
         content: 'width=device-width, initial-scale=1',
       },
       ...seo({
-        title: 'TanStack Start Template',
-        description:
-          'TanStack Start template built with Better Auth, Convex, Tailwind CSS, Shadcn/UI, Resend, and deployed to Netlify',
+        title: getAppName(),
+        description: `${getAppName()} built with Better Auth, Convex, Tailwind CSS, Shadcn/UI, Resend, and deployed to Netlify`,
       }),
     ],
     links: [

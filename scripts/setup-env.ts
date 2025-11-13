@@ -10,7 +10,31 @@
 import { execSync } from 'node:child_process';
 import { existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { createInterface } from 'node:readline';
 import { generateSecret } from '../src/lib/server/crypto.server';
+
+/**
+ * Prompt user for their application name
+ */
+function promptAppName(): Promise<string> {
+  return new Promise((resolve) => {
+    const rl = createInterface({
+      input: process.stdin,
+      output: process.stdout,
+    });
+
+    console.log('\n📝 Application Configuration:');
+    console.log('────────────────────────────────────────────────');
+
+    rl.question('What is the name of your application? ', (appName) => {
+      rl.close();
+      // Use provided name or default if empty
+      const finalName = appName.trim() || 'My App';
+      console.log(`✅ Using app name: "${finalName}"\n`);
+      resolve(finalName);
+    });
+  });
+}
 
 async function main() {
   console.log('🔧 Setting up local development environment...\n');
@@ -26,6 +50,9 @@ async function main() {
   }
 
   const authSecret = await generateSecret(32); // BETTER_AUTH_SECRET: 32 bytes for session signing and rate limiting
+
+  // Prompt for app name
+  const appName = await promptAppName();
 
   const envPath = join(process.cwd(), '.env.local');
 
@@ -59,8 +86,8 @@ BETTER_AUTH_SECRET=${authSecret}
 # Set development environment
 NODE_ENV=development
 
-# Application name for email templates
-APP_NAME="TanStack Start Template"
+# Application name for email templates and UI (REQUIRED)
+VITE_APP_NAME="${appName}"
 
 # ==========================================
 # RESEND EMAIL SETUP

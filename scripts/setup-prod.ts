@@ -7,7 +7,33 @@
  */
 
 import { execSync } from 'node:child_process';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { createInterface } from 'node:readline';
+
+/**
+ * Parse .env.local file and set VITE_APP_NAME in process.env
+ */
+function loadEnvFile() {
+  const envPath = join(process.cwd(), '.env.local');
+  if (!existsSync(envPath)) {
+    return;
+  }
+
+  const envContent = readFileSync(envPath, 'utf8');
+  const lines = envContent.split('\n');
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith('VITE_APP_NAME=')) {
+      const value = trimmed.substring('VITE_APP_NAME='.length);
+      // Remove quotes if present
+      const cleanValue = value.replace(/^["']|["']$/g, '');
+      process.env.VITE_APP_NAME = cleanValue;
+      break;
+    }
+  }
+}
 
 // Helper functions for user input
 async function askYesNo(question: string): Promise<boolean> {
@@ -51,10 +77,14 @@ async function setupConvexProduction(): Promise<{
   console.log('\n⚙️  Setting production environment variables...');
 
   // Set production environment variables
+  // Use existing env vars if set, otherwise use sensible defaults
   const prodEnvVars = [
     { name: 'BETTER_AUTH_SECRET', value: betterAuthSecret },
-    { name: 'APP_NAME', value: 'TanStack Start Template' },
-    { name: 'RESEND_EMAIL_SENDER', value: 'onboarding@resend.dev' },
+    { name: 'VITE_APP_NAME', value: process.env.VITE_APP_NAME },
+    {
+      name: 'RESEND_EMAIL_SENDER',
+      value: process.env.RESEND_EMAIL_SENDER || 'onboarding@resend.dev',
+    },
   ];
 
   for (const { name, value } of prodEnvVars) {
@@ -104,6 +134,9 @@ async function setupConvexProduction(): Promise<{
 }
 
 async function main() {
+  // Load VITE_APP_NAME from .env.local
+  loadEnvFile();
+
   try {
     // Confirm they want to proceed
     const shouldContinue = await askYesNo('Ready to set up production deployment? (y/N): ');

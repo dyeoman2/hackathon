@@ -5,6 +5,18 @@ import { action, internalAction, internalMutation, query } from './_generated/se
 import { authComponent } from './auth';
 
 /**
+ * Validate that required environment variables are set
+ */
+function validateRequiredEnvVars() {
+  if (!process.env.VITE_APP_NAME) {
+    throw new Error(
+      'VITE_APP_NAME environment variable is required. ' +
+        'Set it in Convex environment variables.',
+    );
+  }
+}
+
+/**
  * Email utilities for Convex using the official @convex-dev/resend component
  * Provides queueing, batching, durable execution, and rate limiting
  */
@@ -86,7 +98,9 @@ export const sendPasswordResetEmailMutation = internalMutation({
     token: v.string(),
   },
   handler: async (ctx, args) => {
-    const appName = process.env.APP_NAME || 'Hackathon';
+    // Validate required environment variables
+    validateRequiredEnvVars();
+    const appName = process.env.VITE_APP_NAME as string;
     const emailSender = process.env.RESEND_EMAIL_SENDER || 'onboarding@resend.dev';
     const resetLink = args.url;
     const userName = args.user.name;
@@ -186,7 +200,9 @@ export const sendJudgeInviteEmailMutation = internalMutation({
     appUrl: v.string(),
   },
   handler: async (ctx, args) => {
-    const appName = process.env.APP_NAME || 'Hackathon';
+    // Validate required environment variables
+    validateRequiredEnvVars();
+    const appName = process.env.VITE_APP_NAME as string;
     const emailSender = process.env.RESEND_EMAIL_SENDER || 'onboarding@resend.dev';
     const inviteLink = `${args.appUrl}/invite/${encodeURIComponent(args.inviteToken)}`;
 

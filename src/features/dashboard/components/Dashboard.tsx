@@ -5,6 +5,7 @@ import { PageHeader } from '~/components/PageHeader';
 import { Button } from '~/components/ui/button';
 import { signOut } from '~/features/auth/auth-client';
 import { useAuth } from '~/features/auth/hooks/useAuth';
+import { getAppName } from '~/lib/utils';
 import { MetricCard, SkeletonCard } from './MetricCard';
 import { RecentActivity } from './RecentActivity';
 
@@ -50,8 +51,8 @@ export function Dashboard({ data, isLoading }: DashboardProps) {
           title="Dashboard"
           description={
             <>
-              TanStack Start Template built with Better Auth, Convex, Tailwind CSS, Shadcn/UI,
-              Resend, and deployed to Netlify.
+              {getAppName()} built with Better Auth, Convex, Tailwind CSS, Shadcn/UI, Resend, and
+              deployed to Netlify.
             </>
           }
         />
@@ -90,7 +91,7 @@ export function Dashboard({ data, isLoading }: DashboardProps) {
         <div className="space-y-6">
           <PageHeader
             title="Dashboard"
-            description="TanStack Start Template built with Better Auth, Convex, Tailwind CSS, Shadcn/UI, Resend, and deployed to Netlify."
+            description="{getAppName()} built with Better Auth, Convex, Tailwind CSS, Shadcn/UI, Resend, and deployed to Netlify."
           />
 
           <div className="bg-muted border border-border rounded-md p-6">
@@ -117,7 +118,7 @@ export function Dashboard({ data, isLoading }: DashboardProps) {
       <div className="space-y-6">
         <PageHeader
           title="Dashboard"
-          description="TanStack Start Template built with Better Auth, Convex, Tailwind CSS, Shadcn/UI, Resend, and deployed to Netlify."
+          description="{getAppName()} built with Better Auth, Convex, Tailwind CSS, Shadcn/UI, Resend, and deployed to Netlify."
         />
 
         <div className="bg-muted border border-border rounded-md p-6">
@@ -156,8 +157,8 @@ export function Dashboard({ data, isLoading }: DashboardProps) {
         title="Dashboard"
         description={
           <>
-            TanStack Start Template built with Better Auth, Convex, Tailwind CSS, Shadcn/UI, Resend,
-            and deployed to Netlify.
+            {getAppName()} built with Better Auth, Convex, Tailwind CSS, Shadcn/UI, Resend, and
+            deployed to Netlify.
           </>
         }
       />

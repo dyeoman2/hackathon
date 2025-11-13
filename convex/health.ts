@@ -2,11 +2,26 @@ import { api } from './_generated/api';
 import { httpAction } from './_generated/server';
 
 /**
+ * Validate that required environment variables are set
+ */
+function validateRequiredEnvVars() {
+  if (!process.env.VITE_APP_NAME) {
+    throw new Error(
+      'VITE_APP_NAME environment variable is required. ' +
+        'Set it in Convex environment variables.',
+    );
+  }
+}
+
+/**
  * Health check HTTP endpoint
  * Returns database connectivity status and service metadata
  */
 export const healthCheck = httpAction(async (ctx, _request) => {
   const startTime = Date.now();
+
+  // Validate required environment variables
+  validateRequiredEnvVars();
 
   try {
     // Test Convex connectivity by checking user count
@@ -25,7 +40,7 @@ export const healthCheck = httpAction(async (ctx, _request) => {
           userCount: userCountResult.totalUsers,
         },
         service: {
-          name: 'TanStack Start Template',
+          name: process.env.VITE_APP_NAME as string,
           version: '1.0.0',
         },
       }),
@@ -50,7 +65,7 @@ export const healthCheck = httpAction(async (ctx, _request) => {
           provider: 'convex',
         },
         service: {
-          name: 'TanStack Start Template',
+          name: process.env.VITE_APP_NAME as string,
           version: '1.0.0',
         },
       }),

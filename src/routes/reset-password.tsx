@@ -10,6 +10,7 @@ import { InputGroup, InputGroupIcon, InputGroupInput } from '~/components/ui/inp
 import { authClient } from '~/features/auth/auth-client';
 import { useAuth } from '~/features/auth/hooks/useAuth';
 import { useAuthState } from '~/features/auth/hooks/useAuthState';
+import { getAppName } from '~/lib/utils';
 
 export const Route = createFileRoute('/reset-password')({
   staticData: true,
@@ -148,7 +149,7 @@ function ResetPasswordPage() {
               >
                 <img
                   src="/android-chrome-192x192.png"
-                  alt="TanStack Start Template Logo"
+                  alt={`${getAppName()} Logo`}
                   className="w-12 h-12 rounded hover:opacity-80 transition-opacity"
                 />
               </Link>
@@ -193,7 +194,7 @@ function ResetPasswordPage() {
             >
               <img
                 src="/android-chrome-192x192.png"
-                alt="TanStack Start Template Logo"
+                alt={`${getAppName()} Logo`}
                 className="w-12 h-12 rounded hover:opacity-80 transition-opacity"
               />
             </Link>

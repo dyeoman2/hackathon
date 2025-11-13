@@ -56,7 +56,7 @@ function HackathonWorkspaceComponent() {
     try {
       await deleteHackathon({ hackathonId: id as Id<'hackathons'> });
       toast.showToast('Hackathon deleted successfully', 'success');
-      void router.navigate({ to: '/app' });
+      void router.navigate({ to: '/app/h' });
     } catch (error) {
       console.error('Failed to delete hackathon:', error);
       toast.showToast(

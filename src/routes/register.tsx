@@ -13,6 +13,7 @@ import { InputGroup, InputGroupIcon, InputGroupInput } from '~/components/ui/inp
 import { signIn } from '~/features/auth/auth-client';
 import { useAuthState } from '~/features/auth/hooks/useAuthState';
 import { signUpWithFirstAdminServerFn } from '~/features/auth/server/user-management';
+import { getAppName } from '~/lib/utils';
 
 export const Route = createFileRoute('/register')({
   staticData: true,
@@ -243,7 +244,7 @@ function RegisterPage() {
             >
               <img
                 src="/android-chrome-192x192.png"
-                alt="TanStack Start Template Logo"
+                alt={`${getAppName()} Logo`}
                 className="w-12 h-12 rounded hover:opacity-80 transition-opacity"
               />
             </Link>

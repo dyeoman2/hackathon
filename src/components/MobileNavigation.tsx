@@ -12,7 +12,7 @@ import {
 import { signOut } from '~/features/auth/auth-client';
 import { useAuth } from '~/features/auth/hooks/useAuth';
 import { useAuthState } from '~/features/auth/hooks/useAuthState';
-import { cn } from '~/lib/utils';
+import { cn, getAppName } from '~/lib/utils';
 
 type NavItem = {
   to: string;
@@ -82,11 +82,11 @@ export function MobileNavigation() {
             >
               <img
                 src="/android-chrome-192x192.png"
-                alt="TanStack Start Template Logo"
+                alt={`${getAppName()} Logo`}
                 className="w-8 h-8 rounded hover:opacity-80 transition-opacity"
               />
             </Link>
-            <SheetTitle>TanStack Start Template</SheetTitle>
+            <SheetTitle>{getAppName()}</SheetTitle>
           </div>
           <SheetDescription className="sr-only">Navigation menu</SheetDescription>
         </SheetHeader>

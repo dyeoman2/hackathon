@@ -373,7 +373,7 @@ export const updateHackathon = mutation({
 });
 
 /**
- * Delete hackathon (owner only, enforce at least one owner)
+ * Delete hackathon (owner only)
  */
 export const deleteHackathon = mutation({
   args: {
@@ -382,17 +382,7 @@ export const deleteHackathon = mutation({
   handler: async (ctx, args) => {
     await requireHackathonRole(ctx, args.hackathonId, ['owner']);
 
-    // Check for other owners
-    const ownerMemberships = await ctx.db
-      .query('memberships')
-      .withIndex('by_hackathonId', (q) => q.eq('hackathonId', args.hackathonId))
-      .filter((q) => q.eq(q.field('role'), 'owner'))
-      .filter((q) => q.eq(q.field('status'), 'active'))
-      .collect();
-
-    if (ownerMemberships.length <= 1) {
-      throw new Error('Cannot delete hackathon: must have at least one owner');
-    }
+    // Note: We allow deletion even if this is the only owner, since they're explicitly choosing to delete
 
     // Hard delete hackathon and all related data
     // Note: In production, you might want to soft delete

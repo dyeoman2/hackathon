@@ -5,7 +5,7 @@ import React from 'react';
 import type { IconType } from 'react-icons';
 import { SiGithub } from 'react-icons/si';
 import { Button } from '~/components/ui/button';
-import { cn } from '~/lib/utils';
+import { cn, getAppName } from '~/lib/utils';
 
 type GenericIconProps = ComponentProps<'img'> & ComponentProps<'svg'>;
 
@@ -142,8 +142,8 @@ export function MarketingHome() {
           A production-ready starter template for TanStack Start
         </h1>
         <p className="mx-auto max-w-2xl text-lg text-muted-foreground">
-          TanStack Start Template is a free, open-source starter that pairs modern tooling, auth,
-          and real-time data so you can focus on your product instead of plumbing. Server-first by
+          {getAppName()} is a free, open-source starter that pairs modern tooling, auth, and
+          real-time data so you can focus on your product instead of plumbing. Server-first by
           default, progressively enhanced for the richest user experiences.
         </p>
         <p className="mx-auto max-w-2xl text-sm text-muted-foreground">

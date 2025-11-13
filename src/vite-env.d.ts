@@ -5,7 +5,7 @@ interface ImportMetaEnv {
   readonly PROD: boolean;
   readonly SSR: boolean;
   readonly MODE: string;
-  // Remove APP_NAME (only used server-side)
+  readonly VITE_APP_NAME?: string;
   readonly VITE_CONVEX_URL?: string;
   readonly VITE_CONVEX_SITE_URL?: string;
   // Add missing client-side environment variables
