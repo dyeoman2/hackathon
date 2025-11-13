@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react';
 import { z } from 'zod';
 import { Alert, AlertDescription } from '~/components/ui/alert';
 import { Button } from '~/components/ui/button';
+import { DateTimePicker } from '~/components/ui/datetime-picker';
 import {
   Dialog,
   DialogContent,
@@ -24,6 +25,16 @@ import { useOptimisticMutation } from '~/features/admin/hooks/useOptimisticUpdat
 const settingsSchema = z.object({
   title: z.string().min(1, 'Title is required').max(255, 'Title is too long'),
   description: z.string().optional(),
+  endDateTime: z.date().refine(
+    (date) => {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const selectedDate = new Date(date);
+      selectedDate.setHours(0, 0, 0, 0);
+      return selectedDate >= today;
+    },
+    { message: 'End date must be today or in the future' },
+  ),
   rubric: z.string().min(1, 'Rubric is required'),
 });
 
@@ -60,6 +71,7 @@ export function HackathonSettingsModal({
     defaultValues: {
       title: '',
       description: '',
+      endDateTime: new Date(),
       rubric: '',
     },
     onSubmit: async ({ value }) => {
@@ -72,6 +84,9 @@ export function HackathonSettingsModal({
           hackathonId,
           title: value.title,
           description: value.description?.trim() || undefined,
+          dates: {
+            end: value.endDateTime.getTime(),
+          },
           rubric: value.rubric,
         });
         // Modal close is handled in the onSuccess callback
@@ -88,6 +103,9 @@ export function HackathonSettingsModal({
     if (open && hackathon) {
       form.setFieldValue('title', hackathon.title);
       form.setFieldValue('description', hackathon.description || '');
+      // Set the end date as Date object
+      const endDateTime = hackathon.dates?.end ? new Date(hackathon.dates.end) : new Date();
+      form.setFieldValue('endDateTime', endDateTime);
       form.setFieldValue('rubric', hackathon.rubric);
     }
   }, [open, hackathon, form]);
@@ -147,6 +165,29 @@ export function HackathonSettingsModal({
                   rows={4}
                   disabled={isSubmitting}
                 />
+              </Field>
+            )}
+          </form.Field>
+
+          <form.Field
+            name="endDateTime"
+            validators={{
+              onChange: settingsSchema.shape.endDateTime,
+            }}
+          >
+            {(field) => (
+              <Field>
+                <FieldLabel>End Date & Time *</FieldLabel>
+                <DateTimePicker
+                  date={field.state.value}
+                  onDateChange={(date) => field.handleChange(date || new Date())}
+                  disabled={isSubmitting}
+                  required
+                  preserveTime
+                />
+                {field.state.meta.errors && field.state.meta.errors.length > 0 && (
+                  <p className="text-sm text-destructive">{String(field.state.meta.errors[0])}</p>
+                )}
               </Field>
             )}
           </form.Field>

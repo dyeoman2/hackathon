@@ -4,6 +4,7 @@ import { useRouter } from '@tanstack/react-router';
 import { useState } from 'react';
 import { z } from 'zod';
 import { Button } from '~/components/ui/button';
+import { DateTimePicker } from '~/components/ui/datetime-picker';
 import {
   Dialog,
   DialogContent,
@@ -20,6 +21,16 @@ import { useOptimisticMutation } from '~/features/admin/hooks/useOptimisticUpdat
 const hackathonSchema = z.object({
   title: z.string().min(1, 'Title is required').max(255, 'Title is too long'),
   description: z.string().optional(),
+  endDateTime: z.date().refine(
+    (date) => {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const selectedDate = new Date(date);
+      selectedDate.setHours(0, 0, 0, 0);
+      return selectedDate >= today;
+    },
+    { message: 'End date must be today or in the future' },
+  ),
   rubric: z.string().min(1, 'Rubric is required'),
 });
 
@@ -42,10 +53,15 @@ export function NewHackathonModal({ open, onClose }: NewHackathonModalProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
+  // Default end date to 7 days from now
+  const defaultEndDateTime = new Date();
+  defaultEndDateTime.setDate(defaultEndDateTime.getDate() + 7);
+
   const form = useForm({
     defaultValues: {
       title: '',
       description: '',
+      endDateTime: defaultEndDateTime,
       rubric:
         'Build something that shows what TanStack Start can really do with rich interactivity, live updates, server streaming, collaborative tools, full-stack routing, and RPCs with Convex, CodeRabbit, Netlify, Firecrawl, Sentry, Autumn, and Cloudflare.',
     },
@@ -58,6 +74,9 @@ export function NewHackathonModal({ open, onClose }: NewHackathonModalProps) {
         const result = await createHackathonOptimistic({
           title: value.title,
           description: value.description?.trim() || undefined,
+          dates: {
+            end: value.endDateTime.getTime(),
+          },
           rubric: value.rubric,
         });
 
@@ -127,6 +146,28 @@ export function NewHackathonModal({ open, onClose }: NewHackathonModalProps) {
                   placeholder="Describe your hackathon..."
                   rows={4}
                   disabled={isSubmitting}
+                />
+                {field.state.meta.errors && field.state.meta.errors.length > 0 && (
+                  <p className="text-sm text-destructive">{String(field.state.meta.errors[0])}</p>
+                )}
+              </Field>
+            )}
+          </form.Field>
+
+          <form.Field
+            name="endDateTime"
+            validators={{
+              onChange: hackathonSchema.shape.endDateTime,
+            }}
+          >
+            {(field) => (
+              <Field>
+                <FieldLabel>End Date & Time *</FieldLabel>
+                <DateTimePicker
+                  date={field.state.value}
+                  onDateChange={(date) => field.handleChange(date || new Date())}
+                  disabled={isSubmitting}
+                  required
                 />
                 {field.state.meta.errors && field.state.meta.errors.length > 0 && (
                   <p className="text-sm text-destructive">{String(field.state.meta.errors[0])}</p>

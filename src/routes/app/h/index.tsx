@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~/com
 import { Skeleton } from '~/components/ui/skeleton';
 import { NewHackathonModal } from '~/features/hackathons/components/NewHackathonModal';
 import { usePerformanceMonitoring } from '~/hooks/use-performance-monitoring';
+import { cn, formatTimeRemaining } from '~/lib/utils';
 
 export const Route = createFileRoute('/app/h/')({
   component: HackathonListComponent,
@@ -124,8 +125,22 @@ function HackathonListComponent() {
                 )}
               </CardHeader>
               <CardContent>
-                <div className="text-sm text-muted-foreground">
-                  Created {new Date(hackathon.createdAt).toLocaleDateString()}
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">
+                    Created {new Date(hackathon.createdAt).toLocaleDateString()}
+                  </span>
+                  {hackathon.dates?.end && (
+                    <span
+                      className={cn(
+                        'font-medium',
+                        new Date(hackathon.dates.end).getTime() < Date.now()
+                          ? 'text-muted-foreground'
+                          : 'text-primary',
+                      )}
+                    >
+                      {formatTimeRemaining(hackathon.dates.end)}
+                    </span>
+                  )}
                 </div>
               </CardContent>
             </Card>

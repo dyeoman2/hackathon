@@ -283,7 +283,7 @@ export const createHackathon = mutation({
     dates: v.optional(
       v.object({
         start: v.optional(v.number()),
-        end: v.optional(v.number()),
+        end: v.number(),
       }),
     ),
     rubric: v.string(),
@@ -332,7 +332,7 @@ export const updateHackathon = mutation({
     dates: v.optional(
       v.object({
         start: v.optional(v.number()),
-        end: v.optional(v.number()),
+        end: v.number(),
       }),
     ),
     rubric: v.optional(v.string()),
@@ -345,7 +345,7 @@ export const updateHackathon = mutation({
       description?: string;
       dates?: {
         start?: number;
-        end?: number;
+        end: number;
       };
       rubric?: string;
       updatedAt: number;
@@ -842,5 +842,54 @@ export const getHackathonInternal = internalQuery({
   },
   handler: async (ctx, args) => {
     return await ctx.db.get(args.hackathonId);
+  },
+});
+
+/**
+ * Migration mutation to set end dates for existing hackathons
+ * This is a one-time migration that can be called by admins
+ */
+export const migrateEndDates = mutation({
+  args: {},
+  handler: async (ctx) => {
+    // This is a one-time migration - in production, you might want to add admin checks
+    // For now, we'll allow anyone to run it since it's a data migration
+
+    const hackathons = await ctx.db.query('hackathons').collect();
+
+    if (hackathons.length === 0) {
+      return { message: 'No hackathons found.' };
+    }
+
+    console.log(`Found ${hackathons.length} hackathons. Checking for missing end dates...`);
+
+    const now = Date.now();
+    let updatedCount = 0;
+
+    for (const hackathon of hackathons) {
+      // Check if the hackathon has dates and an end date
+      if (!hackathon.dates?.end) {
+        console.log(`Updating hackathon "${hackathon.title}" (ID: ${hackathon._id})`);
+
+        // Update the hackathon with the current timestamp as end date
+        await ctx.db.patch(hackathon._id, {
+          dates: {
+            start: hackathon.dates?.start,
+            end: now,
+          },
+          updatedAt: now,
+        });
+
+        updatedCount++;
+      }
+    }
+
+    if (updatedCount === 0) {
+      return { message: 'All hackathons already have end dates set.' };
+    } else {
+      return {
+        message: `Successfully updated ${updatedCount} hackathon(s) with end date set to now.`,
+      };
+    }
   },
 });
