@@ -70,7 +70,14 @@ export function RevealStage({
   const { phase } = revealSync;
   const stageRef = useRef<HTMLDivElement>(null);
   const { isFullscreen, enterFullscreen, exitFullscreen } = useFullscreen(stageRef);
-  const [buttonsVisible, setButtonsVisible] = useState(true);
+  // Hide buttons by default when entering podium phases (reveal stage)
+  const isPodiumPhase =
+    phase === 'podiumReady' ||
+    phase === 'reveal3rd' ||
+    phase === 'reveal2nd' ||
+    phase === 'reveal1st';
+  const [buttonsVisible, setButtonsVisible] = useState(!isPodiumPhase);
+  const [isHovering, setIsHovering] = useState(false);
   const fadeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const previousPhaseRef = useRef(phase);
   let content: ReactNode;
@@ -79,7 +86,14 @@ export function RevealStage({
   useEffect(() => {
     if (previousPhaseRef.current !== phase) {
       previousPhaseRef.current = phase;
-      setButtonsVisible(true);
+      // Hide buttons when entering podium phases, show them for other phases
+      const isPodium =
+        phase === 'podiumReady' ||
+        phase === 'reveal3rd' ||
+        phase === 'reveal2nd' ||
+        phase === 'reveal1st';
+      setButtonsVisible(!isPodium);
+      setIsHovering(false);
       if (fadeTimeoutRef.current) {
         clearTimeout(fadeTimeoutRef.current);
         fadeTimeoutRef.current = null;
@@ -87,9 +101,9 @@ export function RevealStage({
     }
   }, [phase]);
 
-  // Fade out buttons after 5 seconds
+  // Fade out buttons after 5 seconds, but only if not hovering
   useEffect(() => {
-    if (!buttonsVisible) return;
+    if (!buttonsVisible || isHovering) return;
 
     fadeTimeoutRef.current = setTimeout(() => {
       setButtonsVisible(false);
@@ -100,22 +114,27 @@ export function RevealStage({
         clearTimeout(fadeTimeoutRef.current);
       }
     };
-  }, [buttonsVisible]);
+  }, [buttonsVisible, isHovering]);
 
-  // Show buttons when scrolling near top
+  // Show buttons when scrolling near top (only for non-podium phases)
   useEffect(() => {
     const handleScroll = () => {
+      // Don't show buttons on scroll for podium phases - they should only appear on hover
+      if (isPodiumPhase) return;
+
       const scrollY = window.scrollY || document.documentElement.scrollTop;
       // Show buttons if scrolled within 100px of top
       if (scrollY < 100) {
         setButtonsVisible(true);
-        // Reset the fade timer
-        if (fadeTimeoutRef.current) {
-          clearTimeout(fadeTimeoutRef.current);
+        // Reset the fade timer only if not hovering
+        if (!isHovering) {
+          if (fadeTimeoutRef.current) {
+            clearTimeout(fadeTimeoutRef.current);
+          }
+          fadeTimeoutRef.current = setTimeout(() => {
+            setButtonsVisible(false);
+          }, 5000);
         }
-        fadeTimeoutRef.current = setTimeout(() => {
-          setButtonsVisible(false);
-        }, 5000);
       }
     };
 
@@ -123,7 +142,7 @@ export function RevealStage({
     return () => {
       window.removeEventListener('scroll', handleScroll);
     };
-  }, []);
+  }, [isHovering, isPodiumPhase]);
 
   const handleToggleFullscreen = useCallback(() => {
     if (isFullscreen) {
@@ -195,6 +214,9 @@ export function RevealStage({
           submissions={submissions}
           timeRemaining={revealSync.timeRemaining}
           isPresenter={isPresenter}
+          isFullscreen={isFullscreen}
+          onToggleFullscreen={handleToggleFullscreen}
+          onStartTallying={revealSync.startTallying}
         />
         {isPresenter && (
           <PresenterControls
@@ -262,17 +284,31 @@ export function RevealStage({
       {/* biome-ignore lint/a11y/noStaticElementInteractions: Container div with pointer-events-none, actual interactions are on child elements */}
       <div
         className={`fixed top-4 left-4 right-4 z-50 flex items-center justify-between pointer-events-none transition-opacity duration-500 ${
-          buttonsVisible ? 'opacity-100' : 'opacity-0 hover:opacity-100'
+          buttonsVisible ? 'opacity-100' : 'opacity-0'
         }`}
-        onMouseEnter={() => setButtonsVisible(true)}
-        onMouseLeave={() => {
-          // Don't immediately fade on mouse leave, wait 5 seconds
+        onMouseEnter={() => {
+          setIsHovering(true);
+          setButtonsVisible(true);
+          // Clear any pending fade timeout when hovering
           if (fadeTimeoutRef.current) {
             clearTimeout(fadeTimeoutRef.current);
+            fadeTimeoutRef.current = null;
           }
-          fadeTimeoutRef.current = setTimeout(() => {
+        }}
+        onMouseLeave={() => {
+          setIsHovering(false);
+          // For podium phases, hide immediately on mouse leave
+          // For other phases, start fade timer after mouse leaves
+          if (isPodiumPhase) {
             setButtonsVisible(false);
-          }, 5000);
+          } else {
+            if (fadeTimeoutRef.current) {
+              clearTimeout(fadeTimeoutRef.current);
+            }
+            fadeTimeoutRef.current = setTimeout(() => {
+              setButtonsVisible(false);
+            }, 5000);
+          }
         }}
       >
         <div className="pointer-events-auto">

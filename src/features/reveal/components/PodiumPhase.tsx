@@ -2,7 +2,6 @@ import type { Id } from '@convex/_generated/dataModel';
 import { ExternalLink } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { SiGithub } from 'react-icons/si';
-import { Badge } from '~/components/ui/badge';
 
 interface RankedSubmission {
   _id: Id<'submissions'>;
@@ -39,10 +38,16 @@ export function PodiumPhase({
   onReveal,
 }: PodiumPhaseProps) {
   const [celebratingRank, setCelebratingRank] = useState<number | null>(null);
+  const [showConfetti, setShowConfetti] = useState(false);
   const [otherSubmissionsRevealed, setOtherSubmissionsRevealed] = useState(false);
+  const [showFieldReveal, setShowFieldReveal] = useState(false);
+  const [animatingRank, setAnimatingRank] = useState<number | null>(null);
   const confettiDataRef = useRef<
-    Array<{ id: string; left: number; delay: number; duration: number }>
+    Array<{ id: string; left: number; delay: number; duration: number; color?: string }>
   >([]);
+  const confettiTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const confettiCleanupTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const pendingConfettiRankRef = useRef<number | null>(null);
 
   // Get top 3 submissions
   const top3 = submissions.slice(0, 3);
@@ -62,7 +67,7 @@ export function PodiumPhase({
   const previousNextRankRef = useRef<number | null>(nextRank);
 
   const handleReveal = async () => {
-    // Determine which rank is being revealed
+    // Determine which rank is being revealed - capture values at call time
     let rank: number | null = null;
     if (canReveal3rd) {
       rank = 3;
@@ -73,6 +78,15 @@ export function PodiumPhase({
     }
 
     if (rank) {
+      // Store rank in ref to persist across re-renders
+      pendingConfettiRankRef.current = rank;
+
+      // Clear any existing confetti timeout
+      if (confettiTimeoutRef.current) {
+        clearTimeout(confettiTimeoutRef.current);
+        confettiTimeoutRef.current = null;
+      }
+
       // Generate confetti data once
       confettiDataRef.current = Array.from({ length: 50 }, (_, i) => ({
         id: `confetti-${rank}-${i}-${Date.now()}`,
@@ -80,23 +94,194 @@ export function PodiumPhase({
         delay: Math.random() * 0.5,
         duration: 4 + Math.random() * 2,
       }));
+      // Set celebrating rank to show message, start podium animation
       setCelebratingRank(rank);
+      setAnimatingRank(rank);
+      // Delay confetti start to allow message to appear first
+      setShowConfetti(false);
+      // Store rank in a closure to ensure it's available when timeout fires
+      const rankForConfetti = rank;
+      const confettiDataSnapshot = [...confettiDataRef.current]; // Snapshot confetti data
+      confettiTimeoutRef.current = setTimeout(() => {
+        // Always use the closure value first, then fall back to ref
+        // This ensures we always have the rank even if refs are cleared
+        const storedRank = rankForConfetti ?? pendingConfettiRankRef.current;
+
+        // Always restore confetti data from snapshot if needed
+        if (confettiDataRef.current.length === 0 && confettiDataSnapshot.length > 0) {
+          confettiDataRef.current = confettiDataSnapshot;
+        }
+
+        // Regenerate confetti data if somehow both are empty (shouldn't happen, but safety)
+        if (confettiDataRef.current.length === 0 && storedRank !== null) {
+          confettiDataRef.current = Array.from({ length: 50 }, (_, i) => ({
+            id: `confetti-${storedRank}-${i}-${Date.now()}`,
+            left: Math.random() * 100,
+            delay: Math.random() * 0.5,
+            duration: 4 + Math.random() * 2,
+          }));
+        }
+
+        // Always show confetti if we have a rank
+        if (storedRank !== null) {
+          // Clear any existing cleanup timeout
+          if (confettiCleanupTimeoutRef.current) {
+            clearTimeout(confettiCleanupTimeoutRef.current);
+            confettiCleanupTimeoutRef.current = null;
+          }
+
+          // Update refs to ensure consistency
+          pendingConfettiRankRef.current = storedRank;
+          setCelebratingRank(storedRank);
+          setShowConfetti(true);
+
+          // Set cleanup timeout from when confetti actually starts showing
+          // Confetti max duration is 6s, max particle delay is 0.5s
+          // So wait 7000ms from when confetti starts showing
+          confettiCleanupTimeoutRef.current = setTimeout(() => {
+            setCelebratingRank(null);
+            setShowConfetti(false);
+            setAnimatingRank(null);
+            confettiDataRef.current = [];
+            pendingConfettiRankRef.current = null;
+            confettiCleanupTimeoutRef.current = null;
+          }, 7000); // Wait for all confetti particles to finish (6.5s max duration)
+        }
+        confettiTimeoutRef.current = null;
+      }, 800); // 800ms delay to let message appear first
     }
 
     await onReveal();
+  };
+
+  const handleRevealField = () => {
+    // Generate confetti for "The Field" reveal - paper confetti pieces with random colors
+    const colors = [
+      '#FF6B6B',
+      '#4ECDC4',
+      '#45B7D1',
+      '#FFA07A',
+      '#98D8C8',
+      '#F7DC6F',
+      '#BB8FCE',
+      '#85C1E2',
+    ];
+    confettiDataRef.current = Array.from({ length: 50 }, (_, i) => {
+      return {
+        id: `confetti-field-${i}-${Date.now()}`,
+        left: Math.random() * 100,
+        delay: Math.random() * 0.5,
+        duration: 4 + Math.random() * 2,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        xDrift: Math.random() * 200 - 100,
+        initialRotation: Math.random() * 360,
+      };
+    });
+    // Use a special value (0) to indicate field reveal
+    setCelebratingRank(0);
+    setShowConfetti(false);
+    setTimeout(() => {
+      setShowConfetti(true);
+    }, 800); // 800ms delay to let reveal happen first
+
+    setOtherSubmissionsRevealed(true);
 
     // Clear celebration after animation
     setTimeout(() => {
       setCelebratingRank(null);
+      setShowConfetti(false);
       confettiDataRef.current = [];
     }, 6000);
   };
 
   const isRevealed = (rank: number) => revealedRanks.includes(rank);
 
+  // Cleanup confetti timeouts on unmount
+  useEffect(() => {
+    return () => {
+      if (confettiTimeoutRef.current) {
+        clearTimeout(confettiTimeoutRef.current);
+        confettiTimeoutRef.current = null;
+      }
+      if (confettiCleanupTimeoutRef.current) {
+        clearTimeout(confettiCleanupTimeoutRef.current);
+        confettiCleanupTimeoutRef.current = null;
+      }
+    };
+  }, []);
+
+  // Ensure confetti shows if we have a pending rank but state was reset
+  // This is a safety net for when state gets cleared unexpectedly
+  // IMPORTANT: Only runs when confetti is NOT currently showing to avoid interference
+  useEffect(() => {
+    // Don't interfere if confetti is currently showing or about to show
+    if (showConfetti || celebratingRank !== null || confettiTimeoutRef.current) {
+      return;
+    }
+
+    const hasPendingRank = pendingConfettiRankRef.current !== null;
+    const hasConfettiData = confettiDataRef.current.length > 0;
+
+    // Only restore if we're in a bad state (pending rank but no state/timeout)
+    if (hasPendingRank) {
+      const storedRank = pendingConfettiRankRef.current;
+
+      // Regenerate confetti data if it was cleared
+      if (!hasConfettiData && storedRank !== null) {
+        confettiDataRef.current = Array.from({ length: 50 }, (_, i) => ({
+          id: `confetti-${storedRank}-${i}-${Date.now()}`,
+          left: Math.random() * 100,
+          delay: Math.random() * 0.5,
+          duration: 4 + Math.random() * 2,
+        }));
+      }
+
+      // If we have a pending rank but state was cleared, restore it
+      if (storedRank !== null && confettiDataRef.current.length > 0) {
+        setCelebratingRank(storedRank);
+        setAnimatingRank(storedRank);
+        // Restart confetti timeout
+        setShowConfetti(false);
+        confettiTimeoutRef.current = setTimeout(() => {
+          // Always show confetti if we still have the rank
+          if (pendingConfettiRankRef.current === storedRank && confettiDataRef.current.length > 0) {
+            setCelebratingRank(storedRank);
+            setShowConfetti(true);
+
+            // Set cleanup timeout from when confetti starts showing
+            // Clear any existing cleanup timeout first
+            if (confettiCleanupTimeoutRef.current) {
+              clearTimeout(confettiCleanupTimeoutRef.current);
+            }
+            confettiCleanupTimeoutRef.current = setTimeout(() => {
+              setCelebratingRank(null);
+              setShowConfetti(false);
+              setAnimatingRank(null);
+              confettiDataRef.current = [];
+              pendingConfettiRankRef.current = null;
+              confettiCleanupTimeoutRef.current = null;
+            }, 7000);
+          }
+          confettiTimeoutRef.current = null;
+        }, 800);
+      }
+    }
+  }, [celebratingRank, showConfetti]);
+
   useEffect(() => {
     if (!revealedRanks.includes(1)) {
       setOtherSubmissionsRevealed(false);
+      setShowFieldReveal(false);
+    } else {
+      // When 1st place is revealed, wait for confetti to finish before showing "Tap to Reveal"
+      setShowFieldReveal(false);
+      const timeout = setTimeout(() => {
+        setShowFieldReveal(true);
+      }, 6000); // Same timing as podium reveals - wait for confetti to finish
+
+      return () => {
+        clearTimeout(timeout);
+      };
     }
   }, [revealedRanks]);
 
@@ -114,15 +299,18 @@ export function PodiumPhase({
     }
 
     previousNextRankRef.current = nextRank;
-    // For podiumReady phase, highlight immediately. For reveal phases, use delayed animation.
+    // For podiumReady phase, highlight immediately. For reveal phases, wait for confetti to finish.
     if (phase === 'podiumReady') {
       setHighlightRank(nextRank);
       return;
     } else {
       setHighlightRank(null);
+      // Confetti starts at 800ms delay, max duration is 6s, max particle delay is 0.5s
+      // So confetti finishes at: 800ms + 500ms + 6000ms = 7300ms
+      // Use 6000ms to appear sooner (confetti visually finishes earlier as particles fade out)
       const timeout = setTimeout(() => {
         setHighlightRank(nextRank);
-      }, 3000);
+      }, 5000);
 
       return () => {
         clearTimeout(timeout);
@@ -133,9 +321,38 @@ export function PodiumPhase({
   return (
     <div className="flex min-h-screen flex-col items-center justify-center space-y-6 relative overflow-hidden">
       {/* Confetti animation */}
-      {celebratingRank && confettiDataRef.current.length > 0 && (
+      {showConfetti && celebratingRank !== null && confettiDataRef.current.length > 0 && (
         <div className="fixed inset-0 pointer-events-none z-50">
           {confettiDataRef.current.map((data) => {
+            // For "The Field" reveal (celebratingRank === 0), use paper confetti pieces
+            if (celebratingRank === 0) {
+              const xDrift = (data as typeof data & { xDrift?: number }).xDrift ?? 0;
+              const initialRotation =
+                (data as typeof data & { initialRotation?: number }).initialRotation ?? 0;
+              return (
+                <div
+                  key={data.id}
+                  className="absolute animate-confetti-paper"
+                  style={
+                    {
+                      left: `${data.left}%`,
+                      top: '-20px',
+                      animationDelay: `${data.delay}s`,
+                      animationDuration: `${data.duration}s`,
+                      backgroundColor: data.color,
+                      width: '8px',
+                      height: '8px',
+                      '--x-drift': `${xDrift}px`,
+                      '--initial-rotation': `${initialRotation}deg`,
+                    } as React.CSSProperties & {
+                      '--x-drift': string;
+                      '--initial-rotation': string;
+                    }
+                  }
+                />
+              );
+            }
+            // For podium reveals, use medal emojis
             const medalEmoji = celebratingRank === 1 ? '🥇' : celebratingRank === 2 ? '🥈' : '🥉';
             return (
               <div
@@ -260,13 +477,12 @@ export function PodiumPhase({
               canReveal={canReveal3rd}
               isPresenter={isPresenter}
               onReveal={handleReveal}
-              isCelebrating={celebratingRank === 3}
               isNext={highlightRank === 3}
             />
             <div className="w-full mt-3">
               <div
                 className={`relative h-20 bg-linear-to-t from-[#CD7F32] via-[#B87333] to-[#A0522D] rounded-t-xl border-t-2 border-[#D4A574] shadow-[0_4px_8px_rgba(0,0,0,0.5),0_8px_16px_rgba(0,0,0,0.4),0_16px_32px_rgba(205,127,50,0.4),inset_0_2px_0_rgba(255,255,255,0.15)] overflow-hidden transition-all duration-700 ${
-                  isRevealed(3) ? 'animate-podium-reveal scale-105' : ''
+                  isRevealed(3) || animatingRank === 3 ? 'animate-podium-reveal scale-105' : ''
                 }`}
               >
                 <div className="absolute inset-0 rounded-t-xl bg-linear-to-br from-transparent via-white/25 to-transparent pointer-events-none" />
@@ -299,13 +515,12 @@ export function PodiumPhase({
               canReveal={canReveal1st}
               isPresenter={isPresenter}
               onReveal={handleReveal}
-              isCelebrating={celebratingRank === 1}
               isNext={highlightRank === 1}
             />
             <div className="w-full mt-3">
               <div
                 className={`relative h-28 bg-linear-to-t from-[#D4AF37] via-[#FFD700] to-[#FFA500] rounded-t-xl border-t-2 border-[#FFD700] shadow-[0_4px_8px_rgba(0,0,0,0.5),0_8px_16px_rgba(0,0,0,0.4),0_16px_32px_rgba(212,175,55,0.5),inset_0_2px_0_rgba(255,255,255,0.2)] overflow-hidden transition-all duration-700 ${
-                  isRevealed(1) ? 'animate-podium-reveal scale-105' : ''
+                  isRevealed(1) || animatingRank === 1 ? 'animate-podium-reveal scale-105' : ''
                 }`}
               >
                 <div className="absolute inset-0 rounded-t-xl bg-linear-to-br from-transparent via-white/30 to-transparent pointer-events-none" />
@@ -338,13 +553,12 @@ export function PodiumPhase({
               canReveal={canReveal2nd}
               isPresenter={isPresenter}
               onReveal={handleReveal}
-              isCelebrating={celebratingRank === 2}
               isNext={highlightRank === 2}
             />
             <div className="w-full mt-3">
               <div
                 className={`relative h-24 bg-linear-to-t from-[#C0C0C0] via-[#D3D3D3] to-[#E8E8E8] rounded-t-xl border-t-2 border-[#E8E8E8] shadow-[0_4px_8px_rgba(0,0,0,0.5),0_8px_16px_rgba(0,0,0,0.4),0_16px_32px_rgba(192,192,192,0.4),inset_0_2px_0_rgba(255,255,255,0.15)] overflow-hidden transition-all duration-700 ${
-                  isRevealed(2) ? 'animate-podium-reveal scale-105' : ''
+                  isRevealed(2) || animatingRank === 2 ? 'animate-podium-reveal scale-105' : ''
                 }`}
               >
                 <div className="absolute inset-0 rounded-t-xl bg-linear-to-br from-transparent via-white/25 to-transparent pointer-events-none" />
@@ -370,18 +584,26 @@ export function PodiumPhase({
       {remaining.length > 0 && (
         <div
           className={`w-full max-w-5xl space-y-4 z-10 rounded-2xl p-6 md:p-8 transition-all duration-700 ${
-            isRevealed(1) && !otherSubmissionsRevealed
+            isRevealed(1) && !otherSubmissionsRevealed && showFieldReveal
               ? 'border-2 border-purple-400 shadow-[0_0_40px_rgba(168,85,247,0.4)] animate-focus-glow bg-linear-to-br from-purple-950/30 to-slate-950/50'
               : 'bg-slate-950/30'
           }`}
         >
           <div className="flex items-center justify-between flex-wrap gap-4">
-            <h2 className="text-3xl font-extrabold text-white drop-shadow-lg">The Field</h2>
-            {isRevealed(1) && !otherSubmissionsRevealed && (
+            <h2
+              className={`text-3xl font-extrabold text-white drop-shadow-lg transition-all duration-700 ${
+                showFieldReveal
+                  ? 'opacity-100 blur-0'
+                  : 'opacity-30 blur-md pointer-events-none select-none'
+              }`}
+            >
+              The Field
+            </h2>
+            {isRevealed(1) && !otherSubmissionsRevealed && showFieldReveal && (
               <button
                 type="button"
                 className="text-xs font-bold tracking-[0.3em] uppercase text-white border-2 border-purple-400/80 rounded-full px-6 py-2 bg-linear-to-r from-purple-600/90 to-pink-600/90 shadow-[0_0_20px_rgba(168,85,247,0.6)] hover:from-purple-500 hover:to-pink-500 hover:shadow-[0_0_30px_rgba(168,85,247,0.8)] transition-all duration-300 transform hover:scale-105 active:scale-95"
-                onClick={() => setOtherSubmissionsRevealed(true)}
+                onClick={handleRevealField}
               >
                 Tap to Reveal
               </button>
@@ -457,12 +679,6 @@ export function PodiumPhase({
                       <ExternalLink className="h-4 w-4" />
                     </a>
                   )}
-                  <Badge
-                    variant="secondary"
-                    className="text-sm font-bold px-3 py-1 bg-linear-to-r from-yellow-500/20 to-yellow-600/20 border-yellow-500/30 text-yellow-200"
-                  >
-                    ⭐ {submission.averageRating.toFixed(1)}
-                  </Badge>
                 </div>
               </div>
             ))}
@@ -484,6 +700,19 @@ export function PodiumPhase({
         }
         .animate-confetti {
           animation: confetti 5s ease-out forwards;
+        }
+        @keyframes confetti-paper {
+          0% {
+            transform: translateY(0) translateX(0) rotate(var(--initial-rotation, 0deg));
+            opacity: 1;
+          }
+          100% {
+            transform: translateY(100vh) translateX(var(--x-drift, 0px)) rotate(calc(var(--initial-rotation, 0deg) + 720deg));
+            opacity: 0;
+          }
+        }
+        .animate-confetti-paper {
+          animation: confetti-paper 5s ease-out forwards;
         }
         @keyframes subtle-bounce {
           0%, 100% {
@@ -623,7 +852,6 @@ interface PodiumSlotProps {
   canReveal: boolean;
   isPresenter: boolean;
   onReveal: () => void;
-  isCelebrating: boolean;
   isNext: boolean;
 }
 
@@ -636,7 +864,6 @@ function PodiumSlot({
   canReveal,
   isPresenter,
   onReveal,
-  isCelebrating,
   isNext,
 }: PodiumSlotProps) {
   const screenshot = submission.screenshots?.[0]?.url;
@@ -661,8 +888,10 @@ function PodiumSlot({
       {/* Card */}
       <CardComponent
         className={`${cardBase} ${borderState} ${
-          isCelebrating ? 'animate-subtle-bounce' : ''
-        } ${interactionEnabled ? 'cursor-pointer hover:border-purple-400' : 'cursor-default opacity-95'}`}
+          interactionEnabled
+            ? 'cursor-pointer hover:border-purple-400'
+            : 'cursor-default opacity-95'
+        }`}
         {...cardProps}
       >
         {/* Screenshot or Placeholder */}

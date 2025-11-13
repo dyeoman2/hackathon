@@ -169,10 +169,10 @@ export const startReveal = mutation({
       .first();
 
     if (existingState) {
-      // Update existing state
+      // Update existing state - don't set startedAt yet, wait for user to click "Tally the Votes"
       await ctx.db.patch(existingState._id, {
         phase: 'tally',
-        startedAt: now,
+        startedAt: undefined,
         revealedRanks: [],
         controlledBy: userId,
         updatedAt: now,
@@ -180,11 +180,11 @@ export const startReveal = mutation({
       return existingState._id;
     }
 
-    // Create new reveal state
+    // Create new reveal state - don't set startedAt yet, wait for user to click "Tally the Votes"
     const revealStateId = await ctx.db.insert('revealState', {
       hackathonId: args.hackathonId,
       phase: 'tally',
-      startedAt: now,
+      startedAt: undefined,
       revealedRanks: [],
       controlledBy: userId,
       createdAt: now,
@@ -192,6 +192,44 @@ export const startReveal = mutation({
     });
 
     return revealStateId;
+  },
+});
+
+/**
+ * Start the tallying timer
+ *
+ * Only owner/admin can start tallying
+ */
+export const startTallying = mutation({
+  args: {
+    hackathonId: v.id('hackathons'),
+  },
+  handler: async (ctx, args) => {
+    // Only owner/admin can start tallying
+    await requireHackathonRole(ctx, args.hackathonId, ['owner', 'admin']);
+
+    const revealState = await ctx.db
+      .query('revealState')
+      .withIndex('by_hackathonId', (q) => q.eq('hackathonId', args.hackathonId))
+      .first();
+
+    if (!revealState) {
+      throw new Error('Reveal not started');
+    }
+
+    if (revealState.phase !== 'tally') {
+      throw new Error('Can only start tallying when in tally phase');
+    }
+
+    const now = Date.now();
+
+    // Start the timer by setting startedAt
+    await ctx.db.patch(revealState._id, {
+      startedAt: now,
+      updatedAt: now,
+    });
+
+    return { startedAt: now };
   },
 });
 

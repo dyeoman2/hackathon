@@ -34,6 +34,7 @@ interface UseRevealSyncReturn {
 
   // Control actions
   startReveal: () => Promise<void>;
+  startTallying: () => Promise<void>;
   advancePhase: () => Promise<void>;
   goBackPhase: () => Promise<void>;
   resetReveal: () => Promise<void>;
@@ -61,6 +62,7 @@ export function useRevealSync(
 
   // Mutations
   const startRevealMutation = useMutation(api.reveal.startReveal);
+  const startTallyingMutation = useMutation(api.reveal.startTallying);
   const advanceRevealMutation = useMutation(api.reveal.advanceReveal);
   const goBackRevealMutation = useMutation(api.reveal.goBackReveal);
   const resetRevealMutation = useMutation(api.reveal.resetReveal);
@@ -80,7 +82,12 @@ export function useRevealSync(
   // Calculate time remaining for timed phases
   useEffect(() => {
     if (startedAt === undefined || (phase !== 'countdown' && phase !== 'tally')) {
-      setTimeRemaining(0);
+      // If in tally phase but startedAt is undefined, set to max duration to indicate not started
+      if (phase === 'tally' && startedAt === undefined) {
+        setTimeRemaining(PHASE_DURATION_MS);
+      } else {
+        setTimeRemaining(0);
+      }
       return;
     }
 
@@ -134,6 +141,14 @@ export function useRevealSync(
 
   // Advance to next phase
   const advancePhase = useCallback(async () => {
+    // Check if advance is allowed before calling mutation
+    const currentCanAdvance =
+      phase === 'podiumReady' || phase === 'reveal3rd' || phase === 'reveal2nd';
+    if (!currentCanAdvance) {
+      toast.showToast('Cannot advance from this phase', 'error');
+      return;
+    }
+
     setIsAdvancing(true);
     try {
       await advanceRevealMutation({ hackathonId });
@@ -143,7 +158,7 @@ export function useRevealSync(
     } finally {
       setIsAdvancing(false);
     }
-  }, [hackathonId, advanceRevealMutation, toast]);
+  }, [phase, hackathonId, advanceRevealMutation, toast]);
 
   // Go back to previous phase
   const goBackPhase = useCallback(async () => {
@@ -172,6 +187,16 @@ export function useRevealSync(
     }
   }, [hackathonId, resetRevealMutation, toast]);
 
+  // Start tallying timer
+  const startTallying = useCallback(async () => {
+    try {
+      await startTallyingMutation({ hackathonId });
+    } catch (error) {
+      console.error('Failed to start tallying:', error);
+      toast.showToast(error instanceof Error ? error.message : 'Failed to start tallying', 'error');
+    }
+  }, [hackathonId, startTallyingMutation, toast]);
+
   // Determine if manual advance is allowed
   const canAdvance = phase === 'podiumReady' || phase === 'reveal3rd' || phase === 'reveal2nd';
 
@@ -184,6 +209,7 @@ export function useRevealSync(
     canAdvance,
     canGoBack,
     startReveal,
+    startTallying,
     advancePhase,
     goBackPhase,
     resetReveal,

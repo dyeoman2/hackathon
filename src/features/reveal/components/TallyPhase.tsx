@@ -1,5 +1,7 @@
 import type { Id } from '@convex/_generated/dataModel';
+import { Maximize } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { Button } from '~/components/ui/button';
 
 interface RankedSubmission {
   _id: Id<'submissions'>;
@@ -15,6 +17,9 @@ interface TallyPhaseProps {
   submissions: RankedSubmission[];
   timeRemaining: number;
   isPresenter: boolean;
+  isFullscreen: boolean;
+  onToggleFullscreen: () => void;
+  onStartTallying: () => Promise<void>;
 }
 
 const ROW_HEIGHT_PX = 96;
@@ -33,13 +38,27 @@ interface EmojiParticle {
   revealThreshold: number;
 }
 
-export function TallyPhase({ submissions, timeRemaining, isPresenter }: TallyPhaseProps) {
+const PHASE_DURATION_MS = 10000; // 10 seconds
+
+export function TallyPhase({
+  submissions,
+  timeRemaining,
+  isPresenter,
+  isFullscreen,
+  onToggleFullscreen,
+  onStartTallying,
+}: TallyPhaseProps) {
   const [progress, setProgress] = useState(0);
   const randomOrderRef = useRef<Map<Id<'submissions'>, number>>(new Map());
   const sortedSubmissions = useMemo(
     () => [...submissions].sort((a, b) => a.rank - b.rank),
     [submissions],
   );
+
+  // Check if tallying has started (startedAt is set, so timeRemaining is counting down)
+  // If timeRemaining is at max (10000ms) or undefined, tallying hasn't started yet
+  const hasStartedTallying = timeRemaining < PHASE_DURATION_MS * 0.95;
+  const isInitialStart = !hasStartedTallying && isPresenter;
 
   // Ensure we have a randomized snapshot of the current submissions for the initial layout.
   useEffect(() => {
@@ -60,13 +79,18 @@ export function TallyPhase({ submissions, timeRemaining, isPresenter }: TallyPha
     }
   }, [sortedSubmissions]);
 
-  // Calculate progress (0-1) based on time remaining
+  // Calculate progress (0-1) based on time remaining - only if tallying has started
   useEffect(() => {
+    if (!hasStartedTallying) {
+      setProgress(0);
+      return;
+    }
+
     const totalDuration = 10000; // 10 seconds
     const elapsed = totalDuration - timeRemaining;
     const newProgress = Math.min(1, Math.max(0, elapsed / totalDuration));
     setProgress(newProgress);
-  }, [timeRemaining]);
+  }, [timeRemaining, hasStartedTallying]);
 
   const easedProgress = progress ** 0.85;
 
@@ -101,7 +125,8 @@ export function TallyPhase({ submissions, timeRemaining, isPresenter }: TallyPha
   }, [submissions]);
 
   const visibleEmojiParticles = useMemo(() => {
-    if (emojiParticles.length === 0) {
+    // Don't show any emojis until tallying has started
+    if (!hasStartedTallying || emojiParticles.length === 0) {
       return [];
     }
 
@@ -113,12 +138,12 @@ export function TallyPhase({ submissions, timeRemaining, isPresenter }: TallyPha
 
     // Always keep at least one particle so the scene doesn't feel empty at the very start.
     return emojiParticles.slice(0, 1);
-  }, [emojiParticles, easedProgress]);
+  }, [emojiParticles, easedProgress, hasStartedTallying]);
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center space-y-6 relative overflow-hidden">
       {/* Floating Emoji Cloud */}
-      <div className="fixed inset-0 pointer-events-none overflow-hidden">
+      <div className="fixed inset-0 pointer-events-none overflow-hidden z-[9999]">
         {visibleEmojiParticles.map((particle) => (
           <div
             key={particle.key}
@@ -136,24 +161,68 @@ export function TallyPhase({ submissions, timeRemaining, isPresenter }: TallyPha
         ))}
       </div>
 
-      {/* Header */}
-      <div className="text-center space-y-2 z-10">
-        <h1 className="text-4xl font-bold text-white">Tallying Results...</h1>
-        <p className="text-slate-300">Rankings are being calculated</p>
-      </div>
-
-      {/* Progress Bar */}
-      <div className="w-full max-w-md z-10">
-        <div className="h-2 bg-slate-800 rounded-full overflow-hidden">
-          <div
-            className="h-full bg-gradient-to-r from-purple-500 to-pink-500 transition-all duration-300"
-            style={{ width: `${progress * 100}%` }}
-          />
+      {/* Initial Start Buttons */}
+      {isInitialStart && isPresenter && (
+        <div className="flex flex-col items-center gap-8 z-20 mb-8">
+          <div className="text-center space-y-4 animate-fade-in">
+            <h1 className="text-5xl md:text-6xl font-extrabold text-white tracking-tight drop-shadow-[0_4px_12px_rgba(0,0,0,0.5)]">
+              <span className="bg-linear-to-r from-purple-200 via-pink-200 to-purple-200 bg-clip-text text-transparent animate-gradient-shift">
+                The Moment of Truth
+              </span>
+            </h1>
+            <p className="text-xl md:text-2xl text-purple-200 font-medium">
+              Ready to see who came out on top?
+            </p>
+            <p className="text-lg text-slate-300 font-light">
+              {submissions.length} {submissions.length === 1 ? 'submission' : 'submissions'} await
+              their fate
+            </p>
+          </div>
+          <div className="flex gap-4">
+            {!isFullscreen && (
+              <Button
+                onClick={onToggleFullscreen}
+                variant="outline"
+                size="lg"
+                className="border-purple-400/70 bg-slate-800/50 text-purple-100 hover:bg-purple-500/20 hover:border-purple-400 hover:text-white font-medium px-8 py-6 text-lg"
+              >
+                <Maximize className="h-5 w-5 mr-2" />
+                Enter Fullscreen
+              </Button>
+            )}
+            <Button
+              onClick={onStartTallying}
+              size="lg"
+              className="bg-purple-600 hover:bg-purple-700 text-white px-8 py-6 text-lg font-semibold shadow-lg shadow-purple-500/50 border-2 border-purple-400/50"
+            >
+              Tally the Votes
+            </Button>
+          </div>
         </div>
-        <p className="text-center text-sm text-slate-400 mt-2">
-          {Math.ceil(timeRemaining / 1000)} seconds remaining
-        </p>
-      </div>
+      )}
+
+      {/* Header - only show when tallying has started */}
+      {hasStartedTallying && (
+        <>
+          <div className="text-center space-y-2 z-10">
+            <h1 className="text-4xl font-bold text-white">Tallying Results...</h1>
+            <p className="text-slate-300">Rankings are being calculated</p>
+          </div>
+
+          {/* Progress Bar */}
+          <div className="w-full max-w-md z-10">
+            <div className="h-2 bg-slate-800 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-linear-to-r from-purple-500 to-pink-500 transition-all duration-300"
+                style={{ width: `${progress * 100}%` }}
+              />
+            </div>
+            <p className="text-center text-sm text-slate-400 mt-2">
+              {Math.ceil(timeRemaining / 1000)} seconds remaining
+            </p>
+          </div>
+        </>
+      )}
 
       {/* Submissions Sorting Animation */}
       <div className="w-full max-w-5xl space-y-3 z-10">
@@ -188,7 +257,7 @@ export function TallyPhase({ submissions, timeRemaining, isPresenter }: TallyPha
                   </div>
 
                   {/* Loading spinner for score */}
-                  <div className="flex items-center gap-2 flex-shrink-0">
+                  <div className="flex items-center gap-2 shrink-0">
                     <div className="w-4 h-4 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
                     <span className="text-slate-500 text-sm">Tallying...</span>
                   </div>
@@ -198,15 +267,6 @@ export function TallyPhase({ submissions, timeRemaining, isPresenter }: TallyPha
           })}
         </div>
       </div>
-
-      {/* Presenter Note */}
-      {isPresenter && (
-        <div className="fixed bottom-4 right-4 bg-purple-900/80 backdrop-blur-sm border border-purple-700 rounded-lg p-3 z-20">
-          <p className="text-xs text-purple-200">
-            Presenter view • Auto-advancing to podium in {Math.ceil(timeRemaining / 1000)}s
-          </p>
-        </div>
-      )}
 
       {/* Custom animation styles */}
       <style>{`
@@ -228,6 +288,31 @@ export function TallyPhase({ submissions, timeRemaining, isPresenter }: TallyPha
         }
         .animate-float-up {
           animation: float-up 3s ease-out forwards;
+        }
+        @keyframes fade-in {
+          from {
+            opacity: 0;
+            transform: translateY(-10px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+        .animate-fade-in {
+          animation: fade-in 0.6s ease-out forwards;
+        }
+        @keyframes gradient-shift {
+          0%, 100% {
+            background-position: 0% 50%;
+          }
+          50% {
+            background-position: 100% 50%;
+          }
+        }
+        .animate-gradient-shift {
+          background-size: 200% 200%;
+          animation: gradient-shift 3s ease infinite;
         }
       `}</style>
     </div>

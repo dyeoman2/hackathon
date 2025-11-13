@@ -33,12 +33,14 @@ export function PresenterControls({
   isFullscreen,
   onToggleFullscreen,
 }: PresenterControlsProps) {
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  // In tally phase, show expanded by default; otherwise show collapsed
+  const [isCollapsed, setIsCollapsed] = useState(phase !== 'tally');
   const navigate = useNavigate();
   const collapseTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const previousPhaseRef = useRef(phase);
+  const manuallyExpandedRef = useRef(false);
 
-  // Reset collapse timer when phase changes
+  // Reset collapse state when phase changes
   useEffect(() => {
     if (previousPhaseRef.current !== phase) {
       previousPhaseRef.current = phase;
@@ -46,13 +48,17 @@ export function PresenterControls({
         clearTimeout(collapseTimeoutRef.current);
         collapseTimeoutRef.current = null;
       }
-      setIsCollapsed(false);
+      // In tally phase, show expanded; otherwise show collapsed
+      setIsCollapsed(phase !== 'tally');
+      // Reset manual expansion flag on phase change
+      manuallyExpandedRef.current = false;
     }
   }, [phase]);
 
-  // Auto-collapse after 5 seconds
+  // Auto-collapse after 5 seconds, but only if not manually expanded
   useEffect(() => {
     if (isCollapsed) return;
+    if (manuallyExpandedRef.current) return; // Don't auto-collapse if manually expanded
 
     // Clear any existing timeout
     if (collapseTimeoutRef.current) {
@@ -73,9 +79,11 @@ export function PresenterControls({
 
   const handleExpand = () => {
     setIsCollapsed(false);
-    // Reset timer when manually expanded
+    manuallyExpandedRef.current = true; // Mark as manually expanded
+    // Clear timer when manually expanded
     if (collapseTimeoutRef.current) {
       clearTimeout(collapseTimeoutRef.current);
+      collapseTimeoutRef.current = null;
     }
   };
 
@@ -83,11 +91,44 @@ export function PresenterControls({
     setIsCollapsed(true);
   };
 
+  // Mark as manually expanded and clear timer when any button is clicked
+  const markManuallyExpanded = () => {
+    manuallyExpandedRef.current = true;
+    if (collapseTimeoutRef.current) {
+      clearTimeout(collapseTimeoutRef.current);
+      collapseTimeoutRef.current = null;
+    }
+  };
+
   const handleBackToHackathon = () => {
+    markManuallyExpanded();
     void navigate({
       to: '/app/h/$id',
       params: { id: hackathonId },
     });
+  };
+
+  const handleToggleFullscreen = () => {
+    markManuallyExpanded();
+    onToggleFullscreen();
+  };
+
+  const handleGoBack = () => {
+    if (!onGoBack || !canGoBack || isGoingBack) return;
+    markManuallyExpanded();
+    void onGoBack();
+  };
+
+  const handleAdvance = () => {
+    if (!onAdvance || !canAdvance || isAdvancing) return;
+    markManuallyExpanded();
+    void onAdvance();
+  };
+
+  const handleRestart = () => {
+    if (isRestarting) return;
+    markManuallyExpanded();
+    void onRestart();
   };
 
   if (isCollapsed) {
@@ -140,7 +181,7 @@ export function PresenterControls({
           Hackathon
         </Button>
         <Button
-          onClick={onToggleFullscreen}
+          onClick={handleToggleFullscreen}
           variant="outline"
           className="flex-1 border-purple-400/70 bg-slate-800/50 text-purple-100 hover:bg-purple-500/20 hover:border-purple-400 hover:text-white font-medium"
           size="sm"
@@ -162,7 +203,7 @@ export function PresenterControls({
       {/* Back button (always visible, disabled when can't go back) */}
       {onGoBack && (
         <Button
-          onClick={onGoBack}
+          onClick={handleGoBack}
           disabled={!canGoBack || isGoingBack}
           variant="outline"
           className={`w-full ${
@@ -179,7 +220,7 @@ export function PresenterControls({
       {/* Advance button (if applicable) */}
       {canAdvance && onAdvance && (
         <Button
-          onClick={onAdvance}
+          onClick={handleAdvance}
           disabled={isAdvancing}
           className="w-full bg-purple-600 hover:bg-purple-700"
           size="sm"
@@ -190,7 +231,7 @@ export function PresenterControls({
 
       {/* Restart button (always available) */}
       <Button
-        onClick={onRestart}
+        onClick={handleRestart}
         disabled={isRestarting}
         variant="outline"
         className="w-full"
