@@ -85,8 +85,8 @@ export function SubmissionRatingSlider({
               {isVotingClosed
                 ? 'Voting has ended. No new ratings can be submitted.'
                 : canRate
-                ? 'Rate this submission from 0 to 10.'
-                : 'Only owners, admins, and judges can rate submissions.'}
+                  ? 'Rate this submission from 0 to 10.'
+                  : 'Only owners, admins, and judges can rate submissions.'}
             </CardDescription>
           </div>
           <div className="text-right">

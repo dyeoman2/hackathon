@@ -262,42 +262,42 @@ export function RevealStage({
       {/* Only render buttons when not in idle phase */}
       {!isIdlePhase && (
         /* biome-ignore lint/a11y/noStaticElementInteractions: Container div with pointer-events-none, actual interactions are on child elements */
-      <div
-        className={`fixed top-4 left-4 right-4 z-50 flex items-center justify-between pointer-events-none transition-opacity duration-500 ${
-          buttonsVisible ? 'opacity-100' : 'opacity-0'
-        }`}
-        onMouseEnter={() => {
-          setIsHovering(true);
-          setButtonsVisible(true);
-          // Clear any pending fade timeout when hovering
-          if (fadeTimeoutRef.current) {
-            clearTimeout(fadeTimeoutRef.current);
-            fadeTimeoutRef.current = null;
-          }
-        }}
-        onMouseLeave={() => {
-          setIsHovering(false);
-          // For podium phases, hide immediately on mouse leave
-          // For other phases, start fade timer after mouse leaves
-          if (isPodiumPhase) {
-            setButtonsVisible(false);
-          } else {
+        <div
+          className={`fixed top-4 left-4 right-4 z-50 flex items-center justify-between pointer-events-none transition-opacity duration-500 ${
+            buttonsVisible ? 'opacity-100' : 'opacity-0'
+          }`}
+          onMouseEnter={() => {
+            setIsHovering(true);
+            setButtonsVisible(true);
+            // Clear any pending fade timeout when hovering
             if (fadeTimeoutRef.current) {
               clearTimeout(fadeTimeoutRef.current);
+              fadeTimeoutRef.current = null;
             }
-            fadeTimeoutRef.current = setTimeout(() => {
+          }}
+          onMouseLeave={() => {
+            setIsHovering(false);
+            // For podium phases, hide immediately on mouse leave
+            // For other phases, start fade timer after mouse leaves
+            if (isPodiumPhase) {
               setButtonsVisible(false);
-            }, 5000);
-          }
-        }}
-      >
-        <div className="pointer-events-auto">
-          <BackButton hackathonId={hackathonId} />
+            } else {
+              if (fadeTimeoutRef.current) {
+                clearTimeout(fadeTimeoutRef.current);
+              }
+              fadeTimeoutRef.current = setTimeout(() => {
+                setButtonsVisible(false);
+              }, 5000);
+            }
+          }}
+        >
+          <div className="pointer-events-auto">
+            <BackButton hackathonId={hackathonId} />
+          </div>
+          <div className="pointer-events-auto">
+            <FullscreenToggle isFullscreen={isFullscreen} onToggle={handleToggleFullscreen} />
+          </div>
         </div>
-        <div className="pointer-events-auto">
-          <FullscreenToggle isFullscreen={isFullscreen} onToggle={handleToggleFullscreen} />
-        </div>
-      </div>
       )}
     </div>
   );

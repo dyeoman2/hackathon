@@ -158,7 +158,11 @@ export const createSubmission = mutation({
   },
   handler: async (ctx, args) => {
     // Check membership - any active member can create submissions
-    const { hackathon } = await requireHackathonRole(ctx, args.hackathonId, ['owner', 'admin', 'judge']);
+    const { hackathon } = await requireHackathonRole(ctx, args.hackathonId, [
+      'owner',
+      'admin',
+      'judge',
+    ]);
 
     // Check if hackathon has ended
     if (hackathon.dates?.submissionDeadline && Date.now() > hackathon.dates.submissionDeadline) {

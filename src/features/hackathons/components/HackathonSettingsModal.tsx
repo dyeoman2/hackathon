@@ -104,7 +104,9 @@ export function HackathonSettingsModal({
       form.setFieldValue('title', hackathon.title);
       form.setFieldValue('description', hackathon.description || '');
       // Set the submission deadline as Date object
-      const submissionDeadline = hackathon.dates?.submissionDeadline ? new Date(hackathon.dates.submissionDeadline) : new Date();
+      const submissionDeadline = hackathon.dates?.submissionDeadline
+        ? new Date(hackathon.dates.submissionDeadline)
+        : new Date();
       form.setFieldValue('submissionDeadline', submissionDeadline);
       form.setFieldValue('rubric', hackathon.rubric);
     }

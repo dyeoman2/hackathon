@@ -54,7 +54,6 @@ function HackathonListComponent() {
     );
   }
 
-
   return (
     <div className="space-y-6">
       <PageHeader
@@ -96,8 +95,8 @@ function HackathonListComponent() {
               <CardHeader>
                 <div className="flex items-start justify-between gap-2">
                   <CardTitle className="wrap-break-word leading-normal flex-1">
-                  {hackathon.title}
-                </CardTitle>
+                    {hackathon.title}
+                  </CardTitle>
                   <HackathonTimeBadge
                     submissionDeadline={hackathon.dates?.submissionDeadline}
                     className="flex-shrink-0"

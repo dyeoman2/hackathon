@@ -957,7 +957,9 @@ export const migrateSubmissionDeadlines = mutation({
       return { message: 'No hackathons found.' };
     }
 
-    console.log(`Found ${hackathons.length} hackathons. Checking for missing submission deadlines...`);
+    console.log(
+      `Found ${hackathons.length} hackathons. Checking for missing submission deadlines...`,
+    );
 
     const now = Date.now();
     let updatedCount = 0;

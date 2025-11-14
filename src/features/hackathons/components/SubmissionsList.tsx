@@ -61,7 +61,8 @@ export function SubmissionsList({ hackathonId }: SubmissionsListProps) {
   );
 
   const hasEnded = useMemo(
-    () => !!(hackathon?.dates?.submissionDeadline && Date.now() > hackathon.dates.submissionDeadline),
+    () =>
+      !!(hackathon?.dates?.submissionDeadline && Date.now() > hackathon.dates.submissionDeadline),
     [hackathon?.dates?.submissionDeadline],
   );
 
@@ -103,7 +104,11 @@ export function SubmissionsList({ hackathonId }: SubmissionsListProps) {
           onClick={() => setIsNewSubmissionModalOpen(true)}
           className="w-full sm:w-auto"
           disabled={hasEnded}
-          title={hasEnded ? "Cannot add submissions to hackathons that are no longer accepting submissions" : undefined}
+          title={
+            hasEnded
+              ? 'Cannot add submissions to hackathons that are no longer accepting submissions'
+              : undefined
+          }
         >
           <Plus className="h-4 w-4" />
           New Submission
@@ -113,12 +118,18 @@ export function SubmissionsList({ hackathonId }: SubmissionsListProps) {
       {submissions.length === 0 ? (
         <div className="rounded-md border bg-card p-12 text-center">
           <p className="text-muted-foreground mb-4">
-            {hasEnded ? "This hackathon is no longer accepting submissions. No new submissions can be added." : "No submissions yet."}
+            {hasEnded
+              ? 'This hackathon is no longer accepting submissions. No new submissions can be added.'
+              : 'No submissions yet.'}
           </p>
           <Button
             onClick={() => setIsNewSubmissionModalOpen(true)}
             disabled={hasEnded}
-            title={hasEnded ? "Cannot add submissions to hackathons that are no longer accepting submissions" : undefined}
+            title={
+              hasEnded
+                ? 'Cannot add submissions to hackathons that are no longer accepting submissions'
+                : undefined
+            }
           >
             <Plus className="h-4 w-4" />
             Add Submission

@@ -32,12 +32,7 @@ function RevealPageComponent() {
 
   // Auto-start reveal if requested OR if in preview mode (voting not closed)
   useEffect(() => {
-    if (
-      !revealState ||
-      !hackathon ||
-      revealSync.isStarting ||
-      revealState.phase !== 'idle'
-    ) {
+    if (!revealState || !hackathon || revealSync.isStarting || revealState.phase !== 'idle') {
       return;
     }
 
@@ -48,9 +43,9 @@ function RevealPageComponent() {
 
     // Auto-start if autostart is requested OR if voting is not closed (preview mode)
     const shouldAutoStart = search.autostart || !hackathon.votingClosedAt;
-    
+
     if (shouldAutoStart) {
-    void revealSync.startReveal();
+      void revealSync.startReveal();
     }
   }, [search.autostart, revealState, hackathon, revealSync]);
 

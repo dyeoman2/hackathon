@@ -19,4 +19,3 @@ export function HackathonTimeBadge({ submissionDeadline, className }: HackathonT
     </Badge>
   );
 }
-
