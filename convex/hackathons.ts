@@ -947,9 +947,7 @@ export const migrateRemoveRubric = mutation({
       return { message: 'No hackathons found.' };
     }
 
-    console.log(
-      `Found ${hackathons.length} hackathons. Removing rubric field...`,
-    );
+    console.log(`Found ${hackathons.length} hackathons. Removing rubric field...`);
 
     const now = Date.now();
     let updatedCount = 0;

@@ -29,7 +29,13 @@ export type GetSubmissionInternalRef = FunctionReference<
       readme?: string;
       readmeFilename?: string;
       readmeFetchedAt?: number;
-      processingState?: 'downloading' | 'uploading' | 'indexing' | 'generating' | 'complete' | 'error';
+      processingState?:
+        | 'downloading'
+        | 'uploading'
+        | 'indexing'
+        | 'generating'
+        | 'complete'
+        | 'error';
     };
     ai?: {
       summary?: string;
@@ -71,7 +77,13 @@ export type UpdateSubmissionSourceInternalRef = FunctionReference<
     readme?: string;
     readmeFilename?: string;
     readmeFetchedAt?: number;
-    processingState?: 'downloading' | 'uploading' | 'indexing' | 'generating' | 'complete' | 'error';
+    processingState?:
+      | 'downloading'
+      | 'uploading'
+      | 'indexing'
+      | 'generating'
+      | 'complete'
+      | 'error';
   },
   { success: boolean }
 >;

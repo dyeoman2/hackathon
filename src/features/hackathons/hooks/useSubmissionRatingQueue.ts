@@ -118,7 +118,7 @@ export function usePendingSubmissionRating(submissionId: SubmissionId) {
   );
 }
 
-export async function flushAllPendingSubmissionRatings() {
+async function flushAllPendingSubmissionRatings() {
   await Promise.all([...pendingRatings.keys()].map((submissionId) => ensureFlush(submissionId)));
 }
 
