@@ -5,10 +5,12 @@ import { useLayoutEffect, useRef, useState } from 'react';
 import { SiGithub } from 'react-icons/si';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { Alert, AlertDescription, AlertTitle } from '~/components/ui/alert';
 import { Button } from '~/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~/components/ui/card';
 import { Input } from '~/components/ui/input';
 import { ProcessingLoader } from '~/components/ui/processing-loader';
+import { useToast } from '~/components/ui/toast';
 
 interface SubmissionRepoChatProps {
   submission: Doc<'submissions'>;
@@ -23,8 +25,10 @@ interface Message {
 
 export function SubmissionRepoChat({ submission }: SubmissionRepoChatProps) {
   const processingState = submission.source?.processingState;
+  const aiSearchSyncCompletedAt = submission.source?.aiSearchSyncCompletedAt;
   const r2PathPrefix = submission.source?.r2Key;
   const streamAISearch = useAction(api.cloudflareAi.streamAISearchForRepoChat);
+  const retryProcessing = useAction(api.submissions.retrySubmissionProcessing);
 
   // Get GitHub repo base URL for file links
   const getGitHubRepoBase = () => {
@@ -282,7 +286,9 @@ export function SubmissionRepoChat({ submission }: SubmissionRepoChatProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentRequestId, setCurrentRequestId] = useState<string | null>(null);
+  const [isRetrying, setIsRetrying] = useState(false);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const toast = useToast();
 
   // Watch for streaming response updates
   const streamingResponse = useQuery(
@@ -389,8 +395,11 @@ export function SubmissionRepoChat({ submission }: SubmissionRepoChatProps) {
     }
   }, [streamingResponse, currentRequestId]);
 
-  // Show processing state if automatic processing is in progress (same logic as Scoring section)
-  const isProcessing = processingState && processingState !== 'complete';
+  // Show processing state if indexing is still in progress (until AI Search sync is completed)
+  const isProcessing = !aiSearchSyncCompletedAt && processingState !== 'error';
+
+  // Show error state if processing failed
+  const hasProcessingError = processingState === 'error';
 
   const getProcessingMessage = (state: string | undefined) => {
     switch (state) {
@@ -403,12 +412,7 @@ export function SubmissionRepoChat({ submission }: SubmissionRepoChatProps) {
         return {
           title: 'Indexing Repository',
           description:
-            'Indexing repository files in Cloudflare AI Search. This may take a five minutes...',
-        };
-      case 'generating':
-        return {
-          title: 'Generating Score',
-          description: 'Generating AI score from repository files...',
+            'Indexing repository files in Cloudflare AI Search. This may take up to five minutes...',
         };
       default:
         return {
@@ -418,10 +422,34 @@ export function SubmissionRepoChat({ submission }: SubmissionRepoChatProps) {
     }
   };
 
+  const getErrorMessage = () => ({
+    title: 'Repository Processing Failed',
+    description:
+      'Failed to download or process the repository. This could be due to access restrictions, network issues, or repository problems.',
+  });
+
   const createRequestId = () =>
     typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
       ? crypto.randomUUID()
       : `repo-chat-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+  const handleRetryProcessing = async () => {
+    setIsRetrying(true);
+    try {
+      await retryProcessing({
+        submissionId: submission._id,
+      });
+      toast.showToast('Repository processing restarted successfully', 'success');
+    } catch (error) {
+      console.error('Failed to retry processing:', error);
+      toast.showToast(
+        error instanceof Error ? error.message : 'Failed to retry processing',
+        'error',
+      );
+    } finally {
+      setIsRetrying(false);
+    }
+  };
 
   const handleSend = async () => {
     if (!input.trim() || isLoading || !r2PathPrefix) return;
@@ -475,6 +503,36 @@ export function SubmissionRepoChat({ submission }: SubmissionRepoChatProps) {
     }
   };
 
+  if (hasProcessingError) {
+    const errorMessage = getErrorMessage();
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Repo Chat</CardTitle>
+          <CardDescription>
+            AI-powered comprehensive analysis of the repository using Cloudflare AI Search
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Alert variant="warning">
+            <AlertTitle>{errorMessage.title}</AlertTitle>
+            <AlertDescription className="space-y-3">
+              <p>{errorMessage.description}</p>
+              <Button
+                onClick={handleRetryProcessing}
+                disabled={isRetrying}
+                size="sm"
+                className="mt-2"
+              >
+                {isRetrying ? 'Retrying...' : 'Retry Processing'}
+              </Button>
+            </AlertDescription>
+          </Alert>
+        </CardContent>
+      </Card>
+    );
+  }
+
   if (isProcessing) {
     return (
       <Card>
@@ -494,7 +552,7 @@ export function SubmissionRepoChat({ submission }: SubmissionRepoChatProps) {
     );
   }
 
-  if (processingState !== 'complete' || !r2PathPrefix) {
+  if (!aiSearchSyncCompletedAt || !r2PathPrefix) {
     return (
       <Card>
         <CardHeader>

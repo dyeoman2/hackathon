@@ -107,7 +107,6 @@ export const listByHackathon = query({
             return hasRating;
           case 'unrated':
             return !hasRating;
-          case 'all':
           default:
             return true;
         }
@@ -504,6 +503,73 @@ export const checkOwnerCredits = action({
 });
 
 /**
+ * Retry submission processing from the beginning
+ * Resets processing state and triggers the full processing workflow
+ */
+export const retrySubmissionProcessing = action({
+  args: {
+    submissionId: v.id('submissions'),
+  },
+  handler: async (ctx, args) => {
+    // Get submission and verify access through the internal query
+    const submission = await ctx.runQuery(internal.submissions.getSubmissionInternal, {
+      submissionId: args.submissionId,
+    });
+    if (!submission) {
+      throw new Error('Submission not found');
+    }
+
+    // Check membership - any active member can retry processing
+    const { role } = await ctx.runQuery(
+      submissionsInternalApi.submissions.getSubmissionCreationContext,
+      { hackathonId: submission.hackathonId },
+    );
+
+    // Only owners, admins, and judges can retry processing
+    if (!['owner', 'admin', 'judge'].includes(role)) {
+      throw new Error('Insufficient permissions to retry processing');
+    }
+
+    // Reset processing state to start fresh
+    await ctx.runMutation(internal.submissions.updateSubmissionSourceInternal, {
+      submissionId: args.submissionId,
+      processingState: 'downloading',
+      // Clear any previous processing timestamps to start fresh
+      uploadStartedAt: undefined,
+      uploadCompletedAt: undefined,
+      aiSearchSyncStartedAt: undefined,
+      aiSearchSyncCompletedAt: undefined,
+      aiSearchSyncJobId: undefined,
+      screenshotCaptureStartedAt: undefined,
+      screenshotCaptureCompletedAt: undefined,
+      readmeFetchedAt: undefined,
+      summaryGenerationStartedAt: undefined,
+      summaryGenerationCompletedAt: undefined,
+      // Clear any existing summary that might be from failed processing
+      aiSummary: undefined,
+      summarizedAt: undefined,
+    });
+
+    // Clear screenshots separately since they're not part of the source object
+    await ctx.runMutation(internal.submissions.clearScreenshots, {
+      submissionId: args.submissionId,
+    });
+
+    // Trigger the full processing workflow
+    try {
+      await ctx.scheduler.runAfter(0, internal.submissions.processSubmission, {
+        submissionId: args.submissionId,
+      });
+    } catch (error) {
+      console.error('Failed to schedule retry processing:', error);
+      throw new Error('Failed to retry processing. Please try again.');
+    }
+
+    return { success: true };
+  },
+});
+
+/**
  * Internal action to process submission
  * Called automatically when a submission is created and triggers the heavy Node action
  */
@@ -536,15 +602,19 @@ export const processSubmission = internalAction({
       // AI Search summary is only generated when user clicks "Full Summary" button
       // Early summary (README + screenshots) will be generated automatically when README/repo/screenshots are ready
       try {
-        // Use the internal action (no auth required for automated processes)
-        await ctx.runAction(
+        // Schedule repo processing asynchronously so it runs in parallel with README fetch and screenshots
+        await ctx.scheduler.runAfter(
+          0,
           internal.submissionsActions.repoProcessing.downloadAndUploadRepoInternal,
           {
             submissionId: args.submissionId,
           },
         );
       } catch (error) {
-        console.error(`Failed to download/upload repo for submission ${args.submissionId}:`, error);
+        console.error(
+          `Failed to schedule repo processing for submission ${args.submissionId}:`,
+          error,
+        );
         // Don't throw - submission creation should succeed even if repo processing fails
       }
 
@@ -925,6 +995,29 @@ export const addScreenshots = internalMutation({
     });
 
     return { success: true, added: args.screenshots.length };
+  },
+});
+
+/**
+ * Clear all screenshots from submission (internal mutation)
+ * Used when retrying processing to start fresh
+ */
+export const clearScreenshots = internalMutation({
+  args: {
+    submissionId: v.id('submissions'),
+  },
+  handler: async (ctx, args) => {
+    const submission = await ctx.db.get(args.submissionId);
+    if (!submission) {
+      throw new Error('Submission not found');
+    }
+
+    await ctx.db.patch(args.submissionId, {
+      screenshots: [],
+      updatedAt: Date.now(),
+    });
+
+    return { success: true };
   },
 });
 

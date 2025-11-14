@@ -15,6 +15,47 @@ import type {
   UpdateSubmissionSourceInternalRef,
 } from './types';
 
+type CloudflareFolderFilter = {
+  type: 'and';
+  filters: Array<{
+    type: 'gt' | 'gte' | 'lt' | 'lte' | 'eq';
+    key: string;
+    value: string;
+  }>;
+};
+
+function buildFolderFilter(
+  r2PathPrefix: string,
+  submissionId?: Id<'submissions'>,
+): CloudflareFolderFilter {
+  const normalizedPrefix = r2PathPrefix.replace(/\/$/, '');
+  const filters: CloudflareFolderFilter['filters'] = [
+    {
+      type: 'gt',
+      key: 'folder',
+      value: `${normalizedPrefix}/`,
+    },
+    {
+      type: 'lte',
+      key: 'folder',
+      value: `${normalizedPrefix}z`,
+    },
+  ];
+
+  if (submissionId) {
+    filters.push({
+      type: 'eq',
+      key: 'file.submissionid',
+      value: submissionId,
+    });
+  }
+
+  return {
+    type: 'and',
+    filters,
+  };
+}
+
 /**
  * Internal action to check if files are indexed in Cloudflare AI Search
  * Uses Convex scheduler to poll without blocking - reschedules itself if not ready
@@ -342,85 +383,155 @@ export const checkCloudflareIndexing = internalAction({
           try {
             // Correct endpoint format: /autorag/rags/{instance_name}/ai-search
             const testQueryUrl = `https://api.cloudflare.com/client/v4/accounts/${accountId}/autorag/rags/${aiSearchInstanceId}/ai-search`;
+            const folderFilter = buildFolderFilter(r2PathPrefix, args.submissionId);
+            type SearchDoc = {
+              filename?: string;
+              attributes?: { path?: string; folder?: string };
+              path?: string;
+            };
 
-            // First, try a query WITHOUT filters to see what paths are actually stored
-            // This helps diagnose if the filter format is wrong or paths are stored differently
-            // Include submission ID in query to help filter results
-            const submissionIdInQuery = args.submissionId;
-            const testResponseWithoutFilter = await fetch(testQueryUrl, {
+            console.log('[AI Search] Querying with folder-scoped filter first');
+            const filteredResponse = await fetch(testQueryUrl, {
               method: 'POST',
               headers: {
                 Authorization: `Bearer ${apiToken}`,
                 'Content-Type': 'application/json',
               },
               body: JSON.stringify({
-                query: `files in path ${r2PathPrefix} for submission ${submissionIdInQuery}`,
-                max_num_results: 50, // API limit is 50
+                query: `files in path ${r2PathPrefix} for submission ${args.submissionId}`,
+                max_num_results: 50,
+                filters: folderFilter,
               }),
             });
 
-            if (testResponseWithoutFilter.ok) {
-              const testDataNoFilter = await testResponseWithoutFilter.json();
-              const testDocsNoFilter = testDataNoFilter.data || testDataNoFilter.result?.data || [];
+            if (filteredResponse.ok) {
+              const filteredData = await filteredResponse.json();
+              const filteredDocs: SearchDoc[] = (filteredData.data ||
+                filteredData.result?.data ||
+                []) as SearchDoc[];
 
               console.log(
-                `[AI Search] Query response status: ${testResponseWithoutFilter.status}, total documents returned: ${testDocsNoFilter.length}`,
+                `[AI Search] Filtered query returned ${filteredDocs.length} documents for prefix ${r2PathPrefix}`,
               );
 
-              // Log sample paths for debugging - this helps identify if we're getting files from other submissions
-              if (testDocsNoFilter.length > 0) {
-                const samplePaths = testDocsNoFilter
-                  .slice(0, 10)
-                  .map(
-                    (d: { filename?: string; attributes?: { path?: string }; path?: string }) => {
-                      const docPath = d.attributes?.path || d.path || d.filename || 'Unknown';
-                      const matchesPrefix = docPath.startsWith(r2PathPrefix);
-                      return {
-                        path: docPath,
-                        matchesPrefix,
-                        submissionId: docPath.match(/repos\/([^/]+)\//)?.[1] || 'unknown',
-                        fullDoc: d,
-                      };
-                    },
-                  );
+              if (filteredDocs.length > 0) {
+                const filteredMatches = filteredDocs.filter((doc) => {
+                  const docPath = doc.attributes?.path || doc.path || doc.filename || '';
+                  return docPath.startsWith(r2PathPrefix);
+                });
+
+                const sampleFilteredPaths = filteredDocs.slice(0, 5).map((doc) => ({
+                  path: doc.attributes?.path || doc.path || doc.filename || 'Unknown',
+                  matchesPrefix: (
+                    doc.attributes?.path ||
+                    doc.path ||
+                    doc.filename ||
+                    ''
+                  ).startsWith(r2PathPrefix),
+                  submissionId:
+                    (doc.attributes?.path || doc.path || doc.filename || '').match(
+                      /repos\/([^/]+)\//,
+                    )?.[1] || 'unknown',
+                }));
                 console.log(
-                  `[AI Search] Sample paths from unfiltered query (${testDocsNoFilter.length} total docs):`,
-                  JSON.stringify(samplePaths, null, 2),
+                  `[AI Search] Sample filtered paths:`,
+                  JSON.stringify(sampleFilteredPaths, null, 2),
                 );
 
-                // Count how many are from this submission vs others
-                const fromThisSubmission = samplePaths.filter(
-                  (p: { matchesPrefix: boolean }) => p.matchesPrefix,
-                ).length;
-                const fromOtherSubmissions = samplePaths.filter(
-                  (p: { matchesPrefix: boolean }) => !p.matchesPrefix,
-                ).length;
-                console.log(
-                  `[AI Search] Path analysis: ${fromThisSubmission} from this submission, ${fromOtherSubmissions} from other submissions`,
-                );
-
-                if (fromOtherSubmissions > 0) {
-                  const otherSubmissionIds = Array.from(
-                    new Set(
-                      samplePaths
-                        .filter((p: { matchesPrefix: boolean }) => !p.matchesPrefix)
-                        .map((p: { submissionId: string }) => p.submissionId),
-                    ),
+                if (filteredMatches.length > 0) {
+                  console.log(
+                    `[AI Search] ✅ Filtered query confirmed ${filteredMatches.length} documents for this submission`,
                   );
+                  indexed = true;
+                } else {
                   console.warn(
-                    `[AI Search] ⚠️ WARNING: Query returned files from other submissions: ${otherSubmissionIds.join(', ')}`,
+                    `[AI Search] ⚠️ Filtered query returned ${filteredDocs.length} documents but none matched prefix ${r2PathPrefix}`,
                   );
                 }
+              } else {
+                console.log(
+                  '[AI Search] Filtered query returned 0 documents - running diagnostic query',
+                );
               }
+            } else {
+              const errorText = await filteredResponse.text();
+              console.error(
+                `[AI Search] Filtered query failed: ${filteredResponse.status} - ${errorText}`,
+              );
 
-              // Check if any documents match our path prefix
-              // CRITICAL: Filter client-side to ensure we only count documents from THIS submission
-              const matchingDocsNoFilter = testDocsNoFilter.filter(
-                (doc: { filename?: string; attributes?: { path?: string }; path?: string }) => {
+              if (
+                filteredResponse.status === 400 &&
+                (errorText.includes('Could not route') ||
+                  errorText.includes('No route for that URI'))
+              ) {
+                throw new Error(
+                  `AI Search instance routing error: The instance "${aiSearchInstanceId}" may not exist or the API endpoint is incorrect. Error: ${errorText}`,
+                );
+              }
+            }
+
+            if (!indexed) {
+              const submissionIdInQuery = args.submissionId;
+              const diagnosticResponse = await fetch(testQueryUrl, {
+                method: 'POST',
+                headers: {
+                  Authorization: `Bearer ${apiToken}`,
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  query: `files in path ${r2PathPrefix} for submission ${submissionIdInQuery}`,
+                  max_num_results: 50,
+                }),
+              });
+
+              if (diagnosticResponse.ok) {
+                const diagnosticData = await diagnosticResponse.json();
+                const diagnosticDocs: SearchDoc[] = (diagnosticData.data ||
+                  diagnosticData.result?.data ||
+                  []) as SearchDoc[];
+
+                console.log(
+                  `[AI Search] Diagnostic query returned ${diagnosticDocs.length} documents - inspecting paths`,
+                );
+
+                if (diagnosticDocs.length > 0) {
+                  const samplePaths = diagnosticDocs.slice(0, 10).map((doc) => {
+                    const docPath = doc.attributes?.path || doc.path || doc.filename || 'Unknown';
+                    const matchesPrefix = docPath.startsWith(r2PathPrefix);
+                    return {
+                      path: docPath,
+                      matchesPrefix,
+                      submissionId: docPath.match(/repos\/([^/]+)\//)?.[1] || 'unknown',
+                      fullDoc: doc,
+                    };
+                  });
+                  console.log(
+                    `[AI Search] Sample paths from diagnostic query:`,
+                    JSON.stringify(samplePaths, null, 2),
+                  );
+
+                  const matchingDocs = samplePaths.filter((p) => p.matchesPrefix).length;
+                  const otherDocs = samplePaths.filter((p) => !p.matchesPrefix).length;
+                  console.log(
+                    `[AI Search] Path analysis: ${matchingDocs} from this submission, ${otherDocs} from other submissions`,
+                  );
+
+                  if (otherDocs > 0) {
+                    const otherSubmissionIds = Array.from(
+                      new Set(
+                        samplePaths.filter((p) => !p.matchesPrefix).map((p) => p.submissionId),
+                      ),
+                    );
+                    console.warn(
+                      `[AI Search] ⚠️ Diagnostic query returned files from other submissions: ${otherSubmissionIds.join(', ')}`,
+                    );
+                  }
+                }
+
+                const matchingDocsNoFilter = diagnosticDocs.filter((doc) => {
                   const docPath = doc.attributes?.path || doc.path || doc.filename || '';
                   const matches = docPath.startsWith(r2PathPrefix);
                   if (!matches && docPath.includes('repos/')) {
-                    // Log when we see files from other submissions
                     const otherSubmissionId = docPath.match(/repos\/([^/]+)\//)?.[1];
                     if (otherSubmissionId && otherSubmissionId !== args.submissionId) {
                       console.warn(
@@ -429,158 +540,27 @@ export const checkCloudflareIndexing = internalAction({
                     }
                   }
                   return matches;
-                },
-              );
+                });
 
-              if (matchingDocsNoFilter.length > 0) {
-                console.log(
-                  `[AI Search] ✅ Found ${matchingDocsNoFilter.length} matching documents (out of ${testDocsNoFilter.length} total) for path prefix ${r2PathPrefix}`,
-                );
-                indexed = true;
-              } else if (testDocsNoFilter.length > 0) {
-                // Documents exist but none match - log for debugging
-                console.warn(
-                  `[AI Search] Query returned ${testDocsNoFilter.length} documents but none match path prefix ${r2PathPrefix}`,
-                );
-                console.warn(
-                  `  Sample paths:`,
-                  testDocsNoFilter
-                    .slice(0, 5)
-                    .map(
-                      (d: { filename?: string; attributes?: { path?: string }; path?: string }) =>
-                        d.attributes?.path || d.path || d.filename || 'Unknown',
-                    ),
-                );
-
-                // If enough time has passed, proceed anyway (files might be indexed but path format differs)
-                // Sync jobs can take up to 10 minutes, so wait at least 12 minutes before assuming completion
-                if (timeSinceUpload > 12 * 60 * 1000) {
-                  // 12 minutes (sync can take up to 10 minutes)
+                if (matchingDocsNoFilter.length > 0) {
                   console.log(
-                    `[AI Search] ✅ Files uploaded ${Math.round(timeSinceUpload / 1000)}s ago (${Math.round(timeSinceUpload / 60000)} minutes). Proceeding despite path mismatch - files may be indexed with different path format.`,
+                    `[AI Search] ✅ Diagnostic query found ${matchingDocsNoFilter.length} matching documents (out of ${diagnosticDocs.length} total) for path prefix ${r2PathPrefix}`,
                   );
                   indexed = true;
+                } else if (diagnosticDocs.length > 0) {
+                  console.warn(
+                    `[AI Search] Diagnostic query returned ${diagnosticDocs.length} documents but none match prefix ${r2PathPrefix}`,
+                  );
                 } else {
                   console.log(
-                    `[AI Search] ⏳ Path mismatch detected but not enough time passed (${Math.round(timeSinceUpload / 1000)}s < ${Math.round((12 * 60 * 1000) / 1000)}s) - waiting...`,
+                    '[AI Search] Diagnostic query returned 0 documents - indexing still warming up',
                   );
                 }
               } else {
-                console.log(
-                  `[AI Search] ⏳ Query returned 0 documents - indexing may still be in progress`,
-                );
-              }
-            } else {
-              const errorText = await testResponseWithoutFilter.text();
-              console.error(
-                `[AI Search] Unfiltered query failed: ${testResponseWithoutFilter.status} - ${errorText}`,
-              );
-            }
-
-            // Also try with filters (in case they work)
-            // According to Cloudflare API docs, filters can use different attribute keys
-            // Try multiple filter approaches to find what works
-            if (!indexed) {
-              // Try filter with 'path' key first
-              console.log(
-                `[AI Search] Trying filtered query with path filter: key='path', type='gte', value='${r2PathPrefix}'`,
-              );
-              const testResponse = await fetch(testQueryUrl, {
-                method: 'POST',
-                headers: {
-                  Authorization: `Bearer ${apiToken}`,
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                  query: `files in path ${r2PathPrefix} submission ${args.submissionId}`,
-                  max_num_results: 50,
-                  filters: {
-                    key: 'path',
-                    type: 'gte',
-                    value: r2PathPrefix,
-                  },
-                }),
-              });
-
-              if (testResponse.ok) {
-                const testData = await testResponse.json();
-                const testDocs = testData.data || testData.result?.data || [];
-
-                console.log(
-                  `[AI Search] Filtered query returned ${testDocs.length} documents. Checking paths...`,
-                );
-
-                // Log sample paths from filtered query to see if filter worked
-                if (testDocs.length > 0) {
-                  const sampleFilteredPaths = testDocs
-                    .slice(0, 5)
-                    .map(
-                      (d: { filename?: string; attributes?: { path?: string }; path?: string }) => {
-                        const docPath = d.attributes?.path || d.path || d.filename || 'Unknown';
-                        return {
-                          path: docPath,
-                          matchesPrefix: docPath.startsWith(r2PathPrefix),
-                          submissionId: docPath.match(/repos\/([^/]+)\//)?.[1] || 'unknown',
-                        };
-                      },
-                    );
-                  console.log(
-                    `[AI Search] Sample paths from filtered query:`,
-                    JSON.stringify(sampleFilteredPaths, null, 2),
-                  );
-                }
-
-                // CRITICAL: Filter client-side to ensure we only count documents from THIS submission
-                const matchingDocs = testDocs.filter(
-                  (doc: { filename?: string; attributes?: { path?: string }; path?: string }) => {
-                    const docPath = doc.attributes?.path || doc.path || doc.filename || '';
-                    const matches = docPath.startsWith(r2PathPrefix);
-                    if (!matches && docPath.includes('repos/')) {
-                      const otherSubmissionId = docPath.match(/repos\/([^/]+)\//)?.[1];
-                      if (otherSubmissionId && otherSubmissionId !== args.submissionId) {
-                        console.warn(
-                          `[AI Search] ⚠️ Filtered query returned file from different submission: ${docPath} (submission: ${otherSubmissionId}, expected: ${args.submissionId})`,
-                        );
-                      }
-                    }
-                    return matches;
-                  },
-                );
-
-                if (matchingDocs.length > 0) {
-                  console.log(
-                    `[AI Search] ✅ Found ${matchingDocs.length} matching documents with filtered query for path prefix ${r2PathPrefix} (out of ${testDocs.length} total returned)`,
-                  );
-                  indexed = true;
-                } else {
-                  console.log(
-                    `[AI Search] ⏳ Filtered query returned ${testDocs.length} documents but none match path prefix ${r2PathPrefix}`,
-                  );
-                  if (testDocs.length > 0) {
-                    console.warn(
-                      `[AI Search] ⚠️ Server-side filter did not work - all ${testDocs.length} documents are from other submissions`,
-                    );
-                  }
-                }
-              } else {
-                const errorText = await testResponse.text();
+                const errorText = await diagnosticResponse.text();
                 console.error(
-                  `[AI Search] Filtered query failed: ${testResponse.status} - ${errorText}`,
+                  `[AI Search] Diagnostic query failed: ${diagnosticResponse.status} - ${errorText}`,
                 );
-
-                // If it's a routing error, this is a configuration issue
-                if (
-                  testResponse.status === 400 &&
-                  (errorText.includes('Could not route') ||
-                    errorText.includes('No route for that URI'))
-                ) {
-                  console.error(
-                    `[AI Search] CRITICAL: API routing error - instance "${aiSearchInstanceId}" not found or endpoint incorrect`,
-                  );
-                  throw new Error(
-                    `AI Search instance routing error: The instance "${aiSearchInstanceId}" may not exist or the API endpoint is incorrect. Check CLOUDFLARE_AI_SEARCH_INSTANCE_ID. Error: ${errorText}`,
-                  );
-                }
               }
             }
           } catch (error) {
@@ -698,303 +678,6 @@ export const checkCloudflareIndexing = internalAction({
 });
 
 /**
- * Generate repository summary using Cloudflare AI Search (direct R2 indexing)
- * Files are already uploaded to R2 and indexed by AI Search automatically.
- * Uses the /ai-search endpoint which automatically generates AI-powered summaries
- * using LLM models (e.g., Llama 3.3) based on the indexed repository files.
- * This is called by checkCloudflareIndexing once indexing is confirmed ready.
- * @deprecated This function is no longer used - summary generation is handled by generateSummary
- */
-async function _generateSummaryOnceReady(
-  ctx: ActionCtx,
-  _submissionId: Id<'submissions'>,
-  r2PathPrefix: string,
-  aiSearchInstanceId: string,
-  accountId: string,
-  apiToken: string,
-  submissionTitle: string,
-): Promise<string> {
-  // Correct endpoint format: /autorag/rags/{instance_name}/ai-search
-  const queryUrl = `https://api.cloudflare.com/client/v4/accounts/${accountId}/autorag/rags/${aiSearchInstanceId}/ai-search`;
-
-  const configurationSummary = (details: string) =>
-    `# Repository Summary: ${submissionTitle}\n\nAI Search configuration issue detected. ${details}\n\nVerify the following:\n- Cloudflare Account ID (${accountId}) is correct\n- AI Search instance name (${aiSearchInstanceId}) exists and is deployed\n- The API token has **AI Search > Edit** permissions\n- The instance is in the same account as the credentials.\n`;
-
-  // Get submission details to include in query for better context
-  const submission = await ctx.runQuery(
-    (internal.submissions as unknown as { getSubmissionInternal: GetSubmissionInternalRef })
-      .getSubmissionInternal,
-    {
-      submissionId: _submissionId,
-    },
-  );
-
-  const repoUrl = submission?.repoUrl || 'unknown repository';
-  const repoName = repoUrl.match(/github\.com[:/]+([^/]+)\/([^/#?]+)/i)?.[2] || 'unknown';
-
-  // Include the path prefix and repo URL in the query to ensure AI focuses on this specific submission's files
-  // The path prefix format is: repos/{submissionId}/files/
-  const summaryQuery = `Provide a comprehensive summary of the GitHub repository "${repoName}" (${repoUrl}). 
-
-CRITICAL: Only analyze files that are stored in the R2 path "${r2PathPrefix}". This submission's files are located at this exact path prefix. Do NOT analyze any other files or repositories, even if they appear in the search results.
-
-Focus on:
-1. What the project does
-2. Key technologies and frameworks used
-3. Main features and functionality
-4. Project structure overview
-5. Notable patterns or architectural decisions
-
-IMPORTANT: If you see files from other repositories (like "hackathon" or any other repo), ignore them completely. Only analyze files from the path "${r2PathPrefix}".
-
-Keep it concise but informative (500-1000 words).`;
-
-  // Query the AI Search endpoint to generate summary
-  // Use server-side filters to only query documents from this submission's folder
-  // API docs: https://developers.cloudflare.com/api/resources/autorag/
-  // Filters format: { key: "path", type: "gte", value: "path/prefix/" }
-  let queryResponse: Response;
-  try {
-    queryResponse = await fetch(queryUrl, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        query: summaryQuery,
-        model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast', // Optional: specify model for generation
-        max_num_results: 50,
-        rewrite_query: false, // Don't rewrite query
-        filters: {
-          key: 'path', // Filter by path attribute
-          type: 'gte', // Greater than or equal (matches paths starting with prefix)
-          value: r2PathPrefix, // Only include documents from this submission's folder
-        },
-      }),
-    });
-  } catch (error) {
-    console.error(`[AI Search] Query failed with error:`, error);
-    throw new Error(
-      `Failed to query AI Search: ${error instanceof Error ? error.message : 'Unknown error'}`,
-    );
-  }
-
-  if (!queryResponse.ok) {
-    const errorText = await queryResponse.text();
-
-    if (
-      queryResponse.status === 400 &&
-      (errorText.includes('Could not route') || errorText.includes('No route for that URI'))
-    ) {
-      const detailedError = `[AI Search] API Routing Error (400):
-      Endpoint: ${queryUrl}
-      Instance ID: ${aiSearchInstanceId}
-      Account ID: ${accountId}
-      Error: ${errorText}
-      
-      This typically means:
-      1. The AI Search instance name "${aiSearchInstanceId}" is incorrect
-      2. The instance doesn't exist in this account
-      3. The API endpoint format has changed
-      
-      Verify in Cloudflare Dashboard:
-      - Go to AI > Search
-      - Check the exact instance name
-      - Ensure it matches CLOUDFLARE_AI_SEARCH_INSTANCE_ID exactly`;
-
-      console.error(detailedError);
-      return configurationSummary(
-        `Cloudflare returned "Could not route" error (400). The AI Search instance name "${aiSearchInstanceId}" may be incorrect. Check your CLOUDFLARE_AI_SEARCH_INSTANCE_ID environment variable matches the instance name exactly. Error details: ${errorText}`,
-      );
-    }
-
-    // If filtering fails, try alternative filter formats or without filter as fallback
-    if (queryResponse.status === 400) {
-      // Try alternative filter format: using "attributes.path" instead of "path"
-      let retryResponse: Response;
-      try {
-        retryResponse = await fetch(queryUrl, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${apiToken}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            query: summaryQuery,
-            model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
-            max_num_results: 50,
-            rewrite_query: false,
-            filters: {
-              key: 'attributes.path', // Try attributes.path if path doesn't work
-              type: 'gte',
-              value: r2PathPrefix,
-            },
-          }),
-        });
-      } catch {
-        // If that fails, try without filter as last resort (fallback to client-side filtering)
-        retryResponse = await fetch(queryUrl, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${apiToken}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            query: summaryQuery,
-            model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
-            max_num_results: 50,
-            rewrite_query: false,
-            // No filters - fallback to client-side filtering
-          }),
-        });
-      }
-
-      if (!retryResponse.ok) {
-        const retryErrorText = await retryResponse.text();
-
-        if (
-          retryResponse.status === 400 &&
-          (retryErrorText.includes('Could not route') ||
-            retryErrorText.includes('No route for that URI'))
-        ) {
-          return configurationSummary(
-            'Cloudflare returned "No route" for the AI Search endpoint when retrying without filters. Double-check the instance slug and account ID.',
-          );
-        }
-
-        throw new Error(`AI Search query error: ${retryResponse.statusText} - ${retryErrorText}`);
-      }
-
-      const retryData = await retryResponse.json();
-      // The /ai-search endpoint returns a 'response' field with the generated summary
-      const generatedSummary = retryData.response || retryData.result?.response;
-      const documents = retryData.data || retryData.result?.data || [];
-
-      // Filter documents by path prefix
-      const relevantDocs = documents.filter(
-        (doc: { filename?: string; attributes?: { path?: string } }) => {
-          const docPath = doc.attributes?.path || doc.filename || '';
-          return docPath.startsWith(r2PathPrefix);
-        },
-      );
-
-      // CRITICAL: If no documents match after retry, the summary is based on WRONG files
-      // DO NOT return the summary - it's analyzing the wrong repository
-      if (documents.length > 0 && relevantDocs.length === 0) {
-        const errorMsg = `[AI Search] CRITICAL: Retry succeeded but NO documents match path prefix!
-        Path prefix: ${r2PathPrefix}
-        Total documents: ${documents.length}
-        Matching documents: 0
-        Sample paths: ${documents
-          .slice(0, 10)
-          .map(
-            (d: { filename?: string; attributes?: { path?: string } }) =>
-              d.attributes?.path || d.filename || 'Unknown',
-          )
-          .join(', ')}`;
-
-        console.error(errorMsg);
-        console.error('[AI Search] REJECTING summary - it is based on wrong files');
-
-        // Return error - DO NOT use the generatedSummary
-        return `# Repository Summary: ${submissionTitle}\n\n❌ **Error**: Unable to generate accurate summary.\n\n**Problem**: Path filtering is not working. The query returned ${documents.length} documents, but **NONE** match the expected path prefix for this submission.\n\n**Expected path prefix**: \`${r2PathPrefix}\`\n**Repository URL**: ${repoUrl}\n\n**Sample paths returned** (from other repositories):\n${documents
-          .slice(0, 10)
-          .map(
-            (d: { filename?: string; attributes?: { path?: string } }, idx: number) =>
-              `${idx + 1}. ${d.attributes?.path || d.filename || 'Unknown'}`,
-          )
-          .join(
-            '\n',
-          )}\n\n**This means**: The AI summary is being generated from files in OTHER repositories, not from this submission.\n\n**Solution**: Cloudflare AI Search path filtering is not working correctly. Check Convex logs for details.`;
-      }
-
-      const summary = generatedSummary
-        ? `# Repository Summary: ${submissionTitle}\n\n${generatedSummary}`
-        : `Repository summary for ${submissionTitle}. Analyzed ${relevantDocs.length} files.`;
-
-      return summary;
-    } else {
-      throw new Error(`AI Search query error: ${queryResponse.statusText} - ${errorText}`);
-    }
-  }
-
-  const queryData = await queryResponse.json();
-
-  // The /ai-search endpoint returns a 'response' field with the AI-generated summary
-  // Format: { response: "generated summary", data: [...documents], search_query: "..." }
-  const generatedSummary = queryData.response || queryData.result?.response;
-  const documents = queryData.data || queryData.result?.data || [];
-
-  // CRITICAL: Validate documents FIRST before using the AI-generated summary
-  // The AI summary is generated based on ALL documents returned, so if filtering failed,
-  // the summary will be about the wrong repository
-  const relevantDocs = documents.filter(
-    (doc: { filename?: string; attributes?: { path?: string }; path?: string }) => {
-      // Try multiple possible path locations
-      const docPath = doc.attributes?.path || doc.path || doc.filename || '';
-
-      // Check if path starts with our prefix (full R2 key)
-      if (docPath.startsWith(r2PathPrefix)) {
-        return true;
-      }
-
-      return false;
-    },
-  );
-
-  // CRITICAL CHECK: If we have documents but NONE match the path prefix,
-  // the AI-generated summary is based on WRONG files - DO NOT USE IT
-  if (documents.length > 0 && relevantDocs.length === 0) {
-    const errorMessage = `[AI Search] CRITICAL ERROR: Path filtering failed!
-    Expected prefix: ${r2PathPrefix}
-    Got ${documents.length} documents, but NONE match the prefix.
-    This means the AI summary is analyzing the WRONG repository.
-    Sample paths: ${documents
-      .slice(0, 10)
-      .map(
-        (d: { filename?: string; attributes?: { path?: string }; path?: string }) =>
-          d.attributes?.path || d.path || d.filename || 'Unknown',
-      )
-      .join(', ')}`;
-
-    console.error(errorMessage);
-    console.error('[AI Search] REJECTING AI-generated summary - it is based on wrong files');
-
-    // Return an error - DO NOT use the generatedSummary
-    return `# Repository Summary: ${submissionTitle}\n\n❌ **Error**: Unable to generate accurate summary.\n\n**Problem**: Cloudflare AI Search path filtering is not working. The system retrieved ${documents.length} documents, but **NONE** match the expected path prefix for this submission.\n\n**Expected path prefix**: \`${r2PathPrefix}\`\n**Repository URL**: ${repoUrl}\n\n**Sample paths returned** (these are from OTHER repositories, not this submission):\n${documents
-      .slice(0, 10)
-      .map(
-        (d: { filename?: string; attributes?: { path?: string }; path?: string }, idx: number) =>
-          `${idx + 1}. ${d.attributes?.path || d.path || d.filename || 'Unknown'}`,
-      )
-      .join(
-        '\n',
-      )}\n\n**This means**: The AI summary you might have seen was generated from files in OTHER repositories (possibly the hackathon app itself), not from the submission repository.\n\n**Next Steps**:\n1. Check Convex logs for detailed debugging information\n2. Verify Cloudflare AI Search path filtering is working\n3. Check if files are indexed with correct path prefixes\n4. Consider using the diagnostic function: \`diagnoseAISearchPaths\``;
-  }
-
-  // If we have NO documents at all, files might not be indexed yet
-  if (documents.length === 0) {
-    return `# Repository Summary: ${submissionTitle}\n\nFiles are still being indexed by Cloudflare AI Search. Please try again in a few moments.`;
-  }
-
-  const summary = generatedSummary
-    ? `# Repository Summary: ${submissionTitle}\n\n${generatedSummary}`
-    : `# Repository Summary: ${submissionTitle}\n\n` +
-      `Analyzed ${relevantDocs.length} files from this repository. ` +
-      `Key files: ${relevantDocs
-        .slice(0, 5)
-        .map((d: { filename?: string; attributes?: { path?: string }; path?: string }) => {
-          const path = d.attributes?.path || d.path || d.filename || 'Unknown';
-          // Remove the path prefix for cleaner display
-          return path.startsWith(r2PathPrefix) ? path.slice(r2PathPrefix.length) : path;
-        })
-        .join(', ')}.`;
-
-  return summary;
-}
-
-/**
  * Diagnostic action to check what paths AI Search is returning for a submission
  * This helps debug path filtering issues
  */
@@ -1062,11 +745,7 @@ export const diagnoseAISearchPaths = internalAction({
       body: JSON.stringify({
         query: `files in ${r2PathPrefix}`,
         max_num_results: 10,
-        filters: {
-          key: 'path', // Filter by path attribute per API docs
-          type: 'gte', // Greater than or equal (matches paths starting with prefix)
-          value: r2PathPrefix, // Only include documents from this submission's folder
-        },
+        filters: buildFolderFilter(r2PathPrefix, args.submissionId),
       }),
     });
 
@@ -1384,63 +1063,6 @@ async function generateSummaryWithAI(
       return `Unable to generate summary due to error: ${errorMessage}. The full repository summary will be available once Cloudflare AI Search finishes indexing the repository files.\n\n**Main Features and Functionality:**\n\nInformation not available.\n\n**Key Technologies and Frameworks:**\n\nInformation not available.`;
     }
   }
-}
-
-/**
- * Helper function to check if summary should be generated based on submission state
- * - If siteUrl exists: requires both README and screenshots
- * - If no siteUrl: requires only README
- */
-async function shouldGenerateSummary(
-  ctx: ActionCtx,
-  submissionId: Id<'submissions'>,
-): Promise<{ shouldGenerate: boolean; reason?: string }> {
-  const submission = await ctx.runQuery(
-    (internal.submissions as unknown as { getSubmissionInternal: GetSubmissionInternalRef })
-      .getSubmissionInternal,
-    {
-      submissionId,
-    },
-  );
-
-  if (!submission) {
-    return { shouldGenerate: false, reason: 'Submission not found' };
-  }
-
-  // If summary already exists, don't generate
-  if (submission.source?.aiSummary) {
-    return { shouldGenerate: false, reason: 'Summary already exists' };
-  }
-
-  const hasReadme = !!submission.source?.readme;
-  const hasScreenshots = (submission.screenshots?.length ?? 0) > 0;
-  const hasSiteUrl = !!submission.siteUrl?.trim();
-
-  // If submission has siteUrl, need both README and screenshots
-  if (hasSiteUrl) {
-    if (hasReadme && hasScreenshots) {
-      return { shouldGenerate: true };
-    }
-    if (!hasReadme && !hasScreenshots) {
-      return { shouldGenerate: false, reason: 'Waiting for README and screenshots' };
-    }
-    if (!hasReadme) {
-      return { shouldGenerate: false, reason: 'Waiting for README' };
-    }
-    if (!hasScreenshots) {
-      return { shouldGenerate: false, reason: 'Waiting for screenshots' };
-    }
-  }
-
-  // If no siteUrl, only need README
-  if (!hasSiteUrl) {
-    if (hasReadme) {
-      return { shouldGenerate: true };
-    }
-    return { shouldGenerate: false, reason: 'Waiting for README' };
-  }
-
-  return { shouldGenerate: false, reason: 'Unknown state' };
 }
 
 /**

@@ -943,7 +943,7 @@ export const captureScreenshotInternal = internalAction({
           error.name === 'FirecrawlSdkError')
       ) {
         console.error('Screenshot capture timed out:', error);
-        
+
         // Screenshot capture timed out - if README exists, generate summary with just README
         try {
           const submission = await ctx.runQuery(

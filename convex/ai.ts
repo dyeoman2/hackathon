@@ -2,13 +2,7 @@ import { v } from 'convex/values';
 import { getAutumnCreditFeatureId } from '../src/lib/server/env.server';
 import { assertUserId } from '../src/lib/shared/user-id';
 import { internal } from './_generated/api';
-import {
-  type ActionCtx,
-  action,
-  internalMutation,
-  internalQuery,
-  query,
-} from './_generated/server';
+import { type ActionCtx, internalMutation, internalQuery, query } from './_generated/server';
 import { authComponent } from './auth';
 import { guarded } from './authz/guardFactory';
 import { AUTUMN_NOT_CONFIGURED_ERROR, autumn, isAutumnConfigured } from './autumn';
@@ -88,29 +82,6 @@ type ReleaseAiMessageResult =
       freeLimit: number;
       usage: UsageSnapshot;
       reason: 'no_pending_reservation' | 'reservation_failed';
-    };
-
-type AiUsageStatusResult =
-  | {
-      authenticated: false;
-    }
-  | {
-      authenticated: true;
-      usage: {
-        messagesUsed: number;
-        pendingMessages: number;
-        freeMessagesRemaining: number;
-        freeLimit: number;
-        lastReservedAt: number | null;
-        lastCompletedAt: number | null;
-      };
-      subscription: {
-        status: 'unknown' | 'needs_upgrade' | 'subscribed' | 'not_configured';
-        configured: boolean;
-        lastCheckError: { message: string; code: string } | null;
-        creditBalance: number | null;
-        isUnlimited: boolean;
-      };
     };
 
 /**
@@ -607,95 +578,6 @@ export const releaseAiMessage = guarded.action(
       released: true,
       freeLimit: FREE_MESSAGE_LIMIT,
       usage: releaseResult.usage,
-    };
-  },
-);
-
-export const getAiUsageStatus = action({
-  args: {},
-  handler: async (ctx: ActionCtx): Promise<AiUsageStatusResult> => {
-    const authUser = await authComponent.getAuthUser(ctx);
-    if (!authUser) {
-      return {
-        authenticated: false as const,
-      };
-    }
-
-    const userId = assertUserId(authUser, 'Unable to resolve user id.');
-    const usageDoc = await ctx.runQuery(internal.ai.getUsageRecord, { userId });
-
-    const messagesUsed = usageDoc?.messagesUsed ?? 0;
-    const pendingMessages = usageDoc?.pendingMessages ?? 0;
-    const freeLimit = FREE_MESSAGE_LIMIT;
-    const metrics = calculateUsageMetrics(messagesUsed, pendingMessages, freeLimit);
-    const freeMessagesRemaining = metrics.freeMessagesRemaining;
-
-    const autumnSecretConfigured = (process.env.AUTUMN_SECRET_KEY ?? '').length > 0;
-
-    let subscriptionStatus: 'unknown' | 'needs_upgrade' | 'subscribed' | 'not_configured' =
-      autumnSecretConfigured ? 'unknown' : 'not_configured';
-    let lastCheckError: { message: string; code: string } | null = null;
-    let creditBalance: number | null = null;
-    let isUnlimited = false;
-
-    // Check Autumn subscription status to detect purchased credits
-    // This allows us to show paid credits even when free tier hasn't been exhausted yet
-    if (autumnSecretConfigured) {
-      const checkResult = await autumn.check(ctx, {
-        featureId: getAutumnCreditFeatureId(),
-      });
-
-      if (checkResult.error) {
-        // Only mark as needs_upgrade if free tier is exhausted
-        // Otherwise, user still has free messages available
-        if (metrics.isFreeTierExhausted) {
-          subscriptionStatus = 'needs_upgrade';
-          lastCheckError = checkResult.error;
-        }
-      } else if (checkResult.data?.allowed) {
-        // User has purchased credits (unlimited or prepaid)
-        // Autumn is the source of truth for credit balance
-        isUnlimited = checkResult.data.unlimited ?? false;
-        creditBalance = checkResult.data.balance ?? null;
-        subscriptionStatus = 'subscribed';
-      } else if (metrics.isFreeTierExhausted) {
-        // Free tier exhausted and no Autumn access
-        subscriptionStatus = 'needs_upgrade';
-      }
-    }
-
-    return {
-      authenticated: true as const,
-      usage: {
-        messagesUsed,
-        pendingMessages,
-        freeMessagesRemaining,
-        freeLimit,
-        lastReservedAt: usageDoc?.lastReservedAt ?? null,
-        lastCompletedAt: usageDoc?.lastCompletedAt ?? null,
-      },
-      subscription: {
-        status: subscriptionStatus,
-        configured: autumnSecretConfigured,
-        lastCheckError,
-        creditBalance,
-        isUnlimited,
-      },
-    };
-  },
-});
-
-export const aiUsageConstants = guarded.action(
-  'util.firstUserCheck', // Public capability - constants don't need auth
-  {},
-  async (
-    _ctx: ActionCtx,
-    _args,
-    _role,
-  ): Promise<{ freeMessageLimit: number; featureId: string }> => {
-    return {
-      freeMessageLimit: FREE_MESSAGE_LIMIT,
-      featureId: getAutumnCreditFeatureId(),
     };
   },
 );

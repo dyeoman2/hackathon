@@ -5,6 +5,7 @@ import { FileText, Loader2, MoreVertical, Zap } from 'lucide-react';
 import { useCallback, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { Alert, AlertDescription, AlertTitle } from '~/components/ui/alert';
 import { Button } from '~/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~/components/ui/card';
 import {
@@ -33,9 +34,15 @@ function getEarlyProcessingStage(submission: Doc<'submissions'>): EarlyProcessin
   const processingState = submission.source?.processingState;
   const hasSummary = !!source?.aiSummary;
   const isAISearchComplete = processingState === 'complete';
+  const hasProcessingError = processingState === 'error';
 
   // If summary already exists, no need to show loading
   if (hasSummary) {
+    return null;
+  }
+
+  // If processing failed, don't show any early processing stages
+  if (hasProcessingError) {
     return null;
   }
 
@@ -146,6 +153,15 @@ export function SubmissionRepositorySummary({
       return null; // Summary exists or still processing
     }
 
+    // Check if processing failed completely
+    if (processingState === 'error') {
+      return {
+        title: 'Repository Processing Failed',
+        description:
+          'Failed to download or process the repository. This could be due to access restrictions, network issues, or repository problems. No summary could be generated.',
+      };
+    }
+
     // README fetch completed but found nothing
     const readmeFetchFailed = readmeFetched && !hasReadme;
     // Screenshot capture started but failed (no completion timestamp or no screenshots)
@@ -204,9 +220,11 @@ export function SubmissionRepositorySummary({
   const noSummaryReason = getNoSummaryReason();
   const [isGeneratingQuick, setIsGeneratingQuick] = useState(false);
   const [isGeneratingFull, setIsGeneratingFull] = useState(false);
+  const [isRetrying, setIsRetrying] = useState(false);
   const toast = useToast();
   const generateQuickSummary = useAction(api.submissionsActions.aiSummary.generateSummaryPublic);
   const generateFullSummary = useAction(api.submissionsActions.aiSummary.generateRepoSummary);
+  const retryProcessing = useAction(api.submissions.retrySubmissionProcessing);
 
   const handleGenerateQuickSummary = useCallback(async () => {
     setIsGeneratingQuick(true);
@@ -251,6 +269,24 @@ export function SubmissionRepositorySummary({
       setIsGeneratingFull(false);
     }
   }, [submission._id, generateFullSummary, toast]);
+
+  const handleRetryProcessing = useCallback(async () => {
+    setIsRetrying(true);
+    try {
+      await retryProcessing({
+        submissionId: submission._id,
+      });
+      toast.showToast('Repository processing restarted successfully', 'success');
+    } catch (error) {
+      console.error('Failed to retry processing:', error);
+      toast.showToast(
+        error instanceof Error ? error.message : 'Failed to retry processing',
+        'error',
+      );
+    } finally {
+      setIsRetrying(false);
+    }
+  }, [submission._id, retryProcessing, toast]);
 
   return (
     <Card>
@@ -329,10 +365,22 @@ export function SubmissionRepositorySummary({
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{summary}</ReactMarkdown>
           </div>
         ) : noSummaryReason ? (
-          <div className="space-y-2">
-            <p className="text-sm font-medium text-foreground">{noSummaryReason.title}</p>
-            <p className="text-sm text-muted-foreground">{noSummaryReason.description}</p>
-          </div>
+          <Alert variant="warning">
+            <AlertTitle>{noSummaryReason.title}</AlertTitle>
+            <AlertDescription className="space-y-3">
+              <p>{noSummaryReason.description}</p>
+              {processingState === 'error' && (
+                <Button
+                  onClick={handleRetryProcessing}
+                  disabled={isRetrying}
+                  size="sm"
+                  className="mt-2"
+                >
+                  {isRetrying ? 'Retrying...' : 'Retry Processing'}
+                </Button>
+              )}
+            </AlertDescription>
+          </Alert>
         ) : isAISearchComplete ? (
           <p className="text-sm text-muted-foreground">
             The comprehensive AI Search summary is now available in the Repo Chat card below.

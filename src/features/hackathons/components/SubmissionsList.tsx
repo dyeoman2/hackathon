@@ -128,26 +128,30 @@ export function SubmissionsList({ hackathonId }: SubmissionsListProps) {
         <div className="flex flex-col gap-2">
           <div className="flex items-center gap-3">
             <h2 className="text-2xl font-semibold">Submissions</h2>
-            {(hackathon?.role === 'judge' || hackathon?.role === 'owner' || hackathon?.role === 'admin') && ratingStats.total > 0 && ratingStats.unrated > 0 && (
-              <Button
-                variant={showOnlyUnrated ? 'secondary' : 'outline'}
-                size="sm"
-                onClick={() => setShowOnlyUnrated(!showOnlyUnrated)}
-                className="gap-2"
-              >
-                {showOnlyUnrated ? (
-                  <>
-                    <EyeOff className="h-4 w-4" />
-                    Show All ({ratingStats.total})
-                  </>
-                ) : (
-                  <>
-                    <Eye className="h-4 w-4" />
-                    Show Unrated ({ratingStats.unrated})
-                  </>
-                )}
-              </Button>
-            )}
+            {(hackathon?.role === 'judge' ||
+              hackathon?.role === 'owner' ||
+              hackathon?.role === 'admin') &&
+              ratingStats.total > 0 &&
+              ratingStats.unrated > 0 && (
+                <Button
+                  variant={showOnlyUnrated ? 'secondary' : 'outline'}
+                  size="sm"
+                  onClick={() => setShowOnlyUnrated(!showOnlyUnrated)}
+                  className="gap-2"
+                >
+                  {showOnlyUnrated ? (
+                    <>
+                      <EyeOff className="h-4 w-4" />
+                      Show All ({ratingStats.total})
+                    </>
+                  ) : (
+                    <>
+                      <Eye className="h-4 w-4" />
+                      Show Unrated ({ratingStats.unrated})
+                    </>
+                  )}
+                </Button>
+              )}
           </div>
         </div>
         <Button

@@ -320,9 +320,20 @@ export async function downloadAndUploadRepoHelper(
           `Repository not found: https://github.com/${owner}/${repoName}. Please check that the repository exists and is accessible.`,
         );
       } else if (repoInfoResponse.status === 403) {
-        throw new Error(
-          `Access denied to repository: https://github.com/${owner}/${repoName}. The repository may be private and require a GitHub token.`,
-        );
+        // 403 can mean rate limiting (when no auth) or actual access denied
+        const isRateLimited =
+          errorText.includes('rate limit') ||
+          errorText.includes('API rate limit') ||
+          errorText.includes('secondary rate limit');
+        if (isRateLimited) {
+          throw new Error(
+            `GitHub API rate limit exceeded when fetching repository info for ${owner}/${repoName}. Please try again later or configure a GitHub token for higher rate limits.`,
+          );
+        } else {
+          throw new Error(
+            `Access denied to repository: https://github.com/${owner}/${repoName}. The repository may be private and require a GitHub token.`,
+          );
+        }
       } else if (repoInfoResponse.status === 401) {
         throw new Error(
           `Authentication failed for repository: https://github.com/${owner}/${repoName}. The GitHub token may be invalid or expired.`,

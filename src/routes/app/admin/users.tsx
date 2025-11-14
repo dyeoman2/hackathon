@@ -4,14 +4,6 @@ import { AdminErrorBoundary } from '~/components/RouteErrorBoundaries';
 import { UserManagement } from '~/features/admin/components/UserManagement';
 import { USER_ROLES } from '~/features/auth/types';
 
-function _UserTableSkeleton() {
-  return (
-    <div className="mt-8">
-      <div className="animate-pulse bg-gray-100 rounded-lg h-96" />
-    </div>
-  );
-}
-
 const usersSearchSchema = z.object({
   page: z.number().default(1),
   pageSize: z.number().default(10),

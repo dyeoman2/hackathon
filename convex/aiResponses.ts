@@ -1,7 +1,7 @@
 import { v } from 'convex/values';
 import { assertUserId } from '../src/lib/shared/user-id';
 import type { Doc } from './_generated/dataModel';
-import { internalMutation, mutation, query } from './_generated/server';
+import { internalMutation, query } from './_generated/server';
 import { authComponent } from './auth';
 
 const usageShape = v.object({
@@ -168,24 +168,6 @@ export const markError = internalMutation({
   },
 });
 
-export const listUserResponses = query({
-  args: {},
-  handler: async (ctx) => {
-    const authUser = await authComponent.getAuthUser(ctx);
-    if (!authUser) {
-      return [];
-    }
-
-    const userId = assertUserId(authUser, 'Unable to resolve user id.');
-
-    return ctx.db
-      .query('aiResponses')
-      .withIndex('by_userId_createdAt', (q) => q.eq('userId', userId))
-      .order('desc')
-      .take(20);
-  },
-});
-
 export const getResponseByRequestKey = query({
   args: {
     requestKey: v.string(),
@@ -209,26 +191,5 @@ export const getResponseByRequestKey = query({
     }
 
     return null;
-  },
-});
-
-export const deleteAllUserResponses = mutation({
-  args: {},
-  handler: async (ctx) => {
-    const authUser = await authComponent.getAuthUser(ctx);
-    if (!authUser) {
-      throw new Error('Unauthorized');
-    }
-
-    const userId = assertUserId(authUser, 'Unable to resolve user id.');
-
-    const responses = await ctx.db
-      .query('aiResponses')
-      .withIndex('by_userId_createdAt', (q) => q.eq('userId', userId))
-      .collect();
-
-    await Promise.all(responses.map((response) => ctx.db.delete(response._id)));
-
-    return { deletedCount: responses.length };
   },
 });
