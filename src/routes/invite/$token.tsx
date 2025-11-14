@@ -2,7 +2,7 @@ import { api } from '@convex/_generated/api';
 import { createFileRoute, useRouter } from '@tanstack/react-router';
 import { useMutation, useQuery } from 'convex/react';
 import { AlertCircle, CheckCircle2 } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, AlertDescription } from '~/components/ui/alert';
 import { Button } from '~/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~/components/ui/card';
@@ -37,6 +37,28 @@ function InviteAcceptComponent() {
   const acceptInvite = useMutation(api.hackathons.acceptInvite);
   const [isAccepting, setIsAccepting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Auto-accept invite when user becomes authenticated
+  useEffect(() => {
+    if (isAuthenticated && !isAccepting && tokenValidation && tokenValidation.status === 'valid') {
+      // Auto-accept the invite
+      setIsAccepting(true);
+      setError(null);
+
+      acceptInvite({ token: decodedToken })
+        .then((result) => {
+          // Redirect to hackathon workspace
+          router.navigate({
+            to: '/app/h/$id',
+            params: { id: result.hackathonId },
+          });
+        })
+        .catch((err) => {
+          setError(err instanceof Error ? err.message : 'Failed to accept invite');
+          setIsAccepting(false);
+        });
+    }
+  }, [isAuthenticated, tokenValidation, isAccepting, decodedToken, acceptInvite, router]);
 
   const handleAccept = async () => {
     if (isAuthenticated) {
@@ -174,6 +196,28 @@ function InviteAcceptComponent() {
   }
 
   // Valid invite - show different UI based on authentication status
+  // If authenticated, auto-accept happens via useEffect, so show loading
+  if (isAuthenticated && tokenValidation.status === 'valid') {
+    return (
+      <div className="container mx-auto py-8">
+        <Card className="max-w-2xl mx-auto">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <CheckCircle2 className="h-5 w-5 text-success" />
+              Accepting Invitation...
+            </CardTitle>
+            <CardDescription>Please wait while we accept your invitation.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="container mx-auto py-8">
       <Card className="max-w-2xl mx-auto">
@@ -203,7 +247,11 @@ function InviteAcceptComponent() {
 
           <div className="flex gap-4 pt-4">
             <Button onClick={handleAccept} disabled={isAccepting} className="flex-1">
-              {isAccepting ? 'Accepting...' : 'Accept Invite'}
+              {isAccepting
+                ? 'Accepting...'
+                : isAuthenticated
+                  ? 'Accept Invite'
+                  : 'Continue to Login/Register'}
             </Button>
             <Button
               variant="outline"

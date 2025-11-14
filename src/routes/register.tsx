@@ -153,9 +153,6 @@ function RegisterPage() {
           }
 
           if (data) {
-            // Invalidate router to refresh auth state
-            await router.invalidate();
-
             // Handle invite redirects specially - accept invite and redirect to hackathon
             if (redirectTarget.startsWith('/invite/')) {
               try {
@@ -164,11 +161,14 @@ function RegisterPage() {
                 const decodedToken = decodeURIComponent(token);
 
                 // Accept the invite
-                const result = await acceptInvite({ token: decodedToken });
+                await acceptInvite({ token: decodedToken });
 
-                // Redirect directly to the hackathon page after showing success message
+                // Invalidate router to ensure queries are fresh
+                await router.invalidate();
+
+                // Redirect to the hackathons list page after showing success message
                 setTimeout(() => {
-                  navigate({ to: '/app/h/$id', params: { id: result.hackathonId } });
+                  navigate({ to: '/app/h' });
                 }, 2000);
               } catch (inviteError) {
                 console.error('Failed to accept invite after registration:', inviteError);
@@ -178,7 +178,8 @@ function RegisterPage() {
                 }, 2000);
               }
             } else {
-              // Navigate to the redirect target after showing success message
+              // Invalidate router and navigate to the redirect target after showing success message
+              await router.invalidate();
               setTimeout(() => {
                 navigate({ to: redirectTarget });
               }, 2000);

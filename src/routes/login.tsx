@@ -142,8 +142,6 @@ function LoginPage() {
         }
 
         if (data) {
-          await router.invalidate();
-
           // Handle invite redirects specially - accept invite and redirect to hackathon
           if (redirectTarget.startsWith('/invite/')) {
             try {
@@ -152,24 +150,22 @@ function LoginPage() {
               const decodedToken = decodeURIComponent(token);
 
               // Accept the invite
-              const result = await acceptInvite({ token: decodedToken });
+              await acceptInvite({ token: decodedToken });
 
-              // Redirect directly to the hackathon page
-              setTimeout(() => {
-                navigate({ to: '/app/h/$id', params: { id: result.hackathonId } });
-              }, 50);
+              // Invalidate router to ensure queries are fresh
+              await router.invalidate();
+
+              // Navigate to the hackathons list page
+              navigate({ to: '/app/h' });
             } catch (inviteError) {
               console.error('Failed to accept invite after login:', inviteError);
               // Fallback to regular redirect if invite acceptance fails
-              setTimeout(() => {
-                navigate({ to: '/app/h' });
-              }, 50);
+              navigate({ to: '/app/h' });
             }
           } else {
-            // Small delay to ensure invalidation settles before navigation
-            setTimeout(() => {
-              navigate({ to: redirectTarget });
-            }, 50);
+            // Invalidate router and navigate to the redirect target
+            await router.invalidate();
+            navigate({ to: redirectTarget });
           }
         } else {
           setError('An unexpected error occurred. Please try again.');

@@ -2,6 +2,10 @@ import { createClient, type GenericCtx } from '@convex-dev/better-auth';
 import { convex } from '@convex-dev/better-auth/plugins';
 import { betterAuth } from 'better-auth';
 import { v } from 'convex/values';
+import {
+  type BetterAuthAdapterUserDoc,
+  normalizeAdapterFindManyResult,
+} from '../src/lib/server/better-auth/adapter-utils';
 import { getBetterAuthSecret, getSiteUrl } from '../src/lib/server/env.server';
 import { components, internal } from './_generated/api';
 import type { DataModel } from './_generated/dataModel';
@@ -32,15 +36,13 @@ export const checkEmailExists = query({
         },
       });
 
-      // The result is an array of user objects
-      const users = Array.isArray(rawResult) ? rawResult : [];
+      const normalized = normalizeAdapterFindManyResult<BetterAuthAdapterUserDoc>(rawResult);
+      const users = normalized.page;
 
-      // Check if any user has the target email
-      const emailExists = users.some((user: unknown) => {
-        if (typeof user === 'object' && user !== null && 'email' in user) {
-          return user.email === args.email;
-        }
-        return false;
+      // Check if any user has the target email (case-insensitive)
+      const emailExists = users.some((user) => {
+        return typeof user.email === 'string' &&
+               user.email.toLowerCase() === args.email.toLowerCase();
       });
 
       return { exists: emailExists };
