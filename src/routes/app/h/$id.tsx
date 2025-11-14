@@ -35,7 +35,6 @@ function HackathonWorkspaceComponent() {
   const [isDeleting, setIsDeleting] = useState(false);
 
   const deleteHackathon = useMutation(api.hackathons.deleteHackathon);
-  const reopenVoting = useMutation(api.hackathons.reopenVoting);
 
   // Check if we're on a nested route (like /judges) - must be called before early returns
   const isNestedRoute = useMemo(
@@ -99,7 +98,6 @@ function HackathonWorkspaceComponent() {
               <HackathonActionsMenu
                 canManageJudges={canManageJudges}
                 canDelete={canDelete}
-                isVotingClosed={!!hackathon.votingClosedAt}
                 onEdit={() => setIsSettingsModalOpen(true)}
                 onManageJudges={() => {
                   void router.navigate({
@@ -108,24 +106,6 @@ function HackathonWorkspaceComponent() {
                   });
                 }}
                 onInviteJudge={() => setIsInviteJudgeModalOpen(true)}
-                onReopenVoting={() => {
-                  const confirmed = window.confirm(
-                    'Are you sure you want to reopen voting? This will allow judges to submit and change their ratings again.',
-                  );
-                  if (confirmed) {
-                    reopenVoting({ hackathonId: id as Id<'hackathons'> })
-                      .then(() => {
-                        toast.showToast('Voting reopened successfully', 'success');
-                      })
-                      .catch((error) => {
-                        console.error('Failed to reopen voting:', error);
-                        toast.showToast(
-                          error instanceof Error ? error.message : 'Failed to reopen voting',
-                          'error',
-                        );
-                      });
-                  }
-                }}
                 onDelete={() => setIsDeleteDialogOpen(true)}
               />
             }
