@@ -32,6 +32,7 @@ import type * as submissionsActions_repoProcessing from "../submissionsActions/r
 import type * as submissionsActions_screenshot from "../submissionsActions/screenshot.js";
 import type * as submissionsActions_types from "../submissionsActions/types.js";
 import type * as users from "../users.js";
+import type * as webhooks_resend from "../webhooks/resend.js";
 
 import type {
   ApiFromModules,
@@ -64,6 +65,7 @@ declare const fullApi: ApiFromModules<{
   "submissionsActions/screenshot": typeof submissionsActions_screenshot;
   "submissionsActions/types": typeof submissionsActions_types;
   users: typeof users;
+  "webhooks/resend": typeof webhooks_resend;
 }>;
 
 /**

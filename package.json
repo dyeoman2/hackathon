@@ -51,7 +51,8 @@
     "infra:setup:prod": "tsx scripts/setup-r2-infra.ts --prod",
     "precommit": "biome check --write",
     "updates": "npx npm-check-updates",
-    "analyze": "pnpm build && npx vite-bundle-analyzer dist/client/assets/*.js"
+    "analyze": "pnpm build && npx vite-bundle-analyzer dist/client/assets/*.js",
+    "test:webhook": "tsx scripts/test-webhook.ts"
   },
   "dependencies": {
     "@ai-sdk/google": "^2.0.31",
@@ -99,6 +100,7 @@
     "react-icons": "^5.5.0",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
+    "resend": "^4.8.0",
     "tailwind-merge": "^3.4.0",
     "tailwindcss-animate": "^1.0.7",
     "tsx": "^4.20.6",

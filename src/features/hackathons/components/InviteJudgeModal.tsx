@@ -3,6 +3,7 @@ import type { Id } from '@convex/_generated/dataModel';
 import { useForm } from '@tanstack/react-form';
 import { useEffect, useState } from 'react';
 import { z } from 'zod';
+import { Alert, AlertDescription } from '~/components/ui/alert';
 import { Button } from '~/components/ui/button';
 import {
   Dialog,
@@ -35,6 +36,34 @@ interface InviteJudgeModalProps {
   onClose: () => void;
 }
 
+// Helper function to extract user-friendly error messages from Convex errors
+function getErrorMessage(error: unknown): string {
+  if (!(error instanceof Error)) {
+    return 'Failed to send invite. Please try again.';
+  }
+
+  const message = error.message;
+
+  // Extract the actual error message from Convex's technical error format
+  // Convex errors often include: "[CONVEX M(...)] [Request ID: ...] Server Error ..."
+  // We want to extract the meaningful part after "Server Error"
+  const serverErrorMatch = message.match(/Server Error\s+(.+?)(?:\s+at\s+handler|$)/s);
+  if (serverErrorMatch) {
+    const extractedMessage = serverErrorMatch[1].trim();
+    // Remove "Uncaught Error: " prefix if present
+    const cleanMessage = extractedMessage.replace(/^Uncaught Error:\s*/i, '');
+    return cleanMessage;
+  }
+
+  // Fallback: return the message if it's reasonably short and user-friendly
+  if (message.length < 100 && !message.includes('[CONVEX')) {
+    return message;
+  }
+
+  // Default fallback for technical errors
+  return 'Failed to send invite. Please try again.';
+}
+
 export function InviteJudgeModal({ hackathonId, open, onClose }: InviteJudgeModalProps) {
   const toast = useToast();
 
@@ -42,7 +71,7 @@ export function InviteJudgeModal({ hackathonId, open, onClose }: InviteJudgeModa
   const inviteJudgeOptimistic = useOptimisticMutation(api.hackathons.inviteJudge, {
     onError: (error) => {
       console.error('Failed to invite judge:', error);
-      setSubmitError(error instanceof Error ? error.message : 'Failed to send invite');
+      setSubmitError(getErrorMessage(error));
     },
   });
 
@@ -165,9 +194,9 @@ export function InviteJudgeModal({ hackathonId, open, onClose }: InviteJudgeModa
           </form.Field>
 
           {submitError && (
-            <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
-              {submitError}
-            </div>
+            <Alert variant="destructive" role="alert">
+              <AlertDescription>{submitError}</AlertDescription>
+            </Alert>
           )}
 
           <DialogFooter>
