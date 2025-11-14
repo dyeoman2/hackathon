@@ -24,5 +24,5 @@ export function calculateAverageRating(ratings: number[]): number {
  * @returns Array of rating numbers
  */
 export function extractRatingValues(ratingObjects: Array<{ rating: number }>): number[] {
-  return ratingObjects.map(r => r.rating);
+  return ratingObjects.map((r) => r.rating);
 }

@@ -33,6 +33,7 @@ import type * as submissionsActions_screenshot from "../submissionsActions/scree
 import type * as submissionsActions_types from "../submissionsActions/types.js";
 import type * as users from "../users.js";
 import type * as webhooks_resend from "../webhooks/resend.js";
+import type * as webhooks_verifySignature from "../webhooks/verifySignature.js";
 
 import type {
   ApiFromModules,
@@ -66,6 +67,7 @@ declare const fullApi: ApiFromModules<{
   "submissionsActions/types": typeof submissionsActions_types;
   users: typeof users;
   "webhooks/resend": typeof webhooks_resend;
+  "webhooks/verifySignature": typeof webhooks_verifySignature;
 }>;
 
 /**

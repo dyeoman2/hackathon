@@ -1,5 +1,5 @@
-import { createHmac } from 'node:crypto';
 import { Resend } from 'resend';
+import { api } from '../_generated/api';
 import { httpAction } from '../_generated/server';
 
 interface ResendEmailReceivedEvent {
@@ -22,23 +22,6 @@ interface ResendEmailReceivedEvent {
       content_id?: string;
     }>;
   };
-}
-
-/**
- * Verify webhook signature using HMAC-SHA256
- */
-function verifyWebhookSignature(payload: string, signature: string, secret: string): boolean {
-  try {
-    const hmac = createHmac('sha256', secret);
-    hmac.update(payload, 'utf8');
-    const computedSignature = `sha256=${hmac.digest('hex')}`;
-
-    // Use constant-time comparison to prevent timing attacks
-    return signature === computedSignature;
-  } catch (error) {
-    console.error('Error verifying webhook signature:', error);
-    return false;
-  }
 }
 
 /**
@@ -141,7 +124,14 @@ export const resendWebhookHandler = httpAction(async (_ctx, request) => {
       );
     }
 
-    const isValidSignature = verifyWebhookSignature(payload, signature, webhookSecret);
+    const isValidSignature = await _ctx.runAction(
+      api.webhooks.verifySignature.verifyWebhookSignature,
+      {
+        payload,
+        signature,
+        secret: webhookSecret,
+      },
+    );
     if (!isValidSignature) {
       console.error('Invalid webhook signature - potential security threat');
       return new Response(

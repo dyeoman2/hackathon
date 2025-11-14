@@ -36,9 +36,6 @@ export function SubmissionRatingSlider({
   const [displayValue, setDisplayValue] = useState(currentRating);
   const pendingState = usePendingSubmissionRating(submissionId);
   const pendingRating = pendingState?.rating ?? null;
-  const isSaving = pendingState !== null;
-  const isFlushing = pendingState?.isFlushing ?? false;
-  const savingError = pendingState?.error;
 
   useEffect(() => {
     const nextValue = pendingRating ?? currentRating;

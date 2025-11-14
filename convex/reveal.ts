@@ -1,7 +1,7 @@
 import { v } from 'convex/values';
+import { calculateAverageRating, extractRatingValues } from '../src/lib/shared/rating-utils';
 import { mutation, query } from './_generated/server';
 import { requireHackathonRole } from './hackathons';
-import { calculateAverageRating, extractRatingValues } from '../src/lib/shared/rating-utils';
 
 // Emoji scale matching the rating slider (0-10)
 const EMOJI_SCALE = ['💀', '😬', '🥴', '🫠', '😅', '🙂', '🔥', '🚀', '🤯', '👑'];

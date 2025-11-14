@@ -1,6 +1,6 @@
 import { v } from 'convex/values';
-import { assertUserId } from '../src/lib/shared/user-id';
 import { calculateAverageRating, extractRatingValues } from '../src/lib/shared/rating-utils';
+import { assertUserId } from '../src/lib/shared/user-id';
 import { internal } from './_generated/api';
 import {
   internalAction,
