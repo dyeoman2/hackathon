@@ -1,8 +1,12 @@
+import type { FunctionReference } from 'convex/server';
 import { v } from 'convex/values';
+import { FREE_SUBMISSION_LIMIT } from '../src/features/hackathons/constants';
+import { AUTUMN_CREDIT_FEATURE_ID } from '../src/lib/shared/autumn';
 import { calculateAverageRating, extractRatingValues } from '../src/lib/shared/rating-utils';
 import { assertUserId } from '../src/lib/shared/user-id';
 import { internal } from './_generated/api';
 import {
+  action,
   internalAction,
   internalMutation,
   internalQuery,
@@ -10,7 +14,15 @@ import {
   query,
 } from './_generated/server';
 import { authComponent } from './auth';
+import { AUTUMN_NOT_CONFIGURED_ERROR, autumn, isAutumnConfigured } from './autumn';
 import { requireHackathonRole } from './hackathons';
+
+const submissionsInternalApi = internal as unknown as {
+  submissions: {
+    getSubmissionCreationContext: FunctionReference<'query', 'internal'>;
+    createSubmissionInternal: FunctionReference<'mutation', 'internal'>;
+  };
+};
 
 // Status transitions are now unrestricted - any status can transition to any other status
 
@@ -142,16 +154,44 @@ export const getSubmission = query({
   },
 });
 
+export const getSubmissionCreationContext = internalQuery({
+  args: {
+    hackathonId: v.id('hackathons'),
+  },
+  handler: async (ctx, args) => {
+    const { hackathon, userId } = await requireHackathonRole(ctx, args.hackathonId, [
+      'owner',
+      'admin',
+      'judge',
+    ]);
+
+    if (hackathon.dates?.submissionDeadline && Date.now() > hackathon.dates.submissionDeadline) {
+      throw new Error('Cannot create submissions for hackathons that have ended');
+    }
+
+    const totalSubmissions = await ctx.db
+      .query('submissions')
+      .withIndex('by_hackathonId', (q) => q.eq('hackathonId', args.hackathonId))
+      .collect();
+
+    return {
+      userId,
+      freeSubmissionsRemaining: Math.max(FREE_SUBMISSION_LIMIT - totalSubmissions.length, 0),
+    };
+  },
+});
+
 /**
  * Create submission in hackathon
  */
-export const createSubmission = mutation({
+export const createSubmissionInternal = internalMutation({
   args: {
     hackathonId: v.id('hackathons'),
     title: v.string(),
     team: v.string(),
     repoUrl: v.string(),
     siteUrl: v.optional(v.string()),
+    usingPaidCredit: v.boolean(),
   },
   handler: async (ctx, args) => {
     // Check membership - any active member can create submissions
@@ -164,6 +204,18 @@ export const createSubmission = mutation({
     // Check if hackathon has ended
     if (hackathon.dates?.submissionDeadline && Date.now() > hackathon.dates.submissionDeadline) {
       throw new Error('Cannot create submissions for hackathons that have ended');
+    }
+
+    const existingSubmissions = await ctx.db
+      .query('submissions')
+      .withIndex('by_hackathonId', (q) => q.eq('hackathonId', args.hackathonId))
+      .collect();
+    const totalSubmissions = existingSubmissions.length;
+    const freeSubmissionsRemaining = Math.max(FREE_SUBMISSION_LIMIT - totalSubmissions, 0);
+    const requiresPaidCredits = freeSubmissionsRemaining <= 0;
+
+    if (requiresPaidCredits && !args.usingPaidCredit) {
+      throw new Error('No free submissions remaining for this hackathon.');
     }
 
     const now = Date.now();
@@ -195,6 +247,87 @@ export const createSubmission = mutation({
     }
 
     return { submissionId };
+  },
+});
+
+export const createSubmission = action({
+  args: {
+    hackathonId: v.id('hackathons'),
+    title: v.string(),
+    team: v.string(),
+    repoUrl: v.string(),
+    siteUrl: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const { userId, freeSubmissionsRemaining } = await ctx.runQuery(
+      submissionsInternalApi.submissions.getSubmissionCreationContext,
+      { hackathonId: args.hackathonId },
+    );
+
+    const requiresPaidCredits = freeSubmissionsRemaining <= 0;
+    let usingPaidCredit = false;
+
+    if (requiresPaidCredits) {
+      if (!isAutumnConfigured()) {
+        throw new Error(
+          `${AUTUMN_NOT_CONFIGURED_ERROR.message} All free submissions have been used for this hackathon.`,
+        );
+      }
+
+      const checkResult = await autumn.check(ctx, {
+        featureId: AUTUMN_CREDIT_FEATURE_ID,
+      });
+
+      if (checkResult.error) {
+        throw new Error(
+          checkResult.error.message ??
+            'Unable to verify credit balance. Please try again or purchase credits.',
+        );
+      }
+
+      if (!checkResult.data?.allowed) {
+        throw new Error(
+          'No credits remaining for hackathon submissions. Purchase more credits to continue.',
+        );
+      }
+
+      usingPaidCredit = true;
+    }
+
+    const result = await ctx.runMutation(
+      submissionsInternalApi.submissions.createSubmissionInternal,
+      {
+        hackathonId: args.hackathonId,
+        title: args.title,
+        team: args.team,
+        repoUrl: args.repoUrl,
+        siteUrl: args.siteUrl,
+        usingPaidCredit,
+      },
+    );
+
+    if (usingPaidCredit) {
+      try {
+        const trackResult = await autumn.track(ctx, {
+          featureId: AUTUMN_CREDIT_FEATURE_ID,
+          value: 1,
+          properties: {
+            resource: 'hackathon_submission',
+            hackathonId: args.hackathonId,
+            submissionId: result.submissionId,
+            createdByUserId: userId,
+          },
+        });
+
+        if (trackResult && 'error' in trackResult && trackResult.error) {
+          console.warn('Failed to track Autumn usage for hackathon submission', trackResult.error);
+        }
+      } catch (error) {
+        console.warn('Autumn tracking failed for hackathon submission', error);
+      }
+    }
+
+    return result;
   },
 });
 

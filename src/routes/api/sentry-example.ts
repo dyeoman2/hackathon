@@ -10,6 +10,13 @@ export const Route = createFileRoute('/api/sentry-example')({
         console.warn('Sentry server test: This is a server console.warn message');
         console.error('Sentry server test: This is a server console.error message');
 
+        // Test server-side metrics
+        Sentry.metrics.count('api_request', 1, { attributes: { endpoint: '/api/sentry-example' } });
+        Sentry.metrics.gauge('server_load', Math.random() * 10, { unit: 'percentage' });
+        Sentry.metrics.distribution('api_processing_time', Math.random() * 500, {
+          unit: 'millisecond',
+        });
+
         // Test server-side profiling with spans
         return Sentry.startSpan(
           {

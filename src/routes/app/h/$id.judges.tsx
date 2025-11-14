@@ -115,28 +115,30 @@ function JudgeManagementComponent() {
 
   return (
     <div className="space-y-6">
+      <div className="flex items-center gap-4 mb-2">
+        <Button
+          variant="outline"
+          onClick={() => {
+            void router.navigate({
+              to: '/app/h/$id',
+              params: { id },
+            });
+          }}
+          className="-ml-2"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back
+        </Button>
+      </div>
+
       <PageHeader
         title="Judges"
         description={hackathon.title}
         actions={
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              onClick={() => {
-                void router.navigate({
-                  to: '/app/h/$id',
-                  params: { id },
-                });
-              }}
-            >
-              <ArrowLeft className="h-4 w-4" />
-              Back
-            </Button>
-            <Button onClick={() => setIsInviteModalOpen(true)}>
-              <Plus className="h-4 w-4" />
-              Invite Judge
-            </Button>
-          </div>
+          <Button onClick={() => setIsInviteModalOpen(true)}>
+            <Plus className="h-4 w-4" />
+            Invite Judge
+          </Button>
         }
       />
 
@@ -168,7 +170,9 @@ function JudgeManagementComponent() {
                         {membership.userEmail || membership.invitedEmail || '—'}
                       </TableCell>
                       <TableCell>
-                        <Badge variant="outline" className={getRoleBadgeStyle(membership.role)}>{capitalizeRole(membership.role)}</Badge>
+                        <Badge variant="outline" className={getRoleBadgeStyle(membership.role)}>
+                          {capitalizeRole(membership.role)}
+                        </Badge>
                       </TableCell>
                       <TableCell>
                         <Badge variant="success">Active</Badge>
@@ -230,7 +234,9 @@ function JudgeManagementComponent() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Badge variant="outline" className={getRoleBadgeStyle(membership.role)}>{capitalizeRole(membership.role)}</Badge>
+                        <Badge variant="outline" className={getRoleBadgeStyle(membership.role)}>
+                          {capitalizeRole(membership.role)}
+                        </Badge>
                       </TableCell>
                       <TableCell>
                         <Badge variant="warning">Invited</Badge>

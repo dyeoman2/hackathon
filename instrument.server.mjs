@@ -38,6 +38,10 @@ if (sentryDsn && (isProduction || isDevelopment)) {
     // Enable logs to be sent to Sentry (allowed for dev testing too)
     enableLogs: true,
     // logs
+    // metrics
+    // Enable metrics to be sent to Sentry (beta feature)
+    enableMetrics: true,
+    // metrics
     // performance
     // Set tracesSampleRate to 1.0 to capture 100%
     // of transactions for tracing.

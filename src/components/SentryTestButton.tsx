@@ -12,6 +12,13 @@ export function SentryTestButton() {
         console.warn('Sentry test: This is a console.warn message');
         console.error('Sentry test: This is a console.error message');
 
+        // Test metrics
+        Sentry.metrics.count('button_clicked', 1, { attributes: { page: 'test-sentry' } });
+        Sentry.metrics.gauge('test_memory_usage', Math.random() * 100, { unit: 'megabyte' });
+        Sentry.metrics.distribution('test_response_time', Math.random() * 1000, {
+          unit: 'millisecond',
+        });
+
         // Test client-side profiling with spans
         await Sentry.startSpan(
           {

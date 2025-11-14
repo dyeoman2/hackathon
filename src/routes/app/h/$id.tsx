@@ -2,7 +2,8 @@ import { api } from '@convex/_generated/api';
 import type { Id } from '@convex/_generated/dataModel';
 import { createFileRoute, Outlet, useLocation, useRouter } from '@tanstack/react-router';
 import { useMutation, useQuery } from 'convex/react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { z } from 'zod';
 import { NotFound } from '~/components/NotFound';
 import { PageHeader } from '~/components/PageHeader';
 import { DashboardErrorBoundary } from '~/components/RouteErrorBoundaries';
@@ -17,9 +18,14 @@ import { SubmissionsList } from '~/features/hackathons/components/SubmissionsLis
 import { VotingStatusBanner } from '~/features/hackathons/components/VotingStatusBanner';
 import { usePerformanceMonitoring } from '~/hooks/use-performance-monitoring';
 
+const paymentStatusSearchSchema = z.object({
+  payment: z.enum(['success', 'cancelled', 'failed']).optional(),
+});
+
 export const Route = createFileRoute('/app/h/$id')({
   component: HackathonWorkspaceComponent,
   errorComponent: DashboardErrorBoundary,
+  validateSearch: paymentStatusSearchSchema,
 });
 
 function HackathonWorkspaceComponent() {
@@ -28,11 +34,13 @@ function HackathonWorkspaceComponent() {
   const location = useLocation();
   const toast = useToast();
   const { id } = Route.useParams();
+  const { payment } = Route.useSearch();
   const hackathon = useQuery(api.hackathons.getHackathon, { hackathonId: id as Id<'hackathons'> });
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isInviteJudgeModalOpen, setIsInviteJudgeModalOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const paymentHandledRef = useRef<string | undefined>(undefined);
 
   const deleteHackathon = useMutation(api.hackathons.deleteHackathon);
 
@@ -52,6 +60,29 @@ function HackathonWorkspaceComponent() {
     () => hackathon?.role === 'owner' || hackathon?.role === 'admin',
     [hackathon?.role],
   );
+
+  useEffect(() => {
+    if (!payment || paymentHandledRef.current === payment) {
+      return;
+    }
+
+    paymentHandledRef.current = payment;
+
+    void router.navigate({
+      to: '/app/h/$id',
+      params: { id },
+      replace: true,
+    });
+
+    if (payment === 'success') {
+      toast.showToast(
+        'Payment completed successfully! Credits have been added to your account.',
+        'success',
+      );
+    } else {
+      toast.showToast('Payment was cancelled or failed. Please try again.', 'error');
+    }
+  }, [payment, router, id, toast]);
 
   const handleDelete = async () => {
     setIsDeleting(true);

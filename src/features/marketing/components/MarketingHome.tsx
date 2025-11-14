@@ -167,7 +167,7 @@ export function MarketingHome() {
         </div>
         <div className="flex items-center justify-center gap-2 mt-4">
           <span className="text-xs text-muted-foreground">
-            10 free submissions. No credit card required.
+            3 free submissions. No credit card required.
           </span>
         </div>
       </section>

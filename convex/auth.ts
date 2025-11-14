@@ -41,8 +41,9 @@ export const checkEmailExists = query({
 
       // Check if any user has the target email (case-insensitive)
       const emailExists = users.some((user) => {
-        return typeof user.email === 'string' &&
-               user.email.toLowerCase() === args.email.toLowerCase();
+        return (
+          typeof user.email === 'string' && user.email.toLowerCase() === args.email.toLowerCase()
+        );
       });
 
       return { exists: emailExists };

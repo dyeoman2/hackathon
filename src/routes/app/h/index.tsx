@@ -26,7 +26,7 @@ function HackathonListComponent() {
     if (hackathons !== undefined && hackathons.length === 0 && !isModalOpen) {
       setIsModalOpen(true);
     }
-  }, [hackathons]);
+  }, [hackathons, isModalOpen]);
 
   if (hackathons === undefined) {
     return (

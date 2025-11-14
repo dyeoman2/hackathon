@@ -2,7 +2,8 @@ import { api } from '@convex/_generated/api';
 import type { Id } from '@convex/_generated/dataModel';
 import { useForm } from '@tanstack/react-form';
 import { useRouter } from '@tanstack/react-router';
-import { useState } from 'react';
+import { useAction } from 'convex/react';
+import { useEffect, useState } from 'react';
 import { z } from 'zod';
 import { Button } from '~/components/ui/button';
 import {
@@ -16,7 +17,9 @@ import {
 import { Field, FieldLabel } from '~/components/ui/field';
 import { Input } from '~/components/ui/input';
 import { useToast } from '~/components/ui/toast';
-import { useOptimisticMutation } from '~/features/admin/hooks/useOptimisticUpdates';
+import { CREDIT_PACKAGES } from '~/features/ai/constants';
+import { FREE_SUBMISSION_LIMIT } from '~/features/hackathons/constants';
+import { AUTUMN_CREDIT_FEATURE_ID } from '~/lib/shared/autumn';
 
 const submissionSchema = z.object({
   title: z.string().min(1, 'Title is required').max(255, 'Title is too long'),
@@ -29,22 +32,127 @@ interface NewSubmissionModalProps {
   hackathonId: Id<'hackathons'>;
   open: boolean;
   onClose: () => void;
+  totalSubmissions: number;
 }
 
-export function NewSubmissionModal({ hackathonId, open, onClose }: NewSubmissionModalProps) {
+export function NewSubmissionModal({
+  hackathonId,
+  open,
+  onClose,
+  totalSubmissions,
+}: NewSubmissionModalProps) {
   const router = useRouter();
   const toast = useToast();
-
-  // Use optimistic mutation for better UX - Convex automatically handles cache updates
-  const createSubmissionOptimistic = useOptimisticMutation(api.submissions.createSubmission, {
-    onError: (error) => {
-      console.error('Failed to create submission:', error);
-      setSubmitError(error instanceof Error ? error.message : 'Failed to create submission');
-    },
-  });
+  const checkoutAction = useAction(api.autumn.checkoutAutumn);
+  const checkCreditsAction = useAction(api.autumn.check);
+  const createSubmissionAction = useAction(api.submissions.createSubmission);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [isCheckoutLoading, setIsCheckoutLoading] = useState(false);
+  const [creditStatus, setCreditStatus] = useState<
+    'idle' | 'checking' | 'allowed' | 'denied' | 'error'
+  >('idle');
+  const [creditInfo, setCreditInfo] = useState<{
+    balance: number | null;
+    unlimited: boolean;
+  } | null>(null);
+  const [_, setCreditCheckAttempt] = useState(0);
+
+  const freeSubmissionsRemaining = Math.max(FREE_SUBMISSION_LIMIT - totalSubmissions, 0);
+  const hasPaidCredits = freeSubmissionsRemaining <= 0 && creditStatus === 'allowed';
+  const checkingPaidCredits =
+    freeSubmissionsRemaining <= 0 && (creditStatus === 'idle' || creditStatus === 'checking');
+  const submissionLocked =
+    freeSubmissionsRemaining <= 0 && !(creditStatus === 'allowed' || creditStatus === 'error');
+
+  let creditLabel: string;
+  if (freeSubmissionsRemaining > 0) {
+    creditLabel = `${freeSubmissionsRemaining} free submission${
+      freeSubmissionsRemaining === 1 ? '' : 's'
+    } remaining.`;
+  } else if (hasPaidCredits) {
+    if (creditInfo?.unlimited) {
+      creditLabel = 'Unlimited submissions available for this hackathon.';
+    } else if (creditInfo?.balance !== null) {
+      creditLabel = `${creditInfo?.balance} submission${
+        creditInfo?.balance === 1 ? '' : 's'
+      } remaining for this hackathon.`;
+    } else {
+      creditLabel = 'Credits detected. You can continue submitting to this hackathon.';
+    }
+  } else if (creditStatus === 'error') {
+    creditLabel =
+      'Unable to verify paid credits right now. Try again or purchase additional credits.';
+  } else {
+    creditLabel = 'All free submissions have been used for this hackathon.';
+  }
+
+  useEffect(() => {
+    if (!open) {
+      setCreditStatus('idle');
+      setCreditInfo(null);
+      return;
+    }
+
+    if (freeSubmissionsRemaining > 0) {
+      setCreditStatus('idle');
+      setCreditInfo(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function checkCredits() {
+      setCreditStatus('checking');
+      setCreditInfo(null);
+      try {
+        const result = await checkCreditsAction({
+          featureId: AUTUMN_CREDIT_FEATURE_ID,
+        });
+
+        if (cancelled) {
+          return;
+        }
+
+        if (result.error) {
+          console.warn('Credit check error:', result.error);
+          setCreditStatus('error');
+          return;
+        }
+
+        if (result.data?.allowed) {
+          setCreditInfo({
+            balance:
+              typeof result.data.balance === 'number'
+                ? Math.max(0, Math.floor(result.data.balance))
+                : null,
+            unlimited: Boolean(result.data.unlimited),
+          });
+          setCreditStatus('allowed');
+        } else {
+          setCreditStatus('denied');
+        }
+      } catch (error) {
+        console.error('Failed to check credits for submissions:', error);
+        if (!cancelled) {
+          setCreditStatus('error');
+        }
+      }
+    }
+
+    void checkCredits();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, freeSubmissionsRemaining, checkCreditsAction]);
+
+  const handleRetryCreditCheck = () => {
+    setCreditStatus('idle');
+    setCreditInfo(null);
+    setCreditCheckAttempt((attempt) => attempt + 1);
+  };
 
   const form = useForm({
     defaultValues: {
@@ -54,12 +162,16 @@ export function NewSubmissionModal({ hackathonId, open, onClose }: NewSubmission
       siteUrl: 'https://tryhackathon.com/',
     },
     onSubmit: async ({ value }) => {
+      if (submissionLocked) {
+        setSubmitError('All free submissions have been used. Please purchase credits to continue.');
+        return;
+      }
+
       setIsSubmitting(true);
       setSubmitError(null);
 
       try {
-        // Optimistic mutation - Convex automatically updates cache
-        const result = await createSubmissionOptimistic({
+        const result = await createSubmissionAction({
           hackathonId,
           title: value.title,
           team: value.team,
@@ -76,13 +188,48 @@ export function NewSubmissionModal({ hackathonId, open, onClose }: NewSubmission
           to: '/app/h/$id/submissions/$submissionId',
           params: { id: hackathonId, submissionId: result.submissionId },
         });
-      } catch {
-        // Error handling is done in the onError callback
+      } catch (error) {
+        console.error('Failed to create submission:', error);
+        setSubmitError(error instanceof Error ? error.message : 'Failed to create submission');
       } finally {
         setIsSubmitting(false);
       }
     },
   });
+
+  const handleBuyCredits = async () => {
+    const packageToPurchase = CREDIT_PACKAGES[0];
+    if (!packageToPurchase) {
+      toast.showToast('No credit packages are configured. Please try again later.', 'error');
+      return;
+    }
+
+    try {
+      setIsCheckoutLoading(true);
+      const successUrl = `${window.location.origin}/app/h/${hackathonId}?payment=success`;
+      const result = await checkoutAction({
+        productId: packageToPurchase.productId,
+        successUrl,
+      });
+
+      if (result.error) {
+        console.error('Checkout failed:', result.error);
+        toast.showToast(result.error.message ?? 'Purchase failed. Please try again.', 'error');
+        return;
+      }
+
+      if (result.data?.url) {
+        window.open(result.data.url, '_blank', 'noopener,noreferrer');
+      } else {
+        toast.showToast('Credits purchased successfully.', 'success');
+      }
+    } catch (error) {
+      console.error('Failed to initiate checkout:', error);
+      toast.showToast('Failed to initiate checkout. Please try again.', 'error');
+    } finally {
+      setIsCheckoutLoading(false);
+    }
+  };
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
@@ -188,6 +335,29 @@ export function NewSubmissionModal({ hackathonId, open, onClose }: NewSubmission
             )}
           </form.Field>
 
+          {!checkingPaidCredits && (
+            <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 sm:flex sm:items-center sm:justify-between">
+              <span className="font-medium">{creditLabel}</span>
+              <div className="mt-2 flex w-full flex-col gap-2 sm:mt-0 sm:w-auto sm:flex-row">
+                {creditStatus === 'error' && (
+                  <Button type="button" size="sm" variant="ghost" onClick={handleRetryCreditCheck}>
+                    Check Credits
+                  </Button>
+                )}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="text-primary"
+                  onClick={handleBuyCredits}
+                  disabled={isCheckoutLoading}
+                >
+                  {isCheckoutLoading ? 'Opening Checkout...' : 'Buy Credits'}
+                </Button>
+              </div>
+            </div>
+          )}
+
           {submitError && (
             <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
               {submitError}
@@ -200,8 +370,28 @@ export function NewSubmissionModal({ hackathonId, open, onClose }: NewSubmission
             </Button>
             <form.Subscribe selector={(state) => [state.canSubmit, state.isSubmitting]}>
               {([canSubmit, isFormSubmitting]) => (
-                <Button type="submit" disabled={!canSubmit || isSubmitting || isFormSubmitting}>
-                  {isSubmitting || isFormSubmitting ? 'Creating...' : 'Create Submission'}
+                <Button
+                  type="submit"
+                  disabled={
+                    checkingPaidCredits ||
+                    submissionLocked ||
+                    !canSubmit ||
+                    isSubmitting ||
+                    isFormSubmitting
+                  }
+                  title={
+                    submissionLocked
+                      ? 'Purchase credits to add more submissions.'
+                      : checkingPaidCredits
+                        ? 'Verifying your credit balance...'
+                        : undefined
+                  }
+                >
+                  {checkingPaidCredits
+                    ? 'Checking credits...'
+                    : isSubmitting || isFormSubmitting
+                      ? 'Creating...'
+                      : 'Create Submission'}
                 </Button>
               )}
             </form.Subscribe>

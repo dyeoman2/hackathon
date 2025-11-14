@@ -58,7 +58,7 @@ The hackathon platform includes a comprehensive Sentry integration with the foll
 
 **What it tracks**: Unhandled errors, exceptions, and manually captured errors from both client and server
 **Client-side**: Captures React component errors, promise rejections, and manual error captures
-**Server-side**: Captures errors in server functions, API routes, and Convex operations
+**Server-side**: Captures errors in server functions and API routes
 
 ### 📊 Performance Tracing
 
@@ -182,16 +182,6 @@ return Sentry.startSpan({ name: 'Server Operation', op: 'db' }, async () => {
 - All errors, performance issues, and replays collected
 
 ## Step 3: Production Setup
-
-### Convex Environment Setup
-
-Your application uses Convex for data management. Set the Sentry DSN in Convex:
-
-```bash
-# Set environment variable in Convex
-npx convex env set VITE_SENTRY_DSN https://your-project-dsn.ingest.sentry.io/project-id --prod
-
-```
 
 ### Netlify Deployment
 

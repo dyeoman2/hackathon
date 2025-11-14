@@ -832,8 +832,11 @@ export const acceptInvite = mutation({
     }
 
     // Validate that the authenticated user's email matches the invited email (case-insensitive)
-    if (membership.invitedEmail && authUser.email &&
-        authUser.email.toLowerCase() !== membership.invitedEmail.toLowerCase()) {
+    if (
+      membership.invitedEmail &&
+      authUser.email &&
+      authUser.email.toLowerCase() !== membership.invitedEmail.toLowerCase()
+    ) {
       throw new Error('This invite is for a different email address');
     }
 

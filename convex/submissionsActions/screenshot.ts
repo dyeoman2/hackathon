@@ -55,6 +55,18 @@ function normalizeUrl(url: string): string {
   }
 }
 
+// Helper function to get the home page URL from any URL on the site
+function getHomePageUrl(url: string): string {
+  try {
+    const urlObj = new URL(url);
+    // Home page is the same origin with root path
+    return `${urlObj.protocol}//${urlObj.host}/`;
+  } catch {
+    // If URL parsing fails, return the original URL
+    return url;
+  }
+}
+
 /**
  * Capture screenshot of a URL using Firecrawl and save to R2
  */
@@ -345,6 +357,16 @@ export const captureScreenshot = guarded.action(
           'No screenshots were successfully captured. All pages may have failed to capture screenshots.',
         );
       }
+
+      // Sort screenshots so home page appears first
+      const homePageUrl = getHomePageUrl(submission.siteUrl);
+      capturedScreenshots.sort((a, b) => {
+        const aIsHome = normalizeUrl(a.pageUrl) === normalizeUrl(homePageUrl);
+        const bIsHome = normalizeUrl(b.pageUrl) === normalizeUrl(homePageUrl);
+        if (aIsHome && !bIsHome) return -1;
+        if (!aIsHome && bIsHome) return 1;
+        return 0; // Keep original order for non-home pages
+      });
 
       // Batch add all screenshots atomically in a single mutation call
       await ctx.runMutation(internal.submissions.addScreenshots, {
@@ -729,6 +751,16 @@ export const captureScreenshotInternal = internalAction({
             'No screenshots were successfully captured. All pages may have failed to capture screenshots.',
         };
       }
+
+      // Sort screenshots so home page appears first
+      const homePageUrl = getHomePageUrl(submission.siteUrl);
+      capturedScreenshots.sort((a, b) => {
+        const aIsHome = normalizeUrl(a.pageUrl) === normalizeUrl(homePageUrl);
+        const bIsHome = normalizeUrl(b.pageUrl) === normalizeUrl(homePageUrl);
+        if (aIsHome && !bIsHome) return -1;
+        if (!aIsHome && bIsHome) return 1;
+        return 0; // Keep original order for non-home pages
+      });
 
       // Batch add all screenshots atomically in a single mutation call
       await ctx.runMutation(internal.submissions.addScreenshots, {

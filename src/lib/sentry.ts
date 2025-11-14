@@ -82,6 +82,10 @@ export function initializeSentry(router: AnyRouter) {
           // Enable logs to be sent to Sentry (enabled for both production and dev test page)
           enableLogs: true,
           // logs
+          // metrics
+          // Enable metrics to be sent to Sentry (beta feature)
+          enableMetrics: true,
+          // metrics
           // performance
           // Set tracesSampleRate to 1.0 to capture 100%
           // of transactions for tracing.

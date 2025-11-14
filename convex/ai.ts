@@ -1,4 +1,5 @@
 import { v } from 'convex/values';
+import { AUTUMN_CREDIT_FEATURE_ID } from '../src/lib/shared/autumn';
 import { assertUserId } from '../src/lib/shared/user-id';
 import { internal } from './_generated/api';
 import {
@@ -13,7 +14,6 @@ import { guarded } from './authz/guardFactory';
 import { AUTUMN_NOT_CONFIGURED_ERROR, autumn, isAutumnConfigured } from './autumn';
 
 const FREE_MESSAGE_LIMIT = 10;
-const AI_MESSAGE_FEATURE_ID = 'messages';
 
 type ReservationMode = 'free' | 'paid';
 
@@ -449,7 +449,7 @@ export const reserveAiMessage = guarded.action(
       }
 
       const checkResult = await autumn.check(ctx, {
-        featureId: AI_MESSAGE_FEATURE_ID,
+        featureId: AUTUMN_CREDIT_FEATURE_ID,
       });
 
       if (checkResult.error) {
@@ -558,7 +558,7 @@ export const completeAiMessage = guarded.action(
         }
 
         const trackResult = await autumn.track(ctx, {
-          featureId: AI_MESSAGE_FEATURE_ID,
+          featureId: AUTUMN_CREDIT_FEATURE_ID,
           value: 1,
           ...(Object.keys(properties).length > 0 ? { properties } : {}),
         });
@@ -642,7 +642,7 @@ export const getAiUsageStatus = action({
     // This allows us to show paid credits even when free tier hasn't been exhausted yet
     if (autumnSecretConfigured) {
       const checkResult = await autumn.check(ctx, {
-        featureId: AI_MESSAGE_FEATURE_ID,
+        featureId: AUTUMN_CREDIT_FEATURE_ID,
       });
 
       if (checkResult.error) {
@@ -695,7 +695,7 @@ export const aiUsageConstants = guarded.action(
   ): Promise<{ freeMessageLimit: number; featureId: string }> => {
     return {
       freeMessageLimit: FREE_MESSAGE_LIMIT,
-      featureId: AI_MESSAGE_FEATURE_ID,
+      featureId: AUTUMN_CREDIT_FEATURE_ID,
     };
   },
 );
