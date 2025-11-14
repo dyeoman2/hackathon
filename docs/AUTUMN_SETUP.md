@@ -31,7 +31,7 @@ Follow these steps to create the base credit package ($5 for 50 messages). You c
 **Plan Details:**
 
 - Name: `50 messages`
-- ID: `prod_50_credits` (must match your environment variable)
+- ID: `prod_50_submissions` (must match your environment variable)
 
 **Base Price:**
 
@@ -113,11 +113,14 @@ npx convex env set AUTUMN_SECRET_KEY am_sk_your_secret_key_here
 
 #### Client-Side (`.env.local`)
 
-Set the credit package product ID for local development:
+Set the credit package product ID and feature ID for local development:
 
 ```bash
 # Credit package product ID (development)
-VITE_AUTUMN_50_CREDITS_ID=prod_50_credits
+VITE_AUTUMN_50_CREDITS_ID=prod_50_submissions
+
+# Credit feature ID for tracking usage
+VITE_AUTUMN_CREDIT_FEATURE_ID=submissions
 ```
 
 Restart the dev server after updating environment variables so that both Convex and Vite pick up the changes.
@@ -137,14 +140,22 @@ npx convex env set AUTUMN_SECRET_KEY am_sk_your_secret_key_here --prod
 
 #### Netlify (Client-Side)
 
-Set the credit package product ID in your Netlify deployment environment:
+The Autumn environment variables are automatically included when running the production setup script (`pnpm run setup:prod`). They will be displayed in the setup instructions with the correct values:
+
+- `VITE_AUTUMN_50_CREDITS_ID = prod_50_submissions`
+- `VITE_AUTUMN_CREDIT_FEATURE_ID = submissions`
+
+If you need to set them manually, you can run:
 
 ```bash
 # Credit package product ID (production)
-npx netlify env:set VITE_AUTUMN_50_CREDITS_ID prod_50_credits
+npx netlify env:set VITE_AUTUMN_50_CREDITS_ID prod_50_submissions
+
+# Credit feature ID for tracking usage (production)
+npx netlify env:set VITE_AUTUMN_CREDIT_FEATURE_ID submissions
 ```
 
-**Note**: `VITE_AUTUMN_50_CREDITS_ID` is a client-side variable (prefixed with `VITE_`), so it needs to be set in Netlify for production builds. The `AUTUMN_SECRET_KEY` is server-side and only needs to be in Convex.
+**Note**: `VITE_AUTUMN_50_CREDITS_ID` and `VITE_AUTUMN_CREDIT_FEATURE_ID` are client-side variables (prefixed with `VITE_`), so they need to be set in Netlify for production builds. The `AUTUMN_SECRET_KEY` is server-side and only needs to be in Convex.
 
 ### Using the Convex Dashboard
 

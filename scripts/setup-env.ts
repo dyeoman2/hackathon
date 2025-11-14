@@ -126,12 +126,16 @@ S3_PUBLIC_URL=http://localhost:9000
 # VITE_CONVEX_SITE_URL= set after running: pnpm run setup:convex
 
 # ==========================================
-# AUTUMN BILLING (Optional)
+# AUTUMN BILLING
 # ==========================================
 
-# Optional: Autumn product ID for credit purchases
+# Autumn product ID for credit purchases
 # Get from: https://useautumn.com dashboard after creating a credit package
-VITE_AUTUMN_50_CREDITS_ID=prod_50_credits
+VITE_AUTUMN_50_CREDITS_ID=prod_50_submissions
+
+# Autumn feature ID for credit tracking
+# Get from: https://useautumn.com dashboard after creating a metered feature
+VITE_AUTUMN_CREDIT_FEATURE_ID=submissions
 `;
 
   writeFileSync(envPath, envContent, 'utf8');

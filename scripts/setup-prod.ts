@@ -234,6 +234,8 @@ async function main() {
     console.log(`   BETTER_AUTH_SECRET = ${betterAuthSecret}`);
     console.log(`   VITE_CONVEX_URL = ${convexUrl}`);
     console.log(`   VITE_CONVEX_SITE_URL = ${convexSiteUrl}`);
+    console.log(`   VITE_AUTUMN_50_CREDITS_ID = prod_50_submissions`);
+    console.log(`   VITE_AUTUMN_CREDIT_FEATURE_ID = submissions`);
     console.log('');
     console.log('   For CONVEX_DEPLOY_KEY:');
     console.log('   1. Go to https://dashboard.convex.dev');
