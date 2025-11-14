@@ -104,7 +104,7 @@ export default defineSchema({
       }),
     ),
     votingClosedAt: v.optional(v.number()),
-    rubric: v.string(),
+    rubric: v.optional(v.string()), // Temporary: will be removed after migration
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index('by_ownerUserId', ['ownerUserId']),
@@ -157,6 +157,7 @@ export default defineSchema({
             v.literal('indexing'),
             v.literal('generating'),
             v.literal('complete'),
+            v.literal('error'),
           ),
         ),
       }),

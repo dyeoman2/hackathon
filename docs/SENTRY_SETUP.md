@@ -4,7 +4,7 @@ This guide will help you set up Sentry error monitoring, performance tracing, se
 
 ## What's Included
 
-Your TanStack Start template comes with a complete Sentry integration that includes:
+The hackathon platform comes with a complete Sentry integration that includes:
 
 - **Error Monitoring**: Automatic capture of unhandled errors and exceptions
 - **Performance Tracing**: TanStack Router navigation tracing and custom spans
@@ -52,7 +52,7 @@ VITE_SENTRY_DSN=https://your-project-dsn.ingest.sentry.io/project-id
 
 ## Sentry Services Overview
 
-Your TanStack Start template includes a comprehensive Sentry integration with the following services:
+The hackathon platform includes a comprehensive Sentry integration with the following services:
 
 ### 🔍 Error Monitoring
 
@@ -241,7 +241,7 @@ Console logging is forwarded to Sentry in production and while the development s
 
 ### Server Profiling in Development
 
-The template attempts to load Sentry's native Node profiling module during local runs. If the prebuilt binary for your platform is unavailable, you'll see a warning (`Node profiling native module not available`). The rest of the integration—including server errors, logs, and tracing—continues to work; only server CPU profiling is skipped locally.
+The platform attempts to load Sentry's native Node profiling module during local runs. If the prebuilt binary for your platform is unavailable, you'll see a warning (`Node profiling native module not available`). The rest of the integration—including server errors, logs, and tracing—continues to work; only server CPU profiling is skipped locally.
 
 ### Adjust Sample Rates (Optional)
 

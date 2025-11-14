@@ -265,16 +265,27 @@ export async function downloadAndUploadRepoHelper(
 
   // Parse GitHub URL
   const githubUrl = submission.repoUrl.trim();
+  console.log(`[Repo Download] Processing URL: ${githubUrl}`);
+
   const githubMatch = githubUrl.match(/github\.com[:/]+([^/]+)\/([^/#?]+)/i);
   if (!githubMatch) {
-    throw new Error('Invalid GitHub URL');
+    throw new Error(
+      `Invalid GitHub URL format: ${githubUrl}. Expected format: https://github.com/owner/repo or git@github.com:owner/repo.git`,
+    );
   }
 
   const [, owner, repo] = githubMatch;
   const repoName = repo.replace(/\.git$/, '').replace(/\/$/, '');
 
+  console.log(`[Repo Download] Parsed owner: "${owner}", repo: "${repoName}"`);
+
   // Optional GitHub token for higher rate limits / private repos
   const githubToken = process.env.GITHUB_TOKEN;
+  if (!githubToken) {
+    console.warn(
+      `[Repo Download] No GITHUB_TOKEN configured - private repositories will not be accessible`,
+    );
+  }
 
   // Get R2 credentials from env
   const r2BucketName = process.env.CLOUDFLARE_R2_BUCKET_NAME;
@@ -299,8 +310,14 @@ export async function downloadAndUploadRepoHelper(
     }
 
     // Fetch repository metadata to determine default branch
-    const repoInfoResponse = await fetch(`https://api.github.com/repos/${owner}/${repoName}`, {
+    const repoApiUrl = `https://api.github.com/repos/${owner}/${repoName}`;
+    console.log(`[Repo Download] Fetching repo metadata from: ${repoApiUrl}`);
+    console.log(`[Repo Download] Original URL: ${githubUrl}`);
+    console.log(`[Repo Download] Parsed owner: ${owner}, repo: ${repoName}`);
+
+    const repoInfoResponse = await fetch(repoApiUrl, {
       headers,
+      signal: AbortSignal.timeout(10000), // 10 second timeout
     });
 
     let defaultBranch: string | undefined;
@@ -308,11 +325,32 @@ export async function downloadAndUploadRepoHelper(
     if (repoInfoResponse.ok) {
       const repoInfo: { default_branch?: string } = await repoInfoResponse.json();
       defaultBranch = repoInfo.default_branch;
-    } else if (repoInfoResponse.status !== 404) {
-      const errorText = await repoInfoResponse.text();
-      throw new Error(
-        `Failed to fetch repository metadata: ${repoInfoResponse.status} ${errorText}`,
+      console.log(
+        `[Repo Download] Successfully fetched repo info. Default branch: ${defaultBranch}`,
       );
+    } else {
+      const errorText = await repoInfoResponse.text();
+      console.error(
+        `[Repo Download] Failed to fetch repo metadata: ${repoInfoResponse.status} ${errorText}`,
+      );
+
+      if (repoInfoResponse.status === 404) {
+        throw new Error(
+          `Repository not found: https://github.com/${owner}/${repoName}. Please check that the repository exists and is accessible.`,
+        );
+      } else if (repoInfoResponse.status === 403) {
+        throw new Error(
+          `Access denied to repository: https://github.com/${owner}/${repoName}. The repository may be private and require a GitHub token.`,
+        );
+      } else if (repoInfoResponse.status === 401) {
+        throw new Error(
+          `Authentication failed for repository: https://github.com/${owner}/${repoName}. The GitHub token may be invalid or expired.`,
+        );
+      } else {
+        throw new Error(
+          `Failed to fetch repository metadata: ${repoInfoResponse.status} ${errorText}`,
+        );
+      }
     }
 
     const branchCandidates = Array.from(
@@ -328,22 +366,55 @@ export async function downloadAndUploadRepoHelper(
     let usedBranch: string | null = null;
 
     for (const branch of branchCandidates) {
-      const archiveResponse = await fetch(
-        `https://codeload.github.com/${owner}/${repoName}/zip/${branch}`,
-        {
-          headers,
-        },
-      );
+      const archiveUrl = `https://codeload.github.com/${owner}/${repoName}/zip/${branch}`;
+      console.log(`[Repo Download] Trying to download archive from: ${archiveUrl}`);
 
-      if (archiveResponse.ok) {
-        archiveBuffer = Buffer.from(await archiveResponse.arrayBuffer());
-        usedBranch = branch;
-        break;
+      try {
+        const archiveResponse = await fetch(archiveUrl, {
+          headers,
+          signal: AbortSignal.timeout(30000), // 30 second timeout for larger downloads
+        });
+
+        console.log(
+          `[Repo Download] Archive download response: ${archiveResponse.status} for branch ${branch}`,
+        );
+
+        if (archiveResponse.ok) {
+          archiveBuffer = Buffer.from(await archiveResponse.arrayBuffer());
+          usedBranch = branch;
+          console.log(`[Repo Download] Successfully downloaded archive for branch: ${branch}`);
+          break;
+        } else {
+          const errorText = await archiveResponse.text();
+          console.warn(
+            `[Repo Download] Failed to download archive for branch ${branch}: ${archiveResponse.status} - ${errorText}`,
+          );
+
+          // Handle specific error cases
+          if (archiveResponse.status === 404) {
+            console.warn(
+              `[Repo Download] Branch '${branch}' not found for repository ${owner}/${repoName}`,
+            );
+          } else if (archiveResponse.status === 403) {
+            console.warn(
+              `[Repo Download] Access denied to branch '${branch}' - repository may be private`,
+            );
+          }
+        }
+      } catch (error) {
+        console.warn(
+          `[Repo Download] Network error downloading branch ${branch}:`,
+          error instanceof Error ? error.message : String(error),
+        );
       }
     }
 
     if (!archiveBuffer || !usedBranch) {
-      throw new Error('Failed to download repository archive after trying fallback branches');
+      console.error(`[Repo Download] All branch candidates failed: ${branchCandidates.join(', ')}`);
+      throw new Error(
+        `Failed to download repository archive from https://github.com/${owner}/${repoName} after trying branches: ${branchCandidates.join(', ')}. ` +
+          'This could mean the repository is empty, private (requires GitHub token), or the URL is incorrect.',
+      );
     }
     const zip = new AdmZip(archiveBuffer);
     zip.extractAllTo(tempDir, true);
@@ -566,6 +637,35 @@ export async function downloadAndUploadRepoHelper(
     }
 
     return { r2PathPrefix, uploadedAt: Date.now(), fileCount: codeFiles.length };
+  } catch (error) {
+    // Update submission state to error
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error(
+      `[Repo Download] Error processing submission ${args.submissionId}:`,
+      errorMessage,
+    );
+
+    try {
+      await ctx.runMutation(
+        (
+          internal.submissions as unknown as {
+            updateSubmissionSourceInternal: UpdateSubmissionSourceInternalRef;
+          }
+        ).updateSubmissionSourceInternal,
+        {
+          submissionId: args.submissionId,
+          processingState: 'error',
+        },
+      );
+    } catch (updateError) {
+      console.error(
+        `[Repo Download] Failed to update submission error state:`,
+        updateError instanceof Error ? updateError.message : String(updateError),
+      );
+    }
+
+    // Re-throw the error so it can be logged by the caller
+    throw error;
   } finally {
     // Cleanup temp files
     try {
@@ -616,9 +716,14 @@ export const fetchReadmeFromGitHub = internalAction({
       // Try to get default branch first
       let defaultBranch: string | undefined;
       try {
-        console.log(`[README Fetch] Fetching repo info for ${owner}/${repoName}...`);
-        const repoInfoResponse = await fetch(`https://api.github.com/repos/${owner}/${repoName}`, {
+        const repoApiUrl = `https://api.github.com/repos/${owner}/${repoName}`;
+        console.log(`[README Fetch] Fetching repo info from: ${repoApiUrl}`);
+        console.log(`[README Fetch] Original URL: ${githubUrl}`);
+        console.log(`[README Fetch] Parsed owner: ${owner}, repo: ${repoName}`);
+
+        const repoInfoResponse = await fetch(repoApiUrl, {
           headers,
+          signal: AbortSignal.timeout(10000), // 10 second timeout
         });
 
         if (repoInfoResponse.ok) {
@@ -630,6 +735,17 @@ export const fetchReadmeFromGitHub = internalAction({
           console.warn(
             `[README Fetch] Failed to get repo info: ${repoInfoResponse.status} - ${errorText}`,
           );
+
+          // Don't throw here - README fetch is optional, we'll try with fallback branches
+          if (repoInfoResponse.status === 404) {
+            console.warn(
+              `[README Fetch] Repository not found: https://github.com/${owner}/${repoName}`,
+            );
+          } else if (repoInfoResponse.status === 403) {
+            console.warn(
+              `[README Fetch] Access denied to repository: https://github.com/${owner}/${repoName}`,
+            );
+          }
         }
       } catch (error) {
         console.warn(`[README Fetch] Failed to get default branch:`, error);
@@ -659,7 +775,10 @@ export const fetchReadmeFromGitHub = internalAction({
             // Try GitHub API first (supports private repos with token)
             const apiUrl = `https://api.github.com/repos/${owner}/${repoName}/contents/${filename}?ref=${branch}`;
             console.log(`[README Fetch] Trying API: ${apiUrl}`);
-            const apiResponse = await fetch(apiUrl, { headers });
+            const apiResponse = await fetch(apiUrl, {
+              headers,
+              signal: AbortSignal.timeout(10000), // 10 second timeout
+            });
 
             if (apiResponse.ok) {
               const fileData: { content?: string; encoding?: string; name?: string } =
@@ -691,7 +810,10 @@ export const fetchReadmeFromGitHub = internalAction({
             try {
               const rawUrl = `https://raw.githubusercontent.com/${owner}/${repoName}/${branch}/${filename}`;
               console.log(`[README Fetch] Trying raw URL: ${rawUrl}`);
-              const rawResponse = await fetch(rawUrl, { headers });
+              const rawResponse = await fetch(rawUrl, {
+                headers,
+                signal: AbortSignal.timeout(10000), // 10 second timeout
+              });
 
               if (rawResponse.ok) {
                 readmeContent = await rawResponse.text();

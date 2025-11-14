@@ -31,7 +31,6 @@ const hackathonSchema = z.object({
     },
     { message: 'Submission deadline must be today or in the future' },
   ),
-  rubric: z.string().min(1, 'Rubric is required'),
 });
 
 interface NewHackathonModalProps {
@@ -59,11 +58,10 @@ export function NewHackathonModal({ open, onClose }: NewHackathonModalProps) {
 
   const form = useForm({
     defaultValues: {
-      title: '',
-      description: '',
-      submissionDeadline: defaultSubmissionDeadline,
-      rubric:
+      title: 'Tanstack Hackathon',
+      description:
         'Build something that shows what TanStack Start can really do with rich interactivity, live updates, server streaming, collaborative tools, full-stack routing, and RPCs with Convex, CodeRabbit, Netlify, Firecrawl, Sentry, Autumn, and Cloudflare.',
+      submissionDeadline: defaultSubmissionDeadline,
     },
     onSubmit: async ({ value }) => {
       setIsSubmitting(true);
@@ -77,7 +75,6 @@ export function NewHackathonModal({ open, onClose }: NewHackathonModalProps) {
           dates: {
             submissionDeadline: value.submissionDeadline.getTime(),
           },
-          rubric: value.rubric,
         });
 
         // Redirect to the new hackathon workspace
@@ -168,29 +165,6 @@ export function NewHackathonModal({ open, onClose }: NewHackathonModalProps) {
                   onDateChange={(date) => field.handleChange(date || new Date())}
                   disabled={isSubmitting}
                   required
-                />
-                {field.state.meta.errors && field.state.meta.errors.length > 0 && (
-                  <p className="text-sm text-destructive">{String(field.state.meta.errors[0])}</p>
-                )}
-              </Field>
-            )}
-          </form.Field>
-
-          <form.Field
-            name="rubric"
-            validators={{
-              onChange: hackathonSchema.shape.rubric,
-            }}
-          >
-            {(field) => (
-              <Field>
-                <FieldLabel>Judging Rubric *</FieldLabel>
-                <Textarea
-                  value={field.state.value}
-                  onChange={(e) => field.handleChange(e.target.value)}
-                  placeholder="Enter the judging criteria and rubric for this hackathon..."
-                  rows={6}
-                  disabled={isSubmitting}
                 />
                 {field.state.meta.errors && field.state.meta.errors.length > 0 && (
                   <p className="text-sm text-destructive">{String(field.state.meta.errors[0])}</p>

@@ -1,6 +1,6 @@
 # Firecrawl Setup Guide
 
-This guide will help you set up Firecrawl for web scraping and content extraction in the TanStack Start template.
+This guide will help you set up Firecrawl for web scraping and content extraction in the hackathon platform.
 
 ## Overview
 

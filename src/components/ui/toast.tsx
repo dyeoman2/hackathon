@@ -41,13 +41,13 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
           <div
             key={toast.id}
             className={`
-              min-w-80 p-4 rounded-md shadow-lg border-l-4 transition-all duration-300 ease-in-out
+              min-w-80 p-4 rounded-md shadow-lg border border-l-4 transition-all duration-300 ease-in-out
               ${
                 toast.type === 'success'
-                  ? 'bg-primary/5 border-l-primary text-primary'
+                  ? 'bg-card border-l-primary border-border text-primary'
                   : toast.type === 'error'
-                    ? 'bg-destructive/10 border-l-destructive text-destructive'
-                    : 'bg-muted border-l-border text-muted-foreground'
+                    ? 'bg-card border-l-destructive border-border text-destructive'
+                    : 'bg-card border-l-border border-border text-muted-foreground'
               }
             `}
           >
@@ -112,13 +112,13 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
                   type="button"
                   onClick={() => removeToast(toast.id)}
                   className={`
-                    inline-flex rounded-md p-1.5 hover:bg-black/20 focus:outline-none
+                    inline-flex rounded-md p-1.5 hover:bg-accent focus:outline-none
                     ${
                       toast.type === 'success'
-                        ? 'text-primary hover:bg-primary/10'
+                        ? 'text-primary'
                         : toast.type === 'error'
-                          ? 'text-destructive hover:bg-destructive/10'
-                          : 'text-muted-foreground hover:bg-accent'
+                          ? 'text-destructive'
+                          : 'text-muted-foreground'
                     }
                   `}
                 >

@@ -168,13 +168,13 @@ You can also set the Convex environment variable via the dashboard:
 
 ## 6. Optional: Regenerate Convex Types
 
-If you make adjustments to the Convex functions or upgrade to a new version of the template, regenerate Convex helper types:
+If you make adjustments to the Convex functions or upgrade to a new version of the platform, regenerate Convex helper types:
 
 ```bash
 npx convex codegen
 ```
 
-> The template ships with generated stubs so it compiles offline, but running codegen ensures type information stays synchronized with the Autumn actions after you have network access.
+> The platform ships with generated stubs so it compiles offline, but running codegen ensures type information stays synchronized with the Autumn actions after you have network access.
 
 ## Troubleshooting
 

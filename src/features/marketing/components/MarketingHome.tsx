@@ -5,7 +5,7 @@ import React from 'react';
 import type { IconType } from 'react-icons';
 import { SiGithub } from 'react-icons/si';
 import { Button } from '~/components/ui/button';
-import { cn, getAppName } from '~/lib/utils';
+import { cn } from '~/lib/utils';
 
 type GenericIconProps = ComponentProps<'img'> & ComponentProps<'svg'>;
 
@@ -103,7 +103,7 @@ const coreTechnologies: TechItem[] = [
   },
   {
     name: 'Tailwind',
-    description: 'Utility-first styling with design tokens configured for the template.',
+    description: 'Utility-first styling with design tokens configured for the platform.',
     Icon: createLazyIcon('SiTailwindcss'),
     iconClassName: 'text-sky-500',
     url: 'https://tailwindcss.com/',

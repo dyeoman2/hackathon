@@ -492,6 +492,7 @@ export const updateSubmissionSourceInternal = internalMutation({
         v.literal('indexing'),
         v.literal('generating'),
         v.literal('complete'),
+        v.literal('error'),
       ),
     ),
   },

@@ -1,6 +1,6 @@
 # Cloudflare AI Setup Guide
 
-This guide will help you set up Cloudflare Workers AI for the TanStack Start template, including both direct AI inference and AI Gateway monitoring.
+This guide will help you set up Cloudflare Workers AI for the hackathon platform, including both direct AI inference and AI Gateway monitoring.
 
 ## Prerequisites
 

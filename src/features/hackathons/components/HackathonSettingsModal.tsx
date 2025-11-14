@@ -35,7 +35,6 @@ const settingsSchema = z.object({
     },
     { message: 'Submission deadline must be today or in the future' },
   ),
-  rubric: z.string().min(1, 'Rubric is required'),
 });
 
 interface HackathonSettingsModalProps {
@@ -72,7 +71,6 @@ export function HackathonSettingsModal({
       title: '',
       description: '',
       submissionDeadline: new Date(),
-      rubric: '',
     },
     onSubmit: async ({ value }) => {
       setIsSubmitting(true);
@@ -87,7 +85,6 @@ export function HackathonSettingsModal({
           dates: {
             submissionDeadline: value.submissionDeadline.getTime(),
           },
-          rubric: value.rubric,
         });
         // Modal close is handled in the onSuccess callback
       } catch {
@@ -108,7 +105,6 @@ export function HackathonSettingsModal({
         ? new Date(hackathon.dates.submissionDeadline)
         : new Date();
       form.setFieldValue('submissionDeadline', submissionDeadline);
-      form.setFieldValue('rubric', hackathon.rubric);
     }
   }, [open, hackathon, form]);
 
@@ -122,7 +118,7 @@ export function HackathonSettingsModal({
         <DialogHeader>
           <DialogTitle>Hackathon Settings</DialogTitle>
           <DialogDescription>
-            Update hackathon details and judging rubric. Changes will be saved immediately.
+            Update hackathon details. Changes will be saved immediately.
           </DialogDescription>
         </DialogHeader>
 
@@ -186,29 +182,6 @@ export function HackathonSettingsModal({
                   disabled={isSubmitting}
                   required
                   preserveTime
-                />
-                {field.state.meta.errors && field.state.meta.errors.length > 0 && (
-                  <p className="text-sm text-destructive">{String(field.state.meta.errors[0])}</p>
-                )}
-              </Field>
-            )}
-          </form.Field>
-
-          <form.Field
-            name="rubric"
-            validators={{
-              onChange: settingsSchema.shape.rubric,
-            }}
-          >
-            {(field) => (
-              <Field>
-                <FieldLabel>Judging Rubric *</FieldLabel>
-                <Textarea
-                  value={field.state.value}
-                  onChange={(e) => field.handleChange(e.target.value)}
-                  placeholder="Enter the judging criteria and rubric for this hackathon..."
-                  rows={6}
-                  disabled={isSubmitting}
                 />
                 {field.state.meta.errors && field.state.meta.errors.length > 0 && (
                   <p className="text-sm text-destructive">{String(field.state.meta.errors[0])}</p>

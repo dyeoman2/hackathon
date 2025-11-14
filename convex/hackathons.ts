@@ -24,7 +24,6 @@ interface RequireHackathonRoleResult {
       start?: number;
       submissionDeadline?: number;
     };
-    rubric: string;
     createdAt: number;
     updatedAt: number;
   };
@@ -286,7 +285,6 @@ export const createHackathon = mutation({
         submissionDeadline: v.number(),
       }),
     ),
-    rubric: v.string(),
   },
   handler: async (ctx, args) => {
     const authUser = await authComponent.getAuthUser(ctx);
@@ -303,7 +301,6 @@ export const createHackathon = mutation({
       title: args.title.trim(),
       description: args.description?.trim(),
       dates: args.dates,
-      rubric: args.rubric.trim(),
       createdAt: now,
       updatedAt: now,
     });
@@ -335,7 +332,6 @@ export const updateHackathon = mutation({
         submissionDeadline: v.number(),
       }),
     ),
-    rubric: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     await requireHackathonRole(ctx, args.hackathonId, ['owner', 'admin']);
@@ -347,7 +343,6 @@ export const updateHackathon = mutation({
         start?: number;
         submissionDeadline: number;
       };
-      rubric?: string;
       updatedAt: number;
     } = {
       updatedAt: Date.now(),
@@ -361,9 +356,6 @@ export const updateHackathon = mutation({
     }
     if (args.dates !== undefined) {
       updateData.dates = args.dates;
-    }
-    if (args.rubric !== undefined) {
-      updateData.rubric = args.rubric.trim();
     }
 
     await ctx.db.patch(args.hackathonId, updateData);
@@ -938,6 +930,58 @@ export const reopenVoting = mutation({
     });
 
     return { success: true };
+  },
+});
+
+/**
+ * Migration mutation to remove rubric field from existing hackathons
+ * This is a one-time migration to remove the deprecated rubric field
+ * Uses replace to remove the field since it's no longer in the schema
+ */
+export const migrateRemoveRubric = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const hackathons = await ctx.db.query('hackathons').collect();
+
+    if (hackathons.length === 0) {
+      return { message: 'No hackathons found.' };
+    }
+
+    console.log(
+      `Found ${hackathons.length} hackathons. Removing rubric field...`,
+    );
+
+    const now = Date.now();
+    let updatedCount = 0;
+
+    for (const hackathon of hackathons) {
+      // Check if the hackathon has a rubric field (using type assertion to access it)
+      const hackathonAny = hackathon as typeof hackathon & { rubric?: string };
+      if ('rubric' in hackathonAny && hackathonAny.rubric !== undefined) {
+        console.log(`Removing rubric from hackathon "${hackathon.title}" (ID: ${hackathon._id})`);
+
+        // Replace the document without the rubric field
+        await ctx.db.replace(hackathon._id, {
+          ownerUserId: hackathon.ownerUserId,
+          title: hackathon.title,
+          description: hackathon.description,
+          dates: hackathon.dates,
+          votingClosedAt: hackathon.votingClosedAt,
+          createdAt: hackathon.createdAt,
+          updatedAt: now,
+        });
+
+        updatedCount++;
+      }
+    }
+
+    if (updatedCount === 0) {
+      return { message: 'All hackathons already have rubric field removed.' };
+    } else {
+      return {
+        message: `Successfully removed rubric field from ${updatedCount} hackathon(s).`,
+      };
+    }
   },
 });
 

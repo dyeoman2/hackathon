@@ -6,7 +6,7 @@ A modern hackathon management platform built with TanStack Start, featuring auto
 
 After registering and logging in, you can explore these hackathon management features:
 
-- **🏆 Hackathon Management** - Create and manage hackathons with custom deadlines, judging rubrics, and participant invites
+- **🏆 Hackathon Management** - Create and manage hackathons with custom deadlines and participant invites
 - **🚀 Automated Submission Processing** - Auto-download GitHub repos, capture live site screenshots, and generate AI project summaries
 - **⭐ Judging System** - Interactive rating interface with 0-10 scale, emoji feedback, and real-time result calculations
 - **🎪 Live Reveal Ceremony** - Dramatic podium reveals with confetti animations and step-by-step winner announcements

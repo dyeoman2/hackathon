@@ -620,7 +620,7 @@ async function setupWorkersAIAndGateway(): Promise<void> {
   console.log('\n🧠 Step 4: Enabling Workers AI & configuring AI Gateway...\n');
 
   console.log(
-    'Workers AI powers the rubric-based reviews and needs to be enabled in your Cloudflare account.',
+    'Workers AI powers the AI features and needs to be enabled in your Cloudflare account.',
   );
   console.log('If you have not done this yet:');
   console.log('  1. Go to https://dash.cloudflare.com');

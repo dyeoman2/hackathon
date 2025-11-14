@@ -29,7 +29,7 @@ export type GetSubmissionInternalRef = FunctionReference<
       readme?: string;
       readmeFilename?: string;
       readmeFetchedAt?: number;
-      processingState?: 'downloading' | 'uploading' | 'indexing' | 'generating' | 'complete';
+      processingState?: 'downloading' | 'uploading' | 'indexing' | 'generating' | 'complete' | 'error';
     };
     ai?: {
       summary?: string;
@@ -71,7 +71,7 @@ export type UpdateSubmissionSourceInternalRef = FunctionReference<
     readme?: string;
     readmeFilename?: string;
     readmeFetchedAt?: number;
-    processingState?: 'downloading' | 'uploading' | 'indexing' | 'generating' | 'complete';
+    processingState?: 'downloading' | 'uploading' | 'indexing' | 'generating' | 'complete' | 'error';
   },
   { success: boolean }
 >;
@@ -100,7 +100,6 @@ export type GetHackathonInternalRef = FunctionReference<
     title: string;
     description?: string;
     dates?: { start?: number; end?: number };
-    rubric: string;
     createdAt: number;
     updatedAt: number;
   } | null
