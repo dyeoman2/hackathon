@@ -219,6 +219,8 @@ async function main() {
 
   // Set required environment variables in Convex
   // Use existing env vars if set, otherwise use sensible defaults
+  // Note: RESEND_API_KEY is not automatically set here as it contains sensitive API credentials
+  // that should be manually configured in Convex using: npx convex env set RESEND_API_KEY your-key
   const envVars = [
     { name: 'BETTER_AUTH_SECRET', value: betterAuthSecret },
     {

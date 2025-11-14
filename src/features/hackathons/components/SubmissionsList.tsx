@@ -209,6 +209,7 @@ export function SubmissionsList({ hackathonId }: SubmissionsListProps) {
         open={isNewSubmissionModalOpen}
         onClose={() => setIsNewSubmissionModalOpen(false)}
         totalSubmissions={submissions.length}
+        userRole={hackathon?.role || 'judge'}
       />
 
       {submissionToDelete && (

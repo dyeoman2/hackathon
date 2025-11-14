@@ -93,8 +93,11 @@ VITE_APP_NAME="${appName}"
 # RESEND EMAIL SETUP
 # ==========================================
 #
-# RESEND_API_KEY=<your-resend-api-key>          # Optional: for email functionality
-RESEND_EMAIL_SENDER=onboarding@resend.dev
+# IMPORTANT: Resend environment variables must be set in Convex, NOT in this local .env file
+# Email functionality runs entirely within Convex for reliable delivery and queueing
+#
+# RESEND_API_KEY=<your-resend-api-key>          # DO NOT SET HERE - Set in Convex with: npx convex env set RESEND_API_KEY your-key
+RESEND_EMAIL_SENDER=onboarding@resend.dev       # Used for setup scripts (Convex will use this as default)
 
 # ==========================================
 # STORAGE (S3-Compatible: MinIO for dev, AWS S3 for prod)

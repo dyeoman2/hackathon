@@ -9,6 +9,7 @@ import {
 } from '~/components/ui/dropdown-menu';
 
 interface HackathonActionsMenuProps {
+  canEdit: boolean;
   canManageJudges: boolean;
   canDelete: boolean;
   onEdit: () => void;
@@ -18,6 +19,7 @@ interface HackathonActionsMenuProps {
 }
 
 export function HackathonActionsMenu({
+  canEdit,
   canManageJudges,
   canDelete,
   onEdit,
@@ -25,6 +27,12 @@ export function HackathonActionsMenu({
   onInviteJudge,
   onDelete,
 }: HackathonActionsMenuProps) {
+  const hasAnyActions = canEdit || canManageJudges || canDelete;
+
+  if (!hasAnyActions) {
+    return null;
+  }
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -34,10 +42,12 @@ export function HackathonActionsMenu({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-48">
-        <DropdownMenuItem onClick={onEdit}>
-          <Edit className="h-4 w-4" />
-          Edit
-        </DropdownMenuItem>
+        {canEdit && (
+          <DropdownMenuItem onClick={onEdit}>
+            <Edit className="h-4 w-4" />
+            Edit
+          </DropdownMenuItem>
+        )}
         {canManageJudges && (
           <DropdownMenuItem onClick={onManageJudges}>
             <Scale className="h-4 w-4" />

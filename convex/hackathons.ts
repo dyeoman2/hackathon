@@ -336,6 +336,12 @@ export const updateHackathon = mutation({
   handler: async (ctx, args) => {
     await requireHackathonRole(ctx, args.hackathonId, ['owner', 'admin']);
 
+    // Get the current hackathon to check voting status
+    const currentHackathon = await ctx.db.get(args.hackathonId);
+    if (!currentHackathon) {
+      throw new Error('Hackathon not found');
+    }
+
     const updateData: {
       title?: string;
       description?: string;
@@ -343,6 +349,7 @@ export const updateHackathon = mutation({
         start?: number;
         submissionDeadline: number;
       };
+      votingClosedAt?: undefined;
       updatedAt: number;
     } = {
       updatedAt: Date.now(),
@@ -356,6 +363,17 @@ export const updateHackathon = mutation({
     }
     if (args.dates !== undefined) {
       updateData.dates = args.dates;
+
+      // Check if we should reopen voting
+      // If voting is closed and the new submission deadline is in the future, reopen voting
+      const now = Date.now();
+      const newDeadline = args.dates.submissionDeadline;
+      const isDeadlineInFuture = newDeadline > now;
+      const isVotingClosed = currentHackathon.votingClosedAt !== undefined;
+
+      if (isVotingClosed && isDeadlineInFuture) {
+        updateData.votingClosedAt = undefined;
+      }
     }
 
     await ctx.db.patch(args.hackathonId, updateData);

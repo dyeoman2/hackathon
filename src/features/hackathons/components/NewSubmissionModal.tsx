@@ -33,6 +33,7 @@ interface NewSubmissionModalProps {
   open: boolean;
   onClose: () => void;
   totalSubmissions: number;
+  userRole: 'owner' | 'admin' | 'judge';
 }
 
 export function NewSubmissionModal({
@@ -40,6 +41,7 @@ export function NewSubmissionModal({
   open,
   onClose,
   totalSubmissions,
+  userRole,
 }: NewSubmissionModalProps) {
   const router = useRouter();
   const toast = useToast();
@@ -60,11 +62,20 @@ export function NewSubmissionModal({
   const [_, setCreditCheckAttempt] = useState(0);
 
   const freeSubmissionsRemaining = Math.max(FREE_SUBMISSION_LIMIT - totalSubmissions, 0);
-  const hasPaidCredits = freeSubmissionsRemaining <= 0 && creditStatus === 'allowed';
+  const isOutOfCredits = freeSubmissionsRemaining <= 0;
+  const hasPaidCredits = isOutOfCredits && creditStatus === 'allowed';
   const checkingPaidCredits =
-    freeSubmissionsRemaining <= 0 && (creditStatus === 'idle' || creditStatus === 'checking');
+    isOutOfCredits &&
+    (creditStatus === 'idle' || creditStatus === 'checking') &&
+    userRole !== 'judge';
+
+  // Submission is locked if:
+  // 1. Hackathon is out of credits AND user is owner/admin but doesn't have credits/error checking
+  // Judges can always create submissions (they are not charged for fees)
   const submissionLocked =
-    freeSubmissionsRemaining <= 0 && !(creditStatus === 'allowed' || creditStatus === 'error');
+    isOutOfCredits &&
+    (userRole === 'owner' || userRole === 'admin') &&
+    !(creditStatus === 'allowed' || creditStatus === 'error');
 
   let creditLabel: string;
   if (freeSubmissionsRemaining > 0) {
@@ -95,7 +106,7 @@ export function NewSubmissionModal({
       return;
     }
 
-    if (freeSubmissionsRemaining > 0) {
+    if (freeSubmissionsRemaining > 0 || userRole === 'judge') {
       setCreditStatus('idle');
       setCreditInfo(null);
       return;
@@ -146,7 +157,7 @@ export function NewSubmissionModal({
     return () => {
       cancelled = true;
     };
-  }, [open, freeSubmissionsRemaining, checkCreditsAction]);
+  }, [open, freeSubmissionsRemaining, checkCreditsAction, userRole]);
 
   const handleRetryCreditCheck = () => {
     setCreditStatus('idle');
@@ -335,26 +346,33 @@ export function NewSubmissionModal({
             )}
           </form.Field>
 
-          {!checkingPaidCredits && (
+          {!checkingPaidCredits && userRole !== 'judge' && (
             <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 sm:flex sm:items-center sm:justify-between">
               <span className="font-medium">{creditLabel}</span>
-              <div className="mt-2 flex w-full flex-col gap-2 sm:mt-0 sm:w-auto sm:flex-row">
-                {creditStatus === 'error' && (
-                  <Button type="button" size="sm" variant="ghost" onClick={handleRetryCreditCheck}>
-                    Check Credits
+              {isOutOfCredits && (
+                <div className="mt-2 flex w-full flex-col gap-2 sm:mt-0 sm:w-auto sm:flex-row">
+                  {creditStatus === 'error' && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      onClick={handleRetryCreditCheck}
+                    >
+                      Check Credits
+                    </Button>
+                  )}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="text-primary"
+                    onClick={handleBuyCredits}
+                    disabled={isCheckoutLoading}
+                  >
+                    {isCheckoutLoading ? 'Opening Checkout...' : 'Buy Credits'}
                   </Button>
-                )}
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="text-primary"
-                  onClick={handleBuyCredits}
-                  disabled={isCheckoutLoading}
-                >
-                  {isCheckoutLoading ? 'Opening Checkout...' : 'Buy Credits'}
-                </Button>
-              </div>
+                </div>
+              )}
             </div>
           )}
 

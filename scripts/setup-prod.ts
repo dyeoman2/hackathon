@@ -78,6 +78,8 @@ async function setupConvexProduction(): Promise<{
 
   // Set production environment variables
   // Use existing env vars if set, otherwise use sensible defaults
+  // Note: RESEND_API_KEY is not automatically set here as it contains sensitive API credentials
+  // that should be manually configured in Convex using: npx convex env set RESEND_API_KEY your-key --prod
   const prodEnvVars = [
     { name: 'BETTER_AUTH_SECRET', value: betterAuthSecret },
     { name: 'VITE_APP_NAME', value: process.env.VITE_APP_NAME },

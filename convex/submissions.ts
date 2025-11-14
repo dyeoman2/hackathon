@@ -159,7 +159,7 @@ export const getSubmissionCreationContext = internalQuery({
     hackathonId: v.id('hackathons'),
   },
   handler: async (ctx, args) => {
-    const { hackathon, userId } = await requireHackathonRole(ctx, args.hackathonId, [
+    const { hackathon, userId, role } = await requireHackathonRole(ctx, args.hackathonId, [
       'owner',
       'admin',
       'judge',
@@ -176,6 +176,8 @@ export const getSubmissionCreationContext = internalQuery({
 
     return {
       userId,
+      role,
+      hackathonOwnerUserId: hackathon.ownerUserId,
       freeSubmissionsRemaining: Math.max(FREE_SUBMISSION_LIMIT - totalSubmissions.length, 0),
     };
   },
@@ -259,7 +261,7 @@ export const createSubmission = action({
     siteUrl: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const { userId, freeSubmissionsRemaining } = await ctx.runQuery(
+    const { userId, role, hackathonOwnerUserId, freeSubmissionsRemaining } = await ctx.runQuery(
       submissionsInternalApi.submissions.getSubmissionCreationContext,
       { hackathonId: args.hackathonId },
     );
@@ -267,31 +269,40 @@ export const createSubmission = action({
     const requiresPaidCredits = freeSubmissionsRemaining <= 0;
     let usingPaidCredit = false;
 
+    // When paid credits are required, check credits for owners/admins but allow judges to submit
+    // Judges are not responsible for hackathon fees - only owners/admins are
     if (requiresPaidCredits) {
-      if (!isAutumnConfigured()) {
-        throw new Error(
-          `${AUTUMN_NOT_CONFIGURED_ERROR.message} All free submissions have been used for this hackathon.`,
-        );
+      if (role === 'judge') {
+        // Judges can create paid submissions without credit checks
+        // The system will still track usage but won't charge judges
+        usingPaidCredit = true;
+      } else {
+        // Owners and admins must have credits to create paid submissions
+        if (!isAutumnConfigured()) {
+          throw new Error(
+            `${AUTUMN_NOT_CONFIGURED_ERROR.message} This hackathon has run out of submission credits. Please purchase more credits to continue.`,
+          );
+        }
+
+        const checkResult = await autumn.check(ctx, {
+          featureId: getAutumnCreditFeatureId(),
+        });
+
+        if (checkResult.error) {
+          throw new Error(
+            checkResult.error.message ??
+              'Unable to verify credit balance. Please try again or purchase credits.',
+          );
+        }
+
+        if (!checkResult.data?.allowed) {
+          throw new Error(
+            'You have run out of submission credits. Please purchase more credits to continue.',
+          );
+        }
+
+        usingPaidCredit = true;
       }
-
-      const checkResult = await autumn.check(ctx, {
-        featureId: getAutumnCreditFeatureId(),
-      });
-
-      if (checkResult.error) {
-        throw new Error(
-          checkResult.error.message ??
-            'Unable to verify credit balance. Please try again or purchase credits.',
-        );
-      }
-
-      if (!checkResult.data?.allowed) {
-        throw new Error(
-          'No credits remaining for hackathon submissions. Purchase more credits to continue.',
-        );
-      }
-
-      usingPaidCredit = true;
     }
 
     const result = await ctx.runMutation(
@@ -306,7 +317,8 @@ export const createSubmission = action({
       },
     );
 
-    if (usingPaidCredit) {
+    if (usingPaidCredit && role !== 'judge') {
+      // Only track and charge for owners/admins - judges are not responsible for fees
       try {
         const trackResult = await autumn.track(ctx, {
           featureId: getAutumnCreditFeatureId(),
@@ -316,6 +328,7 @@ export const createSubmission = action({
             hackathonId: args.hackathonId,
             submissionId: result.submissionId,
             createdByUserId: userId,
+            hackathonOwnerUserId, // Track which hackathon owner this relates to
           },
         });
 

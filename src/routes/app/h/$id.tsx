@@ -51,6 +51,11 @@ function HackathonWorkspaceComponent() {
   );
 
   // Memoize permission check to avoid recalculation on every render - must be called before early returns
+  const canEdit = useMemo(
+    () => hackathon?.role === 'owner' || hackathon?.role === 'admin',
+    [hackathon?.role],
+  );
+
   const canManageJudges = useMemo(
     () => hackathon?.role === 'owner' || hackathon?.role === 'admin',
     [hackathon?.role],
@@ -127,6 +132,7 @@ function HackathonWorkspaceComponent() {
             }
             actions={
               <HackathonActionsMenu
+                canEdit={canEdit}
                 canManageJudges={canManageJudges}
                 canDelete={canDelete}
                 onEdit={() => setIsSettingsModalOpen(true)}
