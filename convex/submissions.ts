@@ -1,5 +1,6 @@
 import { v } from 'convex/values';
 import { assertUserId } from '../src/lib/shared/user-id';
+import { calculateAverageRating, extractRatingValues } from '../src/lib/shared/rating-utils';
 import { internal } from './_generated/api';
 import {
   internalAction,
@@ -62,16 +63,14 @@ export const listByHackathon = query({
     // Build a map of ratings by submission ID
     const ratingsBySubmission = new Map<
       string,
-      { myRating: number | null; averageRating: number | null }
+      { myRating: number | null; averageRating: number }
     >();
 
     for (const submission of submissions) {
       const submissionRatings = allRatings.filter((r) => r.submissionId === submission._id);
       const myRating = submissionRatings.find((r) => r.userId === userId)?.rating ?? null;
-      const averageRating =
-        submissionRatings.length > 0
-          ? submissionRatings.reduce((sum, r) => sum + r.rating, 0) / submissionRatings.length
-          : null;
+      const ratingValues = extractRatingValues(submissionRatings);
+      const averageRating = calculateAverageRating(ratingValues);
 
       ratingsBySubmission.set(submission._id, { myRating, averageRating });
     }
@@ -80,7 +79,7 @@ export const listByHackathon = query({
     return submissions.map((submission) => ({
       ...submission,
       myRating: ratingsBySubmission.get(submission._id)?.myRating ?? null,
-      averageRating: ratingsBySubmission.get(submission._id)?.averageRating ?? null,
+      averageRating: ratingsBySubmission.get(submission._id)?.averageRating ?? 0,
     }));
   },
 });
@@ -132,10 +131,8 @@ export const getSubmission = query({
       .collect();
 
     const myRating = allRatings.find((r) => r.userId === userId)?.rating ?? null;
-    const averageRating =
-      allRatings.length > 0
-        ? allRatings.reduce((sum, r) => sum + r.rating, 0) / allRatings.length
-        : null;
+    const ratingValues = extractRatingValues(allRatings);
+    const averageRating = calculateAverageRating(ratingValues);
 
     return {
       ...submission,
@@ -331,18 +328,16 @@ export const deleteSubmission = mutation({
     // Check membership - only owners and admins can delete submissions
     await requireHackathonRole(ctx, submission.hackathonId, ['owner', 'admin']);
 
-    // Delete R2 files if they exist (fire and forget - don't block deletion if R2 deletion fails)
-    const r2PathPrefix = submission.source?.r2Key;
-    if (r2PathPrefix) {
-      // Schedule R2 deletion to run immediately after mutation completes
-      await ctx.scheduler.runAfter(
-        0,
-        internal.submissionsActions.r2Cleanup.deleteSubmissionR2FilesAction,
-        {
-          r2PathPrefix,
-        },
-      );
-    }
+    // Delete all R2 files for this submission (fire and forget - don't block deletion if R2 deletion fails)
+    // Use the broader prefix to clean up both files and screenshots
+    const r2PathPrefix = `repos/${args.submissionId}`;
+    await ctx.scheduler.runAfter(
+      0,
+      internal.submissionsActions.r2Cleanup.deleteSubmissionR2FilesAction,
+      {
+        r2PathPrefix,
+      },
+    );
 
     // Delete the submission
     await ctx.db.delete(args.submissionId);
@@ -634,6 +629,20 @@ export const removeScreenshot = mutation({
       screenshots: filteredScreenshots,
       updatedAt: Date.now(),
     });
+
+    // Delete the screenshot from R2 storage (fire and forget)
+    try {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.submissionsActions.screenshot.deleteScreenshotFromR2Internal,
+        {
+          r2Key: args.r2Key,
+        },
+      );
+    } catch (error) {
+      console.error('Failed to schedule R2 screenshot deletion:', error);
+      // Don't throw - screenshot removal should succeed even if R2 deletion fails
+    }
 
     return { success: true };
   },

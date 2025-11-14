@@ -869,6 +869,48 @@ export const deleteScreenshotFromR2 = guarded.action(
 );
 
 /**
+ * Internal action to delete screenshot from R2 storage only (used by mutations)
+ */
+export const deleteScreenshotFromR2Internal = internalAction({
+  args: {
+    r2Key: v.string(),
+  },
+  handler: async (_ctx, args) => {
+    // Get R2 credentials
+    const r2BucketName = process.env.CLOUDFLARE_R2_BUCKET_NAME;
+    const r2AccessKeyId = process.env.CLOUDFLARE_R2_ACCESS_KEY_ID;
+    const r2SecretAccessKey = process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY;
+    const r2AccountId = process.env.CLOUDFLARE_ACCOUNT_ID;
+
+    // Delete from R2 if configured
+    if (r2BucketName && r2AccessKeyId && r2SecretAccessKey && r2AccountId) {
+      try {
+        const s3Client = new S3Client({
+          region: 'auto',
+          endpoint: `https://${r2AccountId}.r2.cloudflarestorage.com`,
+          credentials: {
+            accessKeyId: r2AccessKeyId,
+            secretAccessKey: r2SecretAccessKey,
+          },
+        });
+
+        await s3Client.send(
+          new DeleteObjectCommand({
+            Bucket: r2BucketName,
+            Key: args.r2Key,
+          }),
+        );
+      } catch (error) {
+        // Log error but don't fail - R2 cleanup is best effort
+        console.error('Failed to delete screenshot from R2:', error);
+      }
+    }
+
+    return { success: true };
+  },
+});
+
+/**
  * Delete a screenshot from a submission (legacy - kept for backward compatibility)
  * Note: Prefer using removeScreenshot mutation + deleteScreenshotFromR2 action for better UX
  */

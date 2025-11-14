@@ -1,6 +1,7 @@
 import { v } from 'convex/values';
 import { mutation, query } from './_generated/server';
 import { requireHackathonRole } from './hackathons';
+import { calculateAverageRating, extractRatingValues } from '../src/lib/shared/rating-utils';
 
 // Emoji scale matching the rating slider (0-10)
 const EMOJI_SCALE = ['💀', '😬', '🥴', '🫠', '😅', '🙂', '🔥', '🚀', '🤯', '👑'];
@@ -113,12 +114,10 @@ export const getRevealSubmissions = query({
     // Build ratings data for each submission
     const submissionsWithRatings = submissions.map((submission) => {
       const submissionRatings = allRatings.filter((r) => r.submissionId === submission._id);
+      const ratingValues = extractRatingValues(submissionRatings);
 
-      // Calculate average rating
-      const averageRating =
-        submissionRatings.length > 0
-          ? submissionRatings.reduce((sum, r) => sum + r.rating, 0) / submissionRatings.length
-          : 0;
+      // Calculate average rating (unrated submissions get 0 for ranking)
+      const averageRating = calculateAverageRating(ratingValues);
 
       // Map ratings to emojis
       const emojiVotes = submissionRatings.map((r) => EMOJI_SCALE[r.rating] ?? '🙂');

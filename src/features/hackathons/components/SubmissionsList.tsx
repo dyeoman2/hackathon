@@ -143,7 +143,7 @@ export function SubmissionsList({ hackathonId }: SubmissionsListProps) {
                 <TableHead>Title</TableHead>
                 <TableHead>Team</TableHead>
                 <TableHead>My Rating</TableHead>
-                <TableHead>Overall Rating</TableHead>
+                {canDelete && <TableHead>Overall Rating</TableHead>}
                 <TableHead>Submitted</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
@@ -164,13 +164,11 @@ export function SubmissionsList({ hackathonId }: SubmissionsListProps) {
                       <span className="text-muted-foreground">—</span>
                     )}
                   </TableCell>
-                  <TableCell>
-                    {submission.averageRating !== null && submission.averageRating !== undefined ? (
+                  {canDelete && (
+                    <TableCell>
                       <Badge variant="outline">{submission.averageRating.toFixed(1)}</Badge>
-                    ) : (
-                      <span className="text-muted-foreground">—</span>
-                    )}
-                  </TableCell>
+                    </TableCell>
+                  )}
                   <TableCell>{new Date(submission.createdAt).toLocaleString()}</TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-2">

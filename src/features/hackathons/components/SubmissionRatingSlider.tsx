@@ -45,15 +45,28 @@ export function SubmissionRatingSlider({
     setDisplayValue((prev) => (prev === nextValue ? prev : nextValue));
   }, [pendingRating, currentRating]);
 
-  const handleValueChange = useCallback((values: number[]) => {
-    setDisplayValue(values[0]);
-  }, []);
+  const handleValueChange = useCallback(
+    (values: number[]) => {
+      const [nextValue] = values;
+      if (typeof nextValue !== 'number') {
+        return;
+      }
+      setDisplayValue(nextValue);
+      queueSubmissionRatingSave(submissionId, nextValue).catch((error) => {
+        console.error('Failed to save rating:', error);
+      });
+    },
+    [submissionId],
+  );
 
   const handleValueCommit = useCallback(
     (values: number[]) => {
-      const newValue = values[0];
-      setDisplayValue(newValue);
+      const [newValue] = values;
+      if (typeof newValue !== 'number') {
+        return;
+      }
 
+      setDisplayValue(newValue);
       queueSubmissionRatingSave(submissionId, newValue).catch((error) => {
         console.error('Failed to save rating:', error);
       });
@@ -149,15 +162,6 @@ export function SubmissionRatingSlider({
                 );
               })}
             </div>
-          </div>
-          <div className="min-h-5 text-xs">
-            {savingError ? (
-              <span className="text-destructive">Unable to save rating. Please try again.</span>
-            ) : isSaving ? (
-              <span className="text-muted-foreground">
-                {isFlushing ? 'Saving rating...' : 'Waiting to sync rating...'}
-              </span>
-            ) : null}
           </div>
         </div>
       </CardContent>
