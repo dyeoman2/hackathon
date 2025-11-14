@@ -7,7 +7,7 @@ export function ThemeProvider({ children, ...props }: ThemeProviderProps) {
       // Enable system theme detection
       enableSystem
       // Disable theme application during SSR to prevent hydration mismatches
-      defaultTheme="system"
+      defaultTheme="dark"
       // Use class attribute for better compatibility
       attribute="class"
       storageKey="theme"
