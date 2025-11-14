@@ -38,12 +38,27 @@ function JudgeManagementComponent() {
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [resendingId, setResendingId] = useState<Id<'memberships'> | null>(null);
   const [revokingId, setRevokingId] = useState<Id<'memberships'> | null>(null);
+  const [removingId, setRemovingId] = useState<Id<'memberships'> | null>(null);
 
   const resendInvite = useMutation(api.hackathons.resendInvite);
   const revokeInvite = useMutation(api.hackathons.revokeInvite);
+  const removeJudge = useMutation(api.hackathons.removeJudge);
 
   const capitalizeRole = (role: string) => {
     return role.charAt(0).toUpperCase() + role.slice(1);
+  };
+
+  const getRoleBadgeStyle = (role: string) => {
+    switch (role) {
+      case 'owner':
+        return 'border-red-200/70 bg-red-50 text-red-700 *:data-[slot=alert-description]:text-red-700/90 dark:border-red-500/40 dark:bg-red-500/15 dark:text-red-100 dark:*:data-[slot=alert-description]:text-red-100/80';
+      case 'admin':
+        return 'border-purple-200/70 bg-purple-50 text-purple-700 *:data-[slot=alert-description]:text-purple-700/90 dark:border-purple-500/40 dark:bg-purple-500/15 dark:text-purple-100 dark:*:data-[slot=alert-description]:text-purple-100/80';
+      case 'judge':
+        return 'border-blue-200/70 bg-blue-50 text-blue-700 *:data-[slot=alert-description]:text-blue-700/90 dark:border-blue-500/40 dark:bg-blue-500/15 dark:text-blue-100 dark:*:data-[slot=alert-description]:text-blue-100/80';
+      default:
+        return 'border-gray-200/70 bg-gray-50 text-gray-700 *:data-[slot=alert-description]:text-gray-700/90 dark:border-gray-500/40 dark:bg-gray-500/15 dark:text-gray-100 dark:*:data-[slot=alert-description]:text-gray-100/80';
+    }
   };
 
   const handleResend = async (membershipId: Id<'memberships'>) => {
@@ -67,6 +82,18 @@ function JudgeManagementComponent() {
       toast.showToast(error instanceof Error ? error.message : 'Failed to revoke invite', 'error');
     } finally {
       setRevokingId(null);
+    }
+  };
+
+  const handleRemove = async (membershipId: Id<'memberships'>) => {
+    setRemovingId(membershipId);
+    try {
+      await removeJudge({ membershipId });
+      toast.showToast('Judge removed successfully', 'success');
+    } catch (error) {
+      toast.showToast(error instanceof Error ? error.message : 'Failed to remove judge', 'error');
+    } finally {
+      setRemovingId(null);
     }
   };
 
@@ -141,7 +168,7 @@ function JudgeManagementComponent() {
                         {membership.userEmail || membership.invitedEmail || '—'}
                       </TableCell>
                       <TableCell>
-                        <Badge variant="outline">{capitalizeRole(membership.role)}</Badge>
+                        <Badge variant="outline" className={getRoleBadgeStyle(membership.role)}>{capitalizeRole(membership.role)}</Badge>
                       </TableCell>
                       <TableCell>
                         <Badge variant="success">Active</Badge>
@@ -155,8 +182,13 @@ function JudgeManagementComponent() {
                             </Button>
                           </SimpleTooltip>
                         ) : (
-                          <Button variant="ghost" size="sm">
-                            Remove
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleRemove(membership._id)}
+                            disabled={removingId === membership._id}
+                          >
+                            {removingId === membership._id ? 'Removing...' : 'Remove'}
                           </Button>
                         )}
                       </TableCell>
@@ -198,7 +230,7 @@ function JudgeManagementComponent() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Badge variant="outline">{capitalizeRole(membership.role)}</Badge>
+                        <Badge variant="outline" className={getRoleBadgeStyle(membership.role)}>{capitalizeRole(membership.role)}</Badge>
                       </TableCell>
                       <TableCell>
                         <Badge variant="warning">Invited</Badge>

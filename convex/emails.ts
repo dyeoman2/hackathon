@@ -5,6 +5,13 @@ import { action, internalAction, internalMutation, query } from './_generated/se
 import { authComponent } from './auth';
 
 /**
+ * Email theme colors - centralized for easy maintenance
+ */
+const EMAIL_THEME = {
+  primary: '#00a7aa',
+} as const;
+
+/**
  * Validate that required environment variables are set
  */
 function validateRequiredEnvVars() {
@@ -50,7 +57,15 @@ export const checkEmailServiceConfigured = query({
 });
 
 // Base template functions
-const createBaseHtmlTemplate = (content: string, title: string, businessName: string) => `
+const createBaseHtmlTemplate = ({
+  content,
+  title,
+  businessName,
+}: {
+  content: string;
+  title: string;
+  businessName: string;
+}) => `
   <!DOCTYPE html>
   <html>
     <head>
@@ -60,8 +75,7 @@ const createBaseHtmlTemplate = (content: string, title: string, businessName: st
     </head>
     <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
       <div style="text-align: center; margin-bottom: 30px;">
-        <h1 style="color: #2563eb; margin: 0; font-size: 24px;">${businessName}</h1>
-        <p style="color: #6b7280; margin: 5px 0 0 0; font-size: 14px;">Get Started</p>
+        <h1 style="color: ${EMAIL_THEME.primary}; margin: 0; font-size: 24px;">${businessName}</h1>
       </div>
 
       ${content}
@@ -75,7 +89,13 @@ const createBaseHtmlTemplate = (content: string, title: string, businessName: st
   </html>
 `;
 
-const createBaseTextTemplate = (content: string, businessName: string) => `
+const createBaseTextTemplate = ({
+  content,
+  businessName,
+}: {
+  content: string;
+  businessName: string;
+}) => `
 ${businessName} - Get Started
 
 ${content}
@@ -120,7 +140,7 @@ export const sendPasswordResetEmailMutation = internalMutation({
 
       <div style="text-align: center; margin: 30px 0;">
         <a href="${resetLink}"
-           style="background-color: #2563eb; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; font-weight: 500; display: inline-block;">
+           style="background-color: ${EMAIL_THEME.primary}; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; font-weight: 500; display: inline-block;">
           Reset Password
         </a>
       </div>
@@ -128,7 +148,7 @@ export const sendPasswordResetEmailMutation = internalMutation({
       <p style="margin: 25px 0 15px 0; color: #6b7280; font-size: 14px;">
         If the button doesn't work, you can copy and paste this link into your browser:
       </p>
-      <p style="margin: 0; color: #2563eb; word-break: break-all; font-size: 14px;">
+      <p style="margin: 0; color: ${EMAIL_THEME.primary}; word-break: break-all; font-size: 14px;">
         ${resetLink}
       </p>
     </div>
@@ -159,8 +179,12 @@ If you didn't request this password reset, please ignore this email.
       from: `${appName} <${emailSender}>`,
       to: args.user.email,
       subject: `Reset your ${appName} password`,
-      html: createBaseHtmlTemplate(htmlContent, 'Reset your password', appName),
-      text: createBaseTextTemplate(textContent, appName),
+      html: createBaseHtmlTemplate({
+        content: htmlContent,
+        title: 'Reset your password',
+        businessName: appName,
+      }),
+      text: createBaseTextTemplate({ content: textContent, businessName: appName }),
     });
   },
 });
@@ -208,17 +232,17 @@ export const sendJudgeInviteEmailMutation = internalMutation({
 
     // In local development (when using npx convex dev), log the invite link instead of sending email
     // Development deployments have URLs ending in .convex.site
-    if (process.env.CONVEX_SITE_URL?.endsWith('.convex.site')) {
+    if (process.env.ENVIRONMENT !== 'production') {
       console.log(`[LOCAL DEV] Judge invite link: ${inviteLink}`);
       return;
     }
 
     const htmlContent = `
     <div style="background: #f8fafc; padding: 30px; border-radius: 8px; margin-bottom: 20px;">
-      <h2 style="color: #1f2937; margin: 0 0 15px 0; font-size: 20px;">Invitation to judge hackathon</h2>
+      <h2 style="color: #1f2937; margin: 0 0 15px 0; font-size: 20px;">Invitation to judge ${args.hackathonTitle}</h2>
       <p style="margin: 0 0 15px 0; color: #4b5563;">Hi there,</p>
       <p style="margin: 0 0 20px 0; color: #4b5563;">
-        You have been invited to judge ${args.hackathonTitle}.
+        You have been invited by ${args.inviterName} to judge ${args.hackathonTitle}.
         If you did not expect this invitation, you can safely ignore this email.
       </p>
       <p style="margin: 0 0 25px 0; color: #4b5563;">
@@ -227,7 +251,7 @@ export const sendJudgeInviteEmailMutation = internalMutation({
 
       <div style="text-align: center; margin: 30px 0;">
         <a href="${inviteLink}"
-           style="background-color: #2563eb; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; font-weight: 500; display: inline-block;">
+           style="background-color: ${EMAIL_THEME.primary}; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; font-weight: 500; display: inline-block;">
           Accept Invitation
         </a>
       </div>
@@ -235,7 +259,7 @@ export const sendJudgeInviteEmailMutation = internalMutation({
       <p style="margin: 25px 0 15px 0; color: #6b7280; font-size: 14px;">
         If the button doesn't work, you can copy and paste this link into your browser:
       </p>
-      <p style="margin: 0; color: #2563eb; word-break: break-all; font-size: 14px;">
+      <p style="margin: 0; color: ${EMAIL_THEME.primary}; word-break: break-all; font-size: 14px;">
         ${inviteLink}
       </p>
     </div>
@@ -251,7 +275,7 @@ export const sendJudgeInviteEmailMutation = internalMutation({
     const textContent = `
 Hi there,
 
-You have been invited to judge ${args.hackathonTitle}.
+You have been invited by ${args.inviterName} to judge ${args.hackathonTitle}.
 If you did not expect this invitation, you can safely ignore this email.
 
 To accept your invitation, please visit: ${inviteLink}
@@ -265,9 +289,13 @@ If you did not expect this invitation, please ignore this email.
     await resend.sendEmail(ctx, {
       from: `${appName} <${emailSender}>`,
       to: args.email,
-      subject: `Invitation to judge ${args.hackathonTitle}`,
-      html: createBaseHtmlTemplate(htmlContent, 'Invitation to judge', appName),
-      text: createBaseTextTemplate(textContent, appName),
+      subject: `${args.inviterName} invited you to judge ${args.hackathonTitle}`,
+      html: createBaseHtmlTemplate({
+        content: htmlContent,
+        title: 'Invitation to judge',
+        businessName: appName,
+      }),
+      text: createBaseTextTemplate({ content: textContent, businessName: appName }),
     });
   },
 });

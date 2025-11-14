@@ -639,6 +639,43 @@ export const revokeInvite = mutation({
 });
 
 /**
+ * Remove active judge/admin from hackathon
+ * Only owner/admin can remove judges, cannot remove owner role, cannot remove yourself
+ */
+export const removeJudge = mutation({
+  args: {
+    membershipId: v.id('memberships'),
+  },
+  handler: async (ctx, args) => {
+    const membership = await ctx.db.get(args.membershipId);
+    if (!membership) {
+      throw new Error('Membership not found');
+    }
+
+    // Check permissions - only owner/admin can remove judges
+    const { userId } = await requireHackathonRole(ctx, membership.hackathonId, ['owner', 'admin']);
+
+    if (membership.status !== 'active') {
+      throw new Error('Can only remove active members');
+    }
+
+    if (membership.role === 'owner') {
+      throw new Error('Cannot remove the hackathon owner');
+    }
+
+    // Cannot remove yourself
+    if (membership.userId === userId) {
+      throw new Error('Cannot remove yourself from the hackathon');
+    }
+
+    // Delete the membership
+    await ctx.db.delete(args.membershipId);
+
+    return { success: true };
+  },
+});
+
+/**
  * Simple token hashing function (using Web Crypto API available in Convex)
  */
 async function hashToken(token: string, secret: string): Promise<string> {
