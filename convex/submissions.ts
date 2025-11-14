@@ -158,7 +158,12 @@ export const createSubmission = mutation({
   },
   handler: async (ctx, args) => {
     // Check membership - any active member can create submissions
-    await requireHackathonRole(ctx, args.hackathonId, ['owner', 'admin', 'judge']);
+    const { hackathon } = await requireHackathonRole(ctx, args.hackathonId, ['owner', 'admin', 'judge']);
+
+    // Check if hackathon has ended
+    if (hackathon.dates?.submissionDeadline && Date.now() > hackathon.dates.submissionDeadline) {
+      throw new Error('Cannot create submissions for hackathons that have ended');
+    }
 
     const now = Date.now();
 
@@ -673,6 +678,17 @@ export const upsertRating = mutation({
     const submission = await ctx.db.get(args.submissionId);
     if (!submission) {
       throw new Error('Submission not found');
+    }
+
+    // Get hackathon to check if voting is closed
+    const hackathon = await ctx.db.get(submission.hackathonId);
+    if (!hackathon) {
+      throw new Error('Hackathon not found');
+    }
+
+    // Check if voting is closed
+    if (hackathon.votingClosedAt) {
+      throw new Error('Voting has ended. No new ratings can be submitted.');
     }
 
     // Check membership - only owners, admins, and judges can rate

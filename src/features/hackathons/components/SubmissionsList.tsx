@@ -54,10 +54,15 @@ export function SubmissionsList({ hackathonId }: SubmissionsListProps) {
     });
   };
 
-  // Memoize permission check to avoid recalculation on every render
+  // Memoize permission checks to avoid recalculation on every render
   const canDelete = useMemo(
     () => hackathon?.role === 'owner' || hackathon?.role === 'admin',
     [hackathon?.role],
+  );
+
+  const hasEnded = useMemo(
+    () => !!(hackathon?.dates?.submissionDeadline && Date.now() > hackathon.dates.submissionDeadline),
+    [hackathon?.dates?.submissionDeadline],
   );
 
   const handleDelete = async () => {
@@ -94,7 +99,12 @@ export function SubmissionsList({ hackathonId }: SubmissionsListProps) {
     <div className="space-y-4">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="text-2xl font-semibold">Submissions</h2>
-        <Button onClick={() => setIsNewSubmissionModalOpen(true)} className="w-full sm:w-auto">
+        <Button
+          onClick={() => setIsNewSubmissionModalOpen(true)}
+          className="w-full sm:w-auto"
+          disabled={hasEnded}
+          title={hasEnded ? "Cannot add submissions to hackathons that are no longer accepting submissions" : undefined}
+        >
           <Plus className="h-4 w-4" />
           New Submission
         </Button>
@@ -102,8 +112,14 @@ export function SubmissionsList({ hackathonId }: SubmissionsListProps) {
 
       {submissions.length === 0 ? (
         <div className="rounded-md border bg-card p-12 text-center">
-          <p className="text-muted-foreground mb-4">No submissions yet.</p>
-          <Button onClick={() => setIsNewSubmissionModalOpen(true)}>
+          <p className="text-muted-foreground mb-4">
+            {hasEnded ? "This hackathon is no longer accepting submissions. No new submissions can be added." : "No submissions yet."}
+          </p>
+          <Button
+            onClick={() => setIsNewSubmissionModalOpen(true)}
+            disabled={hasEnded}
+            title={hasEnded ? "Cannot add submissions to hackathons that are no longer accepting submissions" : undefined}
+          >
             <Plus className="h-4 w-4" />
             Add Submission
           </Button>
@@ -117,7 +133,7 @@ export function SubmissionsList({ hackathonId }: SubmissionsListProps) {
                 <TableHead>Team</TableHead>
                 <TableHead>My Rating</TableHead>
                 <TableHead>Overall Rating</TableHead>
-                <TableHead>Created</TableHead>
+                <TableHead>Submitted</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -144,7 +160,7 @@ export function SubmissionsList({ hackathonId }: SubmissionsListProps) {
                       <span className="text-muted-foreground">—</span>
                     )}
                   </TableCell>
-                  <TableCell>{new Date(submission.createdAt).toLocaleDateString()}</TableCell>
+                  <TableCell>{new Date(submission.createdAt).toLocaleString()}</TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-2">
                       <Button

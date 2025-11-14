@@ -4,13 +4,12 @@ import { useQuery } from 'convex/react';
 import { Plus } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { PageHeader } from '~/components/PageHeader';
-import { Badge } from '~/components/ui/badge';
 import { Button } from '~/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~/components/ui/card';
 import { Skeleton } from '~/components/ui/skeleton';
+import { HackathonTimeBadge } from '~/features/hackathons/components/HackathonTimeBadge';
 import { NewHackathonModal } from '~/features/hackathons/components/NewHackathonModal';
 import { usePerformanceMonitoring } from '~/hooks/use-performance-monitoring';
-import { cn, formatTimeRemaining } from '~/lib/utils';
 
 export const Route = createFileRoute('/app/h/')({
   component: HackathonListComponent,
@@ -55,18 +54,6 @@ function HackathonListComponent() {
     );
   }
 
-  const getRoleBadgeVariant = (role: string) => {
-    switch (role) {
-      case 'owner':
-        return 'default';
-      case 'admin':
-        return 'secondary';
-      case 'judge':
-        return 'outline';
-      default:
-        return 'outline';
-    }
-  };
 
   return (
     <div className="space-y-6">
@@ -108,15 +95,13 @@ function HackathonListComponent() {
             >
               <CardHeader>
                 <div className="flex items-start justify-between gap-2">
-                  <CardTitle className="flex-1 min-w-0 wrap-break-word leading-normal">
-                    {hackathon.title}
-                  </CardTitle>
-                  <Badge
-                    variant={getRoleBadgeVariant(hackathon.role)}
-                    className="shrink-0 capitalize"
-                  >
-                    {hackathon.role}
-                  </Badge>
+                  <CardTitle className="wrap-break-word leading-normal flex-1">
+                  {hackathon.title}
+                </CardTitle>
+                  <HackathonTimeBadge
+                    submissionDeadline={hackathon.dates?.submissionDeadline}
+                    className="flex-shrink-0"
+                  />
                 </div>
                 {hackathon.description && (
                   <CardDescription className="line-clamp-2 mt-2">
@@ -124,25 +109,6 @@ function HackathonListComponent() {
                   </CardDescription>
                 )}
               </CardHeader>
-              <CardContent>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">
-                    Created {new Date(hackathon.createdAt).toLocaleDateString()}
-                  </span>
-                  {hackathon.dates?.end && (
-                    <span
-                      className={cn(
-                        'font-medium',
-                        new Date(hackathon.dates.end).getTime() < Date.now()
-                          ? 'text-muted-foreground'
-                          : 'text-primary',
-                      )}
-                    >
-                      {formatTimeRemaining(hackathon.dates.end)}
-                    </span>
-                  )}
-                </div>
-              </CardContent>
             </Card>
           ))}
         </div>

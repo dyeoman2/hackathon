@@ -927,25 +927,21 @@ function PodiumSlot({
               <span className="text-2xl font-extrabold text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.8)]">
                 {getOrdinalLabel(rank)} Place
               </span>
-              <button
-                type="button"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  if (interactionEnabled) {
-                    void onReveal();
-                  }
-                }}
-                disabled={!interactionEnabled}
-                className="pointer-events-auto text-xs font-bold tracking-[0.3em] uppercase text-white border-2 border-purple-400/80 rounded-full px-6 py-2.5 bg-linear-to-r from-purple-600/90 to-pink-600/90 shadow-[0_0_20px_rgba(168,85,247,0.6),inset_0_1px_0_rgba(255,255,255,0.2)] hover:from-purple-500 hover:to-pink-500 hover:shadow-[0_0_30px_rgba(168,85,247,0.8)] disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 active:scale-95"
+              <div
+                className={`text-xs font-bold tracking-[0.3em] uppercase text-white border-2 border-purple-400/80 rounded-full px-6 py-2.5 bg-linear-to-r from-purple-600/90 to-pink-600/90 shadow-[0_0_20px_rgba(168,85,247,0.6),inset_0_1px_0_rgba(255,255,255,0.2)] transition-all duration-300 ${
+                  interactionEnabled
+                    ? 'hover:from-purple-500 hover:to-pink-500 hover:shadow-[0_0_30px_rgba(168,85,247,0.8)] transform hover:scale-105 active:scale-95'
+                    : 'opacity-50'
+                }`}
               >
                 Tap to Reveal
-              </button>
+              </div>
             </div>
           )}
         </div>
 
         {/* Content */}
-        <div className="px-5 pt-5 pb-7 space-y-2 bg-linear-to-b from-slate-900/50 to-slate-950/80">
+        <div className="px-5 pt-5 pb-7 space-y-2 bg-linear-to-b from-slate-900/50 to-slate-950/80 min-h-[120px]">
           {revealed ? (
             <div className="space-y-1.5 animate-slide-up">
               <a
@@ -989,10 +985,14 @@ function PodiumSlot({
               </div>
             </div>
           ) : (
-            <>
+            <div className="space-y-1.5">
               <div className="h-6 bg-linear-to-r from-slate-700/50 to-slate-800/50 rounded animate-pulse" />
               <div className="h-4 bg-linear-to-r from-slate-700/50 to-slate-800/50 rounded w-2/3 animate-pulse" />
-            </>
+              <div className="h-7 pt-1 flex items-center gap-2">
+                <div className="h-7 w-7 bg-linear-to-r from-slate-700/50 to-slate-800/50 rounded animate-pulse" />
+                <div className="h-7 w-7 bg-linear-to-r from-slate-700/50 to-slate-800/50 rounded animate-pulse" />
+              </div>
+            </div>
           )}
         </div>
       </CardComponent>

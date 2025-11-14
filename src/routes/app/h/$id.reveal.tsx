@@ -3,7 +3,6 @@ import type { Id } from '@convex/_generated/dataModel';
 import { createFileRoute } from '@tanstack/react-router';
 import { useQuery } from 'convex/react';
 import { useEffect } from 'react';
-import { Skeleton } from '~/components/ui/skeleton';
 import { RevealStage } from '~/features/reveal/components/RevealStage';
 import { useRevealSync } from '~/features/reveal/hooks/useRevealSync';
 
@@ -31,12 +30,11 @@ function RevealPageComponent() {
   // Real-time sync hook for phase management (must be called before any early returns)
   const revealSync = useRevealSync(hackathonId, revealState ?? null);
 
-  // Auto-start reveal if requested
+  // Auto-start reveal if requested OR if in preview mode (voting not closed)
   useEffect(() => {
     if (
-      !search.autostart ||
       !revealState ||
-      !hackathon?.role ||
+      !hackathon ||
       revealSync.isStarting ||
       revealState.phase !== 'idle'
     ) {
@@ -48,18 +46,18 @@ function RevealPageComponent() {
       return;
     }
 
+    // Auto-start if autostart is requested OR if voting is not closed (preview mode)
+    const shouldAutoStart = search.autostart || !hackathon.votingClosedAt;
+    
+    if (shouldAutoStart) {
     void revealSync.startReveal();
-  }, [search.autostart, revealState, hackathon?.role, revealSync]);
+    }
+  }, [search.autostart, revealState, hackathon, revealSync]);
 
   // Loading state - check for undefined (still loading)
   if (hackathon === undefined || revealState === undefined || submissions === undefined) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-950 via-purple-950 to-slate-950">
-        <div className="space-y-4 text-center">
-          <Skeleton className="mx-auto h-8 w-64" />
-          <Skeleton className="mx-auto h-4 w-48" />
-        </div>
-      </div>
+      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-purple-950 to-slate-950" />
     );
   }
 
@@ -78,11 +76,20 @@ function RevealPageComponent() {
   // Check if user is presenter (owner/admin)
   const isPresenter = hackathon.role === 'owner' || hackathon.role === 'admin';
 
+  // Check if in preview mode (voting not closed)
+  const isPreviewMode = !hackathon.votingClosedAt;
+
+  // Show nothing if in idle phase and preview mode (while auto-starting) or while starting
+  if ((revealState.phase === 'idle' && isPreviewMode) || revealSync.isStarting) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-purple-950 to-slate-950" />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-purple-950 to-slate-950">
       <RevealStage
         hackathonId={hackathonId}
-        hackathonTitle={hackathon.title}
         revealState={revealState}
         submissions={submissions}
         isPresenter={isPresenter}

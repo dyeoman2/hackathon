@@ -52,7 +52,6 @@ interface RankedSubmission {
 
 interface RevealStageProps {
   hackathonId: Id<'hackathons'>;
-  hackathonTitle: string;
   revealState: RevealState;
   submissions: RankedSubmission[];
   isPresenter: boolean;
@@ -61,7 +60,6 @@ interface RevealStageProps {
 
 export function RevealStage({
   hackathonId,
-  hackathonTitle,
   revealState,
   submissions,
   isPresenter,
@@ -70,13 +68,14 @@ export function RevealStage({
   const { phase } = revealSync;
   const stageRef = useRef<HTMLDivElement>(null);
   const { isFullscreen, enterFullscreen, exitFullscreen } = useFullscreen(stageRef);
-  // Hide buttons by default when entering podium phases (reveal stage)
+  // Hide buttons by default when entering podium phases (reveal stage) or idle phase
   const isPodiumPhase =
     phase === 'podiumReady' ||
     phase === 'reveal3rd' ||
     phase === 'reveal2nd' ||
     phase === 'reveal1st';
-  const [buttonsVisible, setButtonsVisible] = useState(!isPodiumPhase);
+  const isIdlePhase = phase === 'idle';
+  const [buttonsVisible, setButtonsVisible] = useState(!isPodiumPhase && !isIdlePhase);
   const [isHovering, setIsHovering] = useState(false);
   const fadeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const previousPhaseRef = useRef(phase);
@@ -86,13 +85,14 @@ export function RevealStage({
   useEffect(() => {
     if (previousPhaseRef.current !== phase) {
       previousPhaseRef.current = phase;
-      // Hide buttons when entering podium phases, show them for other phases
+      // Hide buttons when entering podium phases or idle phase, show them for other phases
       const isPodium =
         phase === 'podiumReady' ||
         phase === 'reveal3rd' ||
         phase === 'reveal2nd' ||
         phase === 'reveal1st';
-      setButtonsVisible(!isPodium);
+      const isIdle = phase === 'idle';
+      setButtonsVisible(!isPodium && !isIdle);
       setIsHovering(false);
       if (fadeTimeoutRef.current) {
         clearTimeout(fadeTimeoutRef.current);
@@ -153,35 +153,13 @@ export function RevealStage({
   }, [enterFullscreen, exitFullscreen, isFullscreen]);
 
   if (phase === 'idle') {
+    // Show loading state while transitioning from idle
     content = (
-      <div className="flex min-h-screen flex-col items-center justify-center space-y-8 p-8">
-        <div className="text-center space-y-4">
-          <h1 className="text-5xl font-bold text-white">{hackathonTitle}</h1>
-          <p className="text-xl text-slate-300">Final Results Reveal</p>
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="space-y-4 text-center">
+          <div className="w-8 h-8 border-4 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto" />
+          <p className="text-slate-300">Loading reveal...</p>
         </div>
-
-        {isPresenter ? (
-          <div className="space-y-4 text-center">
-            <Button
-              size="lg"
-              onClick={revealSync.startReveal}
-              disabled={revealSync.isStarting}
-              className="text-lg px-8 py-6 bg-purple-600 hover:bg-purple-700"
-            >
-              {revealSync.isStarting ? 'Starting...' : 'Start Reveal Sequence'}
-            </Button>
-            <p className="text-sm text-slate-400">Only you can see this button</p>
-          </div>
-        ) : (
-          <div className="text-center space-y-2">
-            <p className="text-slate-300">Waiting for presenter to start...</p>
-            <div className="flex items-center justify-center space-x-2">
-              <div className="w-2 h-2 bg-purple-500 rounded-full animate-pulse" />
-              <div className="w-2 h-2 bg-purple-500 rounded-full animate-pulse delay-75" />
-              <div className="w-2 h-2 bg-purple-500 rounded-full animate-pulse delay-150" />
-            </div>
-          </div>
-        )}
       </div>
     );
   } else if (phase === 'countdown') {
@@ -281,7 +259,9 @@ export function RevealStage({
       className="relative min-h-screen bg-linear-to-br from-slate-950 via-purple-950 to-slate-950"
     >
       {content}
-      {/* biome-ignore lint/a11y/noStaticElementInteractions: Container div with pointer-events-none, actual interactions are on child elements */}
+      {/* Only render buttons when not in idle phase */}
+      {!isIdlePhase && (
+        /* biome-ignore lint/a11y/noStaticElementInteractions: Container div with pointer-events-none, actual interactions are on child elements */
       <div
         className={`fixed top-4 left-4 right-4 z-50 flex items-center justify-between pointer-events-none transition-opacity duration-500 ${
           buttonsVisible ? 'opacity-100' : 'opacity-0'
@@ -318,6 +298,7 @@ export function RevealStage({
           <FullscreenToggle isFullscreen={isFullscreen} onToggle={handleToggleFullscreen} />
         </div>
       </div>
+      )}
     </div>
   );
 }

@@ -20,7 +20,7 @@ function AppLayout() {
   const { isAuthenticated, isPending } = useAuth();
   const redirectRef = useRef(false);
   const redirectTimerRef = useRef<number | null>(null);
-  const redirectTarget = location.href ?? '/app';
+  const redirectTarget = location.pathname ?? '/app';
 
   useEffect(() => {
     if (isPending) {

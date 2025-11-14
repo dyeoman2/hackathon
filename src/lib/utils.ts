@@ -15,7 +15,7 @@ export function getAppName(): string {
 
 /**
  * Format time remaining until a date
- * Returns a human-readable string like "2 days left", "5 hours left", "Ended", etc.
+ * Returns a human-readable string like "2 days left", "5 hours left", "Submissions closed", etc.
  */
 export function formatTimeRemaining(endDate: number | Date | undefined | null): string {
   if (!endDate) {
@@ -27,7 +27,7 @@ export function formatTimeRemaining(endDate: number | Date | undefined | null): 
   const diff = end.getTime() - now.getTime();
 
   if (diff < 0) {
-    return 'Ended';
+    return 'Closed';
   }
 
   const seconds = Math.floor(diff / 1000);

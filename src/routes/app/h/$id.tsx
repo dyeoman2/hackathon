@@ -11,8 +11,10 @@ import { Skeleton } from '~/components/ui/skeleton';
 import { useToast } from '~/components/ui/toast';
 import { HackathonActionsMenu } from '~/features/hackathons/components/HackathonActionsMenu';
 import { HackathonSettingsModal } from '~/features/hackathons/components/HackathonSettingsModal';
+import { HackathonTimeBadge } from '~/features/hackathons/components/HackathonTimeBadge';
 import { InviteJudgeModal } from '~/features/hackathons/components/InviteJudgeModal';
 import { SubmissionsList } from '~/features/hackathons/components/SubmissionsList';
+import { VotingStatusBanner } from '~/features/hackathons/components/VotingStatusBanner';
 import { usePerformanceMonitoring } from '~/hooks/use-performance-monitoring';
 
 export const Route = createFileRoute('/app/h/$id')({
@@ -33,6 +35,7 @@ function HackathonWorkspaceComponent() {
   const [isDeleting, setIsDeleting] = useState(false);
 
   const deleteHackathon = useMutation(api.hackathons.deleteHackathon);
+  const reopenVoting = useMutation(api.hackathons.reopenVoting);
 
   // Check if we're on a nested route (like /judges) - must be called before early returns
   const isNestedRoute = useMemo(
@@ -85,32 +88,50 @@ function HackathonWorkspaceComponent() {
   return (
     <div className="space-y-6">
       {!isNestedRoute && (
-        <PageHeader
-          title={hackathon.title}
-          description={hackathon.description}
-          actions={
-            <HackathonActionsMenu
-              canManageJudges={canManageJudges}
-              canDelete={canDelete}
-              onEdit={() => setIsSettingsModalOpen(true)}
-              onManageJudges={() => {
-                void router.navigate({
-                  to: '/app/h/$id/judges',
-                  params: { id },
-                });
-              }}
-              onInviteJudge={() => setIsInviteJudgeModalOpen(true)}
-              onStartReveal={() => {
-                void router.navigate({
-                  to: '/app/h/$id/reveal',
-                  params: { id },
-                  search: { autostart: true },
-                });
-              }}
-              onDelete={() => setIsDeleteDialogOpen(true)}
-            />
-          }
-        />
+        <>
+          <PageHeader
+            title={hackathon.title}
+            description={hackathon.description}
+            titleActions={
+              <HackathonTimeBadge submissionDeadline={hackathon.dates?.submissionDeadline} />
+            }
+            actions={
+              <HackathonActionsMenu
+                canManageJudges={canManageJudges}
+                canDelete={canDelete}
+                isVotingClosed={!!hackathon.votingClosedAt}
+                onEdit={() => setIsSettingsModalOpen(true)}
+                onManageJudges={() => {
+                  void router.navigate({
+                    to: '/app/h/$id/judges',
+                    params: { id },
+                  });
+                }}
+                onInviteJudge={() => setIsInviteJudgeModalOpen(true)}
+                onReopenVoting={() => {
+                  const confirmed = window.confirm(
+                    'Are you sure you want to reopen voting? This will allow judges to submit and change their ratings again.',
+                  );
+                  if (confirmed) {
+                    reopenVoting({ hackathonId: id as Id<'hackathons'> })
+                      .then(() => {
+                        toast.showToast('Voting reopened successfully', 'success');
+                      })
+                      .catch((error) => {
+                        console.error('Failed to reopen voting:', error);
+                        toast.showToast(
+                          error instanceof Error ? error.message : 'Failed to reopen voting',
+                          'error',
+                        );
+                      });
+                  }
+                }}
+                onDelete={() => setIsDeleteDialogOpen(true)}
+              />
+            }
+          />
+          <VotingStatusBanner hackathonId={id as Id<'hackathons'>} hackathonRole={hackathon.role} />
+        </>
       )}
 
       {isNestedRoute ? <Outlet /> : <SubmissionsList hackathonId={id as Id<'hackathons'>} />}

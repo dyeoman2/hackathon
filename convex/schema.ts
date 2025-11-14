@@ -100,9 +100,10 @@ export default defineSchema({
     dates: v.optional(
       v.object({
         start: v.optional(v.number()),
-        end: v.number(),
+        submissionDeadline: v.number(),
       }),
     ),
+    votingClosedAt: v.optional(v.number()),
     rubric: v.string(),
     createdAt: v.number(),
     updatedAt: v.number(),

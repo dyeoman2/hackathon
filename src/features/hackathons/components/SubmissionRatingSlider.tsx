@@ -14,17 +14,21 @@ const emojiScale = ['💀', '😬', '🥴', '🫠', '😅', '🙂', '🔥', '�
 
 interface SubmissionRatingSliderProps {
   submissionId: Id<'submissions'>;
+  hackathonId: Id<'hackathons'>;
   hackathonRole?: 'owner' | 'admin' | 'judge' | null;
   className?: string;
 }
 
 export function SubmissionRatingSlider({
   submissionId,
+  hackathonId,
   hackathonRole,
   className,
 }: SubmissionRatingSliderProps) {
   // Fetch current user's rating
   const userRating = useQuery(api.submissions.getUserRating, { submissionId });
+  // Fetch hackathon to check if voting is closed
+  const hackathon = useQuery(api.hackathons.getHackathon, { hackathonId });
 
   // Get the current rating value (from server or default to 0)
   const currentRating = userRating?.rating ?? 0;
@@ -67,8 +71,9 @@ export function SubmissionRatingSlider({
   // Check if user can rate (owner, admin, or judge)
   const canRate =
     hackathonRole === 'owner' || hackathonRole === 'admin' || hackathonRole === 'judge';
-  const isLoading = userRating === undefined;
-  const isDisabled = !canRate || isLoading;
+  const isVotingClosed = hackathon?.votingClosedAt !== undefined;
+  const isLoading = userRating === undefined || hackathon === undefined;
+  const isDisabled = !canRate || isLoading || isVotingClosed;
 
   return (
     <Card className={className}>
@@ -77,7 +82,9 @@ export function SubmissionRatingSlider({
           <div>
             <CardTitle>My Rating</CardTitle>
             <CardDescription>
-              {canRate
+              {isVotingClosed
+                ? 'Voting has ended. No new ratings can be submitted.'
+                : canRate
                 ? 'Rate this submission from 0 to 10.'
                 : 'Only owners, admins, and judges can rate submissions.'}
             </CardDescription>

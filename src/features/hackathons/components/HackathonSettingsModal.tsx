@@ -25,7 +25,7 @@ import { useOptimisticMutation } from '~/features/admin/hooks/useOptimisticUpdat
 const settingsSchema = z.object({
   title: z.string().min(1, 'Title is required').max(255, 'Title is too long'),
   description: z.string().optional(),
-  endDateTime: z.date().refine(
+  submissionDeadline: z.date().refine(
     (date) => {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
@@ -33,7 +33,7 @@ const settingsSchema = z.object({
       selectedDate.setHours(0, 0, 0, 0);
       return selectedDate >= today;
     },
-    { message: 'End date must be today or in the future' },
+    { message: 'Submission deadline must be today or in the future' },
   ),
   rubric: z.string().min(1, 'Rubric is required'),
 });
@@ -71,7 +71,7 @@ export function HackathonSettingsModal({
     defaultValues: {
       title: '',
       description: '',
-      endDateTime: new Date(),
+      submissionDeadline: new Date(),
       rubric: '',
     },
     onSubmit: async ({ value }) => {
@@ -85,7 +85,7 @@ export function HackathonSettingsModal({
           title: value.title,
           description: value.description?.trim() || undefined,
           dates: {
-            end: value.endDateTime.getTime(),
+            submissionDeadline: value.submissionDeadline.getTime(),
           },
           rubric: value.rubric,
         });
@@ -103,9 +103,9 @@ export function HackathonSettingsModal({
     if (open && hackathon) {
       form.setFieldValue('title', hackathon.title);
       form.setFieldValue('description', hackathon.description || '');
-      // Set the end date as Date object
-      const endDateTime = hackathon.dates?.end ? new Date(hackathon.dates.end) : new Date();
-      form.setFieldValue('endDateTime', endDateTime);
+      // Set the submission deadline as Date object
+      const submissionDeadline = hackathon.dates?.submissionDeadline ? new Date(hackathon.dates.submissionDeadline) : new Date();
+      form.setFieldValue('submissionDeadline', submissionDeadline);
       form.setFieldValue('rubric', hackathon.rubric);
     }
   }, [open, hackathon, form]);
@@ -170,14 +170,14 @@ export function HackathonSettingsModal({
           </form.Field>
 
           <form.Field
-            name="endDateTime"
+            name="submissionDeadline"
             validators={{
-              onChange: settingsSchema.shape.endDateTime,
+              onChange: settingsSchema.shape.submissionDeadline,
             }}
           >
             {(field) => (
               <Field>
-                <FieldLabel>End Date & Time *</FieldLabel>
+                <FieldLabel>Submission Deadline *</FieldLabel>
                 <DateTimePicker
                   date={field.state.value}
                   onDateChange={(date) => field.handleChange(date || new Date())}

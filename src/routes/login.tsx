@@ -45,7 +45,23 @@ function resolveRedirectTarget(value?: string | null): string {
     return '/app';
   }
 
-  const [path] = value.split('?');
+  // Extract path from URL if full URL is provided
+  let path: string;
+  try {
+    if (value.startsWith('http://') || value.startsWith('https://')) {
+      const url = new URL(value);
+      path = url.pathname;
+    } else {
+      path = value.split('?')[0];
+    }
+  } catch {
+    path = value.split('?')[0];
+  }
+
+  // Prevent redirect loops to auth pages
+  if (['/login', '/register', '/forgot-password', '/reset-password'].includes(path)) {
+    return '/app';
+  }
 
   // Allow invite routes
   if (path.startsWith('/invite/')) {

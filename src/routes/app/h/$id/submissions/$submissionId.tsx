@@ -283,6 +283,7 @@ function SubmissionDetailComponent() {
 
       <div className="space-y-6">
         <SubmissionRatingSlider
+          hackathonId={hackathonId as Id<'hackathons'>}
           submissionId={submissionId as Id<'submissions'>}
           hackathonRole={hackathon.role}
         />

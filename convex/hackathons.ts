@@ -22,7 +22,7 @@ interface RequireHackathonRoleResult {
     description?: string;
     dates?: {
       start?: number;
-      end?: number;
+      submissionDeadline?: number;
     };
     rubric: string;
     createdAt: number;
@@ -283,7 +283,7 @@ export const createHackathon = mutation({
     dates: v.optional(
       v.object({
         start: v.optional(v.number()),
-        end: v.number(),
+        submissionDeadline: v.number(),
       }),
     ),
     rubric: v.string(),
@@ -332,7 +332,7 @@ export const updateHackathon = mutation({
     dates: v.optional(
       v.object({
         start: v.optional(v.number()),
-        end: v.number(),
+        submissionDeadline: v.number(),
       }),
     ),
     rubric: v.optional(v.string()),
@@ -345,7 +345,7 @@ export const updateHackathon = mutation({
       description?: string;
       dates?: {
         start?: number;
-        end: number;
+        submissionDeadline: number;
       };
       rubric?: string;
       updatedAt: number;
@@ -846,10 +846,106 @@ export const getHackathonInternal = internalQuery({
 });
 
 /**
- * Migration mutation to set end dates for existing hackathons
+ * Close voting and start reveal
+ * Only owner/admin can close voting
+ */
+export const closeVotingAndStartReveal = mutation({
+  args: {
+    hackathonId: v.id('hackathons'),
+  },
+  handler: async (ctx, args) => {
+    // Only owner/admin can close voting
+    const { userId } = await requireHackathonRole(ctx, args.hackathonId, ['owner', 'admin']);
+
+    const hackathon = await ctx.db.get(args.hackathonId);
+    if (!hackathon) {
+      throw new Error('Hackathon not found');
+    }
+
+    // Check if voting is already closed
+    if (hackathon.votingClosedAt) {
+      throw new Error('Voting is already closed');
+    }
+
+    const now = Date.now();
+
+    // Close voting
+    await ctx.db.patch(args.hackathonId, {
+      votingClosedAt: now,
+      updatedAt: now,
+    });
+
+    // Start reveal (create or update reveal state)
+    // Duplicate the startReveal logic here since we can't call mutations from mutations
+    const existingState = await ctx.db
+      .query('revealState')
+      .withIndex('by_hackathonId', (q) => q.eq('hackathonId', args.hackathonId))
+      .first();
+
+    if (existingState) {
+      // Update existing state - don't set startedAt yet, wait for user to click "Tally the Votes"
+      await ctx.db.patch(existingState._id, {
+        phase: 'tally',
+        startedAt: undefined,
+        revealedRanks: [],
+        controlledBy: userId,
+        updatedAt: now,
+      });
+    } else {
+      // Create new reveal state - don't set startedAt yet, wait for user to click "Tally the Votes"
+      await ctx.db.insert('revealState', {
+        hackathonId: args.hackathonId,
+        phase: 'tally',
+        startedAt: undefined,
+        revealedRanks: [],
+        controlledBy: userId,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+
+    return { votingClosedAt: now };
+  },
+});
+
+/**
+ * Reopen voting
+ * Only owner/admin can reopen voting
+ */
+export const reopenVoting = mutation({
+  args: {
+    hackathonId: v.id('hackathons'),
+  },
+  handler: async (ctx, args) => {
+    await requireHackathonRole(ctx, args.hackathonId, ['owner', 'admin']);
+
+    const hackathon = await ctx.db.get(args.hackathonId);
+    if (!hackathon) {
+      throw new Error('Hackathon not found');
+    }
+
+    // Check if voting is actually closed
+    if (!hackathon.votingClosedAt) {
+      throw new Error('Voting is not closed');
+    }
+
+    const now = Date.now();
+
+    // Reopen voting by removing the votingClosedAt timestamp
+    await ctx.db.patch(args.hackathonId, {
+      votingClosedAt: undefined,
+      updatedAt: now,
+    });
+
+    return { success: true };
+  },
+});
+
+/**
+ * Migration mutation to set submission deadlines for existing hackathons
  * This is a one-time migration that can be called by admins
  */
-export const migrateEndDates = mutation({
+export const migrateSubmissionDeadlines = mutation({
   args: {},
   handler: async (ctx) => {
     // This is a one-time migration - in production, you might want to add admin checks
@@ -861,21 +957,21 @@ export const migrateEndDates = mutation({
       return { message: 'No hackathons found.' };
     }
 
-    console.log(`Found ${hackathons.length} hackathons. Checking for missing end dates...`);
+    console.log(`Found ${hackathons.length} hackathons. Checking for missing submission deadlines...`);
 
     const now = Date.now();
     let updatedCount = 0;
 
     for (const hackathon of hackathons) {
-      // Check if the hackathon has dates and an end date
-      if (!hackathon.dates?.end) {
+      // Check if the hackathon has dates and a submission deadline
+      if (!hackathon.dates?.submissionDeadline) {
         console.log(`Updating hackathon "${hackathon.title}" (ID: ${hackathon._id})`);
 
-        // Update the hackathon with the current timestamp as end date
+        // Update the hackathon with the current timestamp as submission deadline
         await ctx.db.patch(hackathon._id, {
           dates: {
             start: hackathon.dates?.start,
-            end: now,
+            submissionDeadline: now,
           },
           updatedAt: now,
         });
@@ -885,10 +981,10 @@ export const migrateEndDates = mutation({
     }
 
     if (updatedCount === 0) {
-      return { message: 'All hackathons already have end dates set.' };
+      return { message: 'All hackathons already have submission deadlines set.' };
     } else {
       return {
-        message: `Successfully updated ${updatedCount} hackathon(s) with end date set to now.`,
+        message: `Successfully updated ${updatedCount} hackathon(s) with submission deadline set to now.`,
       };
     }
   },
