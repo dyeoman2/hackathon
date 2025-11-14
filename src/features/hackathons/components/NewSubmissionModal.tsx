@@ -47,6 +47,7 @@ export function NewSubmissionModal({
   const toast = useToast();
   const checkoutAction = useAction(api.autumn.checkoutAutumn);
   const checkCreditsAction = useAction(api.autumn.check);
+  const checkOwnerCreditsAction = useAction(api.submissions.checkOwnerCredits);
   const createSubmissionAction = useAction(api.submissions.createSubmission);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -60,6 +61,14 @@ export function NewSubmissionModal({
     unlimited: boolean;
   } | null>(null);
   const [_, setCreditCheckAttempt] = useState(0);
+  // Owner credit status (for judges)
+  const [ownerCreditStatus, setOwnerCreditStatus] = useState<
+    'idle' | 'checking' | 'allowed' | 'denied' | 'error'
+  >('idle');
+  const [ownerCreditInfo, setOwnerCreditInfo] = useState<{
+    balance: number | null;
+    unlimited: boolean;
+  } | null>(null);
 
   const freeSubmissionsRemaining = Math.max(FREE_SUBMISSION_LIMIT - totalSubmissions, 0);
   const isOutOfCredits = freeSubmissionsRemaining <= 0;
@@ -69,13 +78,23 @@ export function NewSubmissionModal({
     (creditStatus === 'idle' || creditStatus === 'checking') &&
     userRole !== 'judge';
 
+  // For judges: check if owner credits are being checked
+  const checkingOwnerCredits =
+    isOutOfCredits &&
+    userRole === 'judge' &&
+    (ownerCreditStatus === 'idle' || ownerCreditStatus === 'checking');
+
   // Submission is locked if:
   // 1. Hackathon is out of credits AND user is owner/admin but doesn't have credits/error checking
-  // Judges can always create submissions (they are not charged for fees)
+  // 2. Hackathon is out of credits AND user is judge but owner doesn't have credits
   const submissionLocked =
     isOutOfCredits &&
-    (userRole === 'owner' || userRole === 'admin') &&
-    !(creditStatus === 'allowed' || creditStatus === 'error');
+    (((userRole === 'owner' || userRole === 'admin') &&
+      !(creditStatus === 'allowed' || creditStatus === 'error')) ||
+      (userRole === 'judge' &&
+        ownerCreditStatus !== 'idle' &&
+        ownerCreditStatus !== 'checking' &&
+        ownerCreditStatus !== 'allowed'));
 
   let creditLabel: string;
   if (freeSubmissionsRemaining > 0) {
@@ -99,6 +118,35 @@ export function NewSubmissionModal({
     creditLabel = 'All free submissions have been used for this hackathon.';
   }
 
+  // Owner credit label for judges
+  let ownerCreditLabel: string;
+  if (userRole === 'judge' && isOutOfCredits) {
+    if (ownerCreditStatus === 'checking') {
+      ownerCreditLabel = 'Checking hackathon owner credits...';
+    } else if (ownerCreditStatus === 'allowed') {
+      if (ownerCreditInfo?.unlimited) {
+        ownerCreditLabel = 'Hackathon owner has unlimited credits. You can create submissions.';
+      } else if (ownerCreditInfo && ownerCreditInfo.balance !== null) {
+        ownerCreditLabel = `Hackathon owner has ${ownerCreditInfo.balance} submission${
+          ownerCreditInfo.balance === 1 ? '' : 's'
+        } remaining.`;
+      } else {
+        ownerCreditLabel = 'Hackathon owner has credits available. You can create submissions.';
+      }
+    } else if (ownerCreditStatus === 'denied') {
+      ownerCreditLabel =
+        '⚠️ The hackathon owner has run out of credits. Please contact them to purchase more credits before creating submissions.';
+    } else if (ownerCreditStatus === 'error') {
+      ownerCreditLabel =
+        'Unable to verify hackathon owner credits. Please try again or contact the hackathon owner.';
+    } else {
+      ownerCreditLabel = 'Checking hackathon owner credits...';
+    }
+  } else {
+    ownerCreditLabel = '';
+  }
+
+  // Check credits for owners/admins
   useEffect(() => {
     if (!open) {
       setCreditStatus('idle');
@@ -159,6 +207,71 @@ export function NewSubmissionModal({
     };
   }, [open, freeSubmissionsRemaining, checkCreditsAction, userRole]);
 
+  // Check owner credits for judges
+  useEffect(() => {
+    if (!open) {
+      setOwnerCreditStatus('idle');
+      setOwnerCreditInfo(null);
+      return;
+    }
+
+    if (freeSubmissionsRemaining > 0 || userRole !== 'judge') {
+      setOwnerCreditStatus('idle');
+      setOwnerCreditInfo(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function checkOwnerCredits() {
+      setOwnerCreditStatus('checking');
+      setOwnerCreditInfo(null);
+      try {
+        const result = await checkOwnerCreditsAction({
+          hackathonId,
+        });
+
+        if (cancelled) {
+          return;
+        }
+
+        if (result.error) {
+          console.warn('Owner credit check error:', result.error);
+          console.warn('Error details:', {
+            message: result.error.message,
+            code: result.error.code,
+          });
+          setOwnerCreditStatus('error');
+          return;
+        }
+
+        if (result.data?.allowed) {
+          setOwnerCreditInfo({
+            balance:
+              typeof result.data.balance === 'number'
+                ? Math.max(0, Math.floor(result.data.balance))
+                : null,
+            unlimited: Boolean(result.data.unlimited),
+          });
+          setOwnerCreditStatus('allowed');
+        } else {
+          setOwnerCreditStatus('denied');
+        }
+      } catch (error) {
+        console.error('Failed to check owner credits for submissions:', error);
+        if (!cancelled) {
+          setOwnerCreditStatus('error');
+        }
+      }
+    }
+
+    void checkOwnerCredits();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, freeSubmissionsRemaining, checkOwnerCreditsAction, userRole, hackathonId]);
+
   const handleRetryCreditCheck = () => {
     setCreditStatus('idle');
     setCreditInfo(null);
@@ -174,7 +287,15 @@ export function NewSubmissionModal({
     },
     onSubmit: async ({ value }) => {
       if (submissionLocked) {
-        setSubmitError('All free submissions have been used. Please purchase credits to continue.');
+        if (userRole === 'judge') {
+          setSubmitError(
+            'The hackathon owner has run out of credits. Please contact them to purchase more credits before creating submissions.',
+          );
+        } else {
+          setSubmitError(
+            'All free submissions have been used. Please purchase credits to continue.',
+          );
+        }
         return;
       }
 
@@ -376,6 +497,15 @@ export function NewSubmissionModal({
             </div>
           )}
 
+          {userRole === 'judge' &&
+            isOutOfCredits &&
+            ownerCreditStatus === 'denied' &&
+            ownerCreditLabel && (
+              <div className="mb-4 rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive sm:flex sm:items-center sm:justify-between">
+                <span className="font-medium">{ownerCreditLabel}</span>
+              </div>
+            )}
+
           {submitError && (
             <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
               {submitError}
@@ -392,6 +522,7 @@ export function NewSubmissionModal({
                   type="submit"
                   disabled={
                     checkingPaidCredits ||
+                    checkingOwnerCredits ||
                     submissionLocked ||
                     !canSubmit ||
                     isSubmitting ||
@@ -399,17 +530,23 @@ export function NewSubmissionModal({
                   }
                   title={
                     submissionLocked
-                      ? 'Purchase credits to add more submissions.'
+                      ? userRole === 'judge'
+                        ? 'The hackathon owner has run out of credits. Please contact them so they can purchase more credits.'
+                        : 'Purchase credits to add more submissions.'
                       : checkingPaidCredits
                         ? 'Verifying your credit balance...'
-                        : undefined
+                        : checkingOwnerCredits
+                          ? 'Verifying hackathon owner credit balance...'
+                          : undefined
                   }
                 >
                   {checkingPaidCredits
                     ? 'Checking credits...'
-                    : isSubmitting || isFormSubmitting
-                      ? 'Creating...'
-                      : 'Create Submission'}
+                    : checkingOwnerCredits
+                      ? 'Checking owner credits...'
+                      : isSubmitting || isFormSubmitting
+                        ? 'Creating...'
+                        : 'Create Submission'}
                 </Button>
               )}
             </form.Subscribe>

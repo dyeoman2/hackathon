@@ -1,10 +1,11 @@
+import { Autumn } from '@useautumn/convex';
 import type { FunctionReference } from 'convex/server';
 import { v } from 'convex/values';
 import { FREE_SUBMISSION_LIMIT } from '../src/features/hackathons/constants';
 import { getAutumnCreditFeatureId } from '../src/lib/server/env.server';
 import { calculateAverageRating, extractRatingValues } from '../src/lib/shared/rating-utils';
 import { assertUserId } from '../src/lib/shared/user-id';
-import { internal } from './_generated/api';
+import { components, internal } from './_generated/api';
 import {
   action,
   internalAction,
@@ -269,12 +270,50 @@ export const createSubmission = action({
     const requiresPaidCredits = freeSubmissionsRemaining <= 0;
     let usingPaidCredit = false;
 
-    // When paid credits are required, check credits for owners/admins but allow judges to submit
-    // Judges are not responsible for hackathon fees - only owners/admins are
+    // When paid credits are required, check credits for owners/admins
+    // For judges, check the hackathon owner's credits instead
     if (requiresPaidCredits) {
       if (role === 'judge') {
-        // Judges can create paid submissions without credit checks
-        // The system will still track usage but won't charge judges
+        // Judges need to verify the owner has credits before creating submissions
+        if (!isAutumnConfigured()) {
+          throw new Error(
+            `${AUTUMN_NOT_CONFIGURED_ERROR.message} The hackathon owner has run out of submission credits. Please contact them to purchase more credits.`,
+          );
+        }
+
+        // Create a temporary Autumn instance that identifies as the owner
+        const ownerAutumn = new Autumn(components.autumn, {
+          secretKey: process.env.AUTUMN_SECRET_KEY ?? '',
+          identify: async () => {
+            return {
+              customerId: hackathonOwnerUserId,
+              customerData: {},
+            };
+          },
+        });
+
+        const ownerAutumnApi = ownerAutumn.api();
+        // The check method is a registered action that uses our custom identify function
+        // biome-ignore lint/suspicious/noExplicitAny: Autumn API methods are registered actions that TypeScript doesn't recognize as callable, but they work at runtime
+        const checkMethod = ownerAutumnApi.check as any;
+        const ownerCheckResult = await checkMethod(ctx, {
+          featureId: getAutumnCreditFeatureId(),
+        });
+
+        if (ownerCheckResult.error) {
+          throw new Error(
+            ownerCheckResult.error.message ??
+              'Unable to verify hackathon owner credit balance. Please try again or contact the hackathon owner.',
+          );
+        }
+
+        if (!ownerCheckResult.data?.allowed) {
+          throw new Error(
+            'The hackathon owner has run out of submission credits. Please contact them to purchase more credits before creating submissions.',
+          );
+        }
+
+        // Owner has credits, allow submission (but don't charge the judge)
         usingPaidCredit = true;
       } else {
         // Owners and admins must have credits to create paid submissions
@@ -317,10 +356,25 @@ export const createSubmission = action({
       },
     );
 
-    if (usingPaidCredit && role !== 'judge') {
-      // Only track and charge for owners/admins - judges are not responsible for fees
+    if (usingPaidCredit) {
+      // Track usage against the owner's account (whether created by owner/admin or judge)
       try {
-        const trackResult = await autumn.track(ctx, {
+        // Create a temporary Autumn instance that identifies as the owner for tracking
+        const ownerAutumn = new Autumn(components.autumn, {
+          secretKey: process.env.AUTUMN_SECRET_KEY ?? '',
+          identify: async () => {
+            return {
+              customerId: hackathonOwnerUserId,
+              customerData: {},
+            };
+          },
+        });
+
+        const ownerAutumnApi = ownerAutumn.api();
+        // The track method is a registered action that uses our custom identify function
+        // biome-ignore lint/suspicious/noExplicitAny: Autumn API methods are registered actions that TypeScript doesn't recognize as callable, but they work at runtime
+        const trackMethod = ownerAutumnApi.track as any;
+        const trackResult = await trackMethod(ctx, {
           featureId: getAutumnCreditFeatureId(),
           value: 1,
           properties: {
@@ -328,6 +382,7 @@ export const createSubmission = action({
             hackathonId: args.hackathonId,
             submissionId: result.submissionId,
             createdByUserId: userId,
+            createdByRole: role,
             hackathonOwnerUserId, // Track which hackathon owner this relates to
           },
         });
@@ -341,6 +396,89 @@ export const createSubmission = action({
     }
 
     return result;
+  },
+});
+
+/**
+ * Check hackathon owner's credits
+ * Used by judges to verify if the owner has credits before creating submissions
+ */
+export const checkOwnerCredits = action({
+  args: {
+    hackathonId: v.id('hackathons'),
+  },
+  handler: async (ctx, args) => {
+    // Verify user has access to this hackathon and get owner info
+    const { role, hackathonOwnerUserId } = await ctx.runQuery(
+      submissionsInternalApi.submissions.getSubmissionCreationContext,
+      { hackathonId: args.hackathonId },
+    );
+
+    // Only judges need to check owner credits
+    if (role !== 'judge') {
+      throw new Error('Only judges can check owner credits');
+    }
+
+    if (!isAutumnConfigured()) {
+      return {
+        error: {
+          message: AUTUMN_NOT_CONFIGURED_ERROR.message,
+          code: AUTUMN_NOT_CONFIGURED_ERROR.code,
+        },
+        data: null,
+      };
+    }
+
+    // Create a temporary Autumn instance that identifies as the owner
+    // The identify function receives the action context but we override it to use owner's userId
+    type AuthCtx = Parameters<typeof authComponent.getAuthUser>[0];
+    const ownerAutumn = new Autumn(components.autumn, {
+      secretKey: process.env.AUTUMN_SECRET_KEY ?? '',
+      identify: async (_ctx: AuthCtx) => {
+        // Return owner's userId as customerId (ignore the context, use owner's ID)
+        return {
+          customerId: hackathonOwnerUserId,
+          customerData: {},
+        };
+      },
+    });
+
+    const ownerAutumnApi = ownerAutumn.api();
+
+    try {
+      // The check method from the API is a registered action that uses our custom identify function
+      // TypeScript doesn't recognize it as callable, but it works at runtime
+      // biome-ignore lint/suspicious/noExplicitAny: Autumn API methods are registered actions that TypeScript doesn't recognize as callable, but they work at runtime
+      const checkMethod = ownerAutumnApi.check as any;
+      const checkResult = await checkMethod(ctx, {
+        featureId: getAutumnCreditFeatureId(),
+      });
+
+      // Log for debugging
+      if (checkResult.error) {
+        console.warn('Owner credit check returned error:', checkResult.error);
+      } else if (checkResult.data) {
+        console.log('Owner credit check result:', {
+          allowed: checkResult.data.allowed,
+          balance: checkResult.data.balance,
+          unlimited: checkResult.data.unlimited,
+        });
+      }
+
+      return checkResult;
+    } catch (error) {
+      console.error('Failed to check owner credits - exception thrown:', error);
+      return {
+        error: {
+          message:
+            error instanceof Error
+              ? error.message
+              : 'Unable to verify hackathon owner credit balance. Please try again or contact the hackathon owner.',
+          code: 'CHECK_FAILED',
+        },
+        data: null,
+      };
+    }
   },
 });
 
