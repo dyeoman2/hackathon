@@ -127,6 +127,81 @@ export function SubmissionRepositorySummary({
   const earlyProcessingStage = getEarlyProcessingStage(submission);
   const earlyProcessingMessage = getEarlyProcessingMessage(earlyProcessingStage);
   const isEarlyProcessing = earlyProcessingStage !== null;
+
+  // Detect "no data" scenarios for better error messages
+  const source = submission.source;
+  const hasReadme = !!source?.readme;
+  const readmeFetched = !!source?.readmeFetchedAt;
+  const hasScreenshots = (submission.screenshots?.length ?? 0) > 0;
+  const screenshotStarted = !!source?.screenshotCaptureStartedAt;
+  const screenshotCompleted = !!source?.screenshotCaptureCompletedAt;
+  const hasSiteUrl = !!submission.siteUrl;
+
+  // Determine why summary wasn't generated
+  const getNoSummaryReason = (): {
+    title: string;
+    description: string;
+  } | null => {
+    if (showSummary || isEarlyProcessing) {
+      return null; // Summary exists or still processing
+    }
+
+    // README fetch completed but found nothing
+    const readmeFetchFailed = readmeFetched && !hasReadme;
+    // Screenshot capture started but failed (no completion timestamp or no screenshots)
+    const screenshotCaptureFailed =
+      hasSiteUrl && screenshotStarted && (!screenshotCompleted || !hasScreenshots);
+
+    if (readmeFetchFailed && screenshotCaptureFailed) {
+      return {
+        title: 'Unable to Generate Summary',
+        description:
+          'No README file was found in the repository and screenshot capture failed. A summary requires at least a README file or screenshots of the live site.',
+      };
+    }
+
+    if (readmeFetchFailed && hasSiteUrl) {
+      if (screenshotStarted && !screenshotCompleted) {
+        return {
+          title: 'Waiting for Screenshots',
+          description:
+            'No README file was found in the repository. Waiting for screenshots to be captured before generating summary.',
+        };
+      }
+      if (hasScreenshots) {
+        return {
+          title: 'Generating Summary',
+          description:
+            'No README file found, but screenshots are available. Generating summary from screenshots...',
+        };
+      }
+      return {
+        title: 'Unable to Generate Summary',
+        description:
+          'No README file was found in the repository. A summary requires at least a README file or screenshots of the live site.',
+      };
+    }
+
+    if (readmeFetchFailed && !hasSiteUrl) {
+      return {
+        title: 'Unable to Generate Summary',
+        description:
+          'No README file was found in the repository. A summary requires at least a README file.',
+      };
+    }
+
+    if (screenshotCaptureFailed && hasReadme) {
+      return {
+        title: 'Generating Summary',
+        description:
+          'Screenshot capture failed, but README is available. Generating summary from README...',
+      };
+    }
+
+    return null;
+  };
+
+  const noSummaryReason = getNoSummaryReason();
   const [isGeneratingQuick, setIsGeneratingQuick] = useState(false);
   const [isGeneratingFull, setIsGeneratingFull] = useState(false);
   const toast = useToast();
@@ -252,6 +327,11 @@ export function SubmissionRepositorySummary({
         ) : showSummary ? (
           <div className="prose prose-sm max-w-none dark:prose-invert prose-headings:font-semibold prose-headings:text-foreground prose-headings:mt-6 prose-headings:mb-4 prose-h1:text-2xl prose-h2:text-xl prose-h3:text-lg prose-p:text-muted-foreground prose-p:leading-relaxed prose-strong:text-foreground prose-strong:font-semibold prose-code:text-foreground prose-code:bg-muted prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-xs prose-code:font-mono prose-pre:bg-muted prose-pre:border prose-pre:rounded-lg prose-pre:p-4 prose-ul:text-muted-foreground prose-ol:text-muted-foreground prose-li:text-muted-foreground prose-li:my-2 prose-a:text-primary prose-a:underline hover:prose-a:text-primary/80 prose-blockquote:border-l-4 prose-blockquote:border-primary prose-blockquote:pl-4 prose-blockquote:italic">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{summary}</ReactMarkdown>
+          </div>
+        ) : noSummaryReason ? (
+          <div className="space-y-2">
+            <p className="text-sm font-medium text-foreground">{noSummaryReason.title}</p>
+            <p className="text-sm text-muted-foreground">{noSummaryReason.description}</p>
           </div>
         ) : isAISearchComplete ? (
           <p className="text-sm text-muted-foreground">

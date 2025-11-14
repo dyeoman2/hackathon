@@ -406,11 +406,16 @@ export const captureScreenshot = guarded.action(
           };
         }
 
-        // Trigger early summary using README + screenshots (AI Search summary is only generated on-demand)
-        // Early summary is saved to aiSummary, and will be overwritten by AI Search summary if user clicks "Full Summary"
-        if (!submission.source?.aiSummary) {
+        // Trigger summary generation if README is also ready
+        // Summary generation requires:
+        // - If siteUrl exists: both README and screenshots
+        // - If no siteUrl: only README (handled by README fetch)
+        const hasReadme = !!submission.source?.readme;
+        const hasSummary = !!submission.source?.aiSummary;
+
+        if (!hasSummary && hasReadme) {
           console.log(
-            `[Screenshot] Triggering early summary with screenshots for submission ${args.submissionId}`,
+            `[Screenshot] Screenshots ready, README ready - triggering summary generation for submission ${args.submissionId}`,
           );
           await ctx.scheduler.runAfter(
             0,
@@ -423,6 +428,10 @@ export const captureScreenshot = guarded.action(
               submissionId: args.submissionId,
               forceRegenerate: false,
             },
+          );
+        } else if (!hasSummary && !hasReadme) {
+          console.log(
+            `[Screenshot] Screenshots ready but waiting for README before generating summary for submission ${args.submissionId}`,
           );
         }
       } catch (error) {
@@ -447,6 +456,46 @@ export const captureScreenshot = guarded.action(
           error.message.includes('ETIMEDOUT') ||
           error.name === 'FirecrawlSdkError')
       ) {
+        // Screenshot capture timed out - if README exists, generate summary with just README
+        try {
+          const submission = await ctx.runQuery(
+            (internal.submissions as unknown as { getSubmissionInternal: GetSubmissionInternalRef })
+              .getSubmissionInternal,
+            {
+              submissionId: args.submissionId,
+            },
+          );
+
+          if (submission) {
+            const hasReadme = !!submission.source?.readme;
+            const hasSummary = !!submission.source?.aiSummary;
+
+            // If README exists, generate summary with just README
+            if (hasReadme && !hasSummary) {
+              console.log(
+                `[Screenshot] Screenshot capture timed out but README exists - generating summary with README only for submission ${args.submissionId}`,
+              );
+              await ctx.scheduler.runAfter(
+                0,
+                (
+                  internal.submissionsActions.aiSummary as unknown as {
+                    generateSummary: GenerateSummaryRef;
+                  }
+                ).generateSummary,
+                {
+                  submissionId: args.submissionId,
+                  forceRegenerate: false,
+                },
+              );
+            }
+          }
+        } catch (summaryError) {
+          console.warn(
+            `[Screenshot] Failed to trigger summary generation after timeout:`,
+            summaryError instanceof Error ? summaryError.message : String(summaryError),
+          );
+        }
+
         throw new Error(
           'Screenshot capture timed out. The website may be slow to load or Firecrawl is experiencing high load. Please try again later.',
         );
@@ -744,6 +793,49 @@ export const captureScreenshotInternal = internalAction({
       }
 
       if (capturedScreenshots.length === 0) {
+        // Screenshot capture failed - if README exists, generate summary with just README
+        console.warn(
+          `[Screenshot] No screenshots captured for submission ${args.submissionId} - checking if README exists to generate summary`,
+        );
+        try {
+          const submission = await ctx.runQuery(
+            (internal.submissions as unknown as { getSubmissionInternal: GetSubmissionInternalRef })
+              .getSubmissionInternal,
+            {
+              submissionId: args.submissionId,
+            },
+          );
+
+          if (submission) {
+            const hasReadme = !!submission.source?.readme;
+            const hasSummary = !!submission.source?.aiSummary;
+
+            // If README exists, generate summary with just README
+            if (hasReadme && !hasSummary) {
+              console.log(
+                `[Screenshot] Screenshot capture failed but README exists - generating summary with README only for submission ${args.submissionId}`,
+              );
+              await ctx.scheduler.runAfter(
+                0,
+                (
+                  internal.submissionsActions.aiSummary as unknown as {
+                    generateSummary: GenerateSummaryRef;
+                  }
+                ).generateSummary,
+                {
+                  submissionId: args.submissionId,
+                  forceRegenerate: false,
+                },
+              );
+            }
+          }
+        } catch (error) {
+          console.warn(
+            `[Screenshot] Failed to trigger summary generation after screenshot failure:`,
+            error instanceof Error ? error.message : String(error),
+          );
+        }
+
         return {
           success: false,
           reason: 'no_screenshots',
@@ -800,11 +892,16 @@ export const captureScreenshotInternal = internalAction({
           };
         }
 
-        // Trigger early summary using README + screenshots (AI Search summary is only generated on-demand)
-        // Early summary is saved to aiSummary, and will be overwritten by AI Search summary if user clicks "Full Summary"
-        if (!submission.source?.aiSummary) {
+        // Trigger summary generation if README is also ready
+        // Summary generation requires:
+        // - If siteUrl exists: both README and screenshots
+        // - If no siteUrl: only README (handled by README fetch)
+        const hasReadme = !!submission.source?.readme;
+        const hasSummary = !!submission.source?.aiSummary;
+
+        if (!hasSummary && hasReadme) {
           console.log(
-            `[Screenshot] Triggering early summary with screenshots for submission ${args.submissionId}`,
+            `[Screenshot] Screenshots ready, README ready - triggering summary generation for submission ${args.submissionId}`,
           );
           await ctx.scheduler.runAfter(
             0,
@@ -817,6 +914,10 @@ export const captureScreenshotInternal = internalAction({
               submissionId: args.submissionId,
               forceRegenerate: false,
             },
+          );
+        } else if (!hasSummary && !hasReadme) {
+          console.log(
+            `[Screenshot] Screenshots ready but waiting for README before generating summary for submission ${args.submissionId}`,
           );
         }
       } catch (error) {
@@ -842,6 +943,47 @@ export const captureScreenshotInternal = internalAction({
           error.name === 'FirecrawlSdkError')
       ) {
         console.error('Screenshot capture timed out:', error);
+        
+        // Screenshot capture timed out - if README exists, generate summary with just README
+        try {
+          const submission = await ctx.runQuery(
+            (internal.submissions as unknown as { getSubmissionInternal: GetSubmissionInternalRef })
+              .getSubmissionInternal,
+            {
+              submissionId: args.submissionId,
+            },
+          );
+
+          if (submission) {
+            const hasReadme = !!submission.source?.readme;
+            const hasSummary = !!submission.source?.aiSummary;
+
+            // If README exists, generate summary with just README
+            if (hasReadme && !hasSummary) {
+              console.log(
+                `[Screenshot] Screenshot capture timed out but README exists - generating summary with README only for submission ${args.submissionId}`,
+              );
+              await ctx.scheduler.runAfter(
+                0,
+                (
+                  internal.submissionsActions.aiSummary as unknown as {
+                    generateSummary: GenerateSummaryRef;
+                  }
+                ).generateSummary,
+                {
+                  submissionId: args.submissionId,
+                  forceRegenerate: false,
+                },
+              );
+            }
+          }
+        } catch (summaryError) {
+          console.warn(
+            `[Screenshot] Failed to trigger summary generation after timeout:`,
+            summaryError instanceof Error ? summaryError.message : String(summaryError),
+          );
+        }
+
         return {
           success: false,
           reason: 'timeout',

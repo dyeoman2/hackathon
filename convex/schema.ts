@@ -185,7 +185,9 @@ export default defineSchema({
     ),
     createdAt: v.number(),
     updatedAt: v.number(),
-  }).index('by_hackathonId', ['hackathonId']),
+  })
+    .index('by_hackathonId', ['hackathonId'])
+    .index('by_hackathonId_createdAt', ['hackathonId', 'createdAt']),
 
   ratings: defineTable({
     submissionId: v.id('submissions'),

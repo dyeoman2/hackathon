@@ -231,25 +231,6 @@ export async function downloadAndUploadRepoHelper(
     throw new Error('Repository URL not provided');
   }
 
-  // Trigger screenshot capture if siteUrl is provided (runs in parallel, doesn't block upload)
-  if (submission.siteUrl?.trim()) {
-    try {
-      await ctx.scheduler.runAfter(
-        0,
-        internal.submissionsActions.screenshot.captureScreenshotInternal,
-        {
-          submissionId: args.submissionId,
-        },
-      );
-    } catch (error) {
-      // Log but don't fail - screenshot capture is optional
-      console.warn(
-        `[R2 Upload] Failed to schedule screenshot capture for submission ${args.submissionId}:`,
-        error instanceof Error ? error.message : String(error),
-      );
-    }
-  }
-
   // Set processing state to downloading
   await ctx.runMutation(
     (
@@ -584,27 +565,10 @@ export async function downloadAndUploadRepoHelper(
       },
     );
 
-    // Trigger summary generation (using README + screenshots if available)
-    // This provides immediate feedback while waiting for AI Search indexing
-    try {
-      await ctx.scheduler.runAfter(
-        0,
-        (
-          internal.submissionsActions.aiSummary as unknown as {
-            generateSummary: GenerateSummaryRef;
-          }
-        ).generateSummary,
-        {
-          submissionId: args.submissionId,
-        },
-      );
-    } catch (error) {
-      // Log but don't fail - summary is optional
-      console.warn(
-        `[R2 Upload] Failed to schedule summary generation for submission ${args.submissionId}:`,
-        error instanceof Error ? error.message : String(error),
-      );
-    }
+    // Don't trigger summary generation here - it will be triggered by README fetch or screenshot capture
+    // Summary generation logic:
+    // - If no siteUrl: triggered when README is ready
+    // - If siteUrl exists: triggered when both README and screenshots are ready
 
     // Schedule the indexing check
     // This will poll for indexing completion and mark the submission as complete
@@ -851,10 +815,111 @@ export const fetchReadmeFromGitHub = internalAction({
         console.log(
           `[README Fetch] Successfully fetched README (${readmeFilename}) for submission ${args.submissionId}`,
         );
+
+        // Check if summary should be generated now
+        // - If no siteUrl: generate immediately (only need README)
+        // - If siteUrl exists: only generate if screenshots are also ready
+        try {
+          const submission = await ctx.runQuery(
+            (internal.submissions as unknown as { getSubmissionInternal: GetSubmissionInternalRef })
+              .getSubmissionInternal,
+            {
+              submissionId: args.submissionId,
+            },
+          );
+
+          if (!submission) {
+            console.warn(
+              `[README Fetch] Could not fetch submission ${args.submissionId} to check summary readiness`,
+            );
+          } else {
+            const hasSiteUrl = !!submission.siteUrl?.trim();
+            const hasScreenshots = (submission.screenshots?.length ?? 0) > 0;
+            const hasSummary = !!submission.source?.aiSummary;
+
+            // If no siteUrl, generate summary immediately
+            // If siteUrl exists, only generate if screenshots are ready
+            if (!hasSummary) {
+              if (!hasSiteUrl || (hasSiteUrl && hasScreenshots)) {
+                console.log(
+                  `[README Fetch] Triggering summary generation for submission ${args.submissionId} (siteUrl: ${hasSiteUrl ? 'yes' : 'no'}, screenshots: ${hasScreenshots ? 'ready' : 'waiting'})`,
+                );
+                await ctx.scheduler.runAfter(
+                  0,
+                  (
+                    internal.submissionsActions.aiSummary as unknown as {
+                      generateSummary: GenerateSummaryRef;
+                    }
+                  ).generateSummary,
+                  {
+                    submissionId: args.submissionId,
+                    forceRegenerate: false,
+                  },
+                );
+              } else {
+                console.log(
+                  `[README Fetch] README ready but waiting for screenshots before generating summary for submission ${args.submissionId}`,
+                );
+              }
+            }
+          }
+        } catch (error) {
+          // Log but don't fail - summary generation is optional
+          console.warn(
+            `[README Fetch] Failed to schedule summary generation for submission ${args.submissionId}:`,
+            error instanceof Error ? error.message : String(error),
+          );
+        }
       } else {
         console.log(
           `[README Fetch] No README found for submission ${args.submissionId} (repo: ${owner}/${repoName})`,
         );
+
+        // If no README but siteUrl exists, check if screenshots are ready and generate summary with just screenshots
+        // If no siteUrl, we can't generate summary without README
+        try {
+          const submission = await ctx.runQuery(
+            (internal.submissions as unknown as { getSubmissionInternal: GetSubmissionInternalRef })
+              .getSubmissionInternal,
+            {
+              submissionId: args.submissionId,
+            },
+          );
+
+          if (submission) {
+            const hasSiteUrl = !!submission.siteUrl?.trim();
+            const hasScreenshots = (submission.screenshots?.length ?? 0) > 0;
+            const hasSummary = !!submission.source?.aiSummary;
+
+            // If siteUrl exists and screenshots are ready, generate summary with just screenshots
+            if (hasSiteUrl && hasScreenshots && !hasSummary) {
+              console.log(
+                `[README Fetch] No README found but screenshots are ready - generating summary with screenshots only for submission ${args.submissionId}`,
+              );
+              await ctx.scheduler.runAfter(
+                0,
+                (
+                  internal.submissionsActions.aiSummary as unknown as {
+                    generateSummary: GenerateSummaryRef;
+                  }
+                ).generateSummary,
+                {
+                  submissionId: args.submissionId,
+                  forceRegenerate: false,
+                },
+              );
+            } else if (hasSiteUrl && !hasScreenshots) {
+              console.log(
+                `[README Fetch] No README found, waiting for screenshots before generating summary for submission ${args.submissionId}`,
+              );
+            }
+          }
+        } catch (error) {
+          console.warn(
+            `[README Fetch] Failed to check screenshot status after no README found:`,
+            error instanceof Error ? error.message : String(error),
+          );
+        }
       }
     } catch (error) {
       console.error(

@@ -42,6 +42,7 @@ const submissionsInternalApi = internal as unknown as {
 export const listByHackathon = query({
   args: {
     hackathonId: v.id('hackathons'),
+    ratingFilter: v.optional(v.union(v.literal('all'), v.literal('rated'), v.literal('unrated'))),
   },
   handler: async (ctx, args) => {
     const authUser = await authComponent.getAuthUser(ctx);
@@ -64,7 +65,8 @@ export const listByHackathon = query({
 
     const submissions = await ctx.db
       .query('submissions')
-      .withIndex('by_hackathonId', (q) => q.eq('hackathonId', args.hackathonId))
+      .withIndex('by_hackathonId_createdAt', (q) => q.eq('hackathonId', args.hackathonId))
+      .order('desc') // Newest first
       .collect();
 
     // Get all ratings for these submissions
@@ -89,11 +91,30 @@ export const listByHackathon = query({
     }
 
     // Add rating data to each submission
-    return submissions.map((submission) => ({
+    let filteredSubmissions = submissions.map((submission) => ({
       ...submission,
       myRating: ratingsBySubmission.get(submission._id)?.myRating ?? null,
       averageRating: ratingsBySubmission.get(submission._id)?.averageRating ?? 0,
     }));
+
+    // Apply rating filter if specified
+    if (args.ratingFilter) {
+      filteredSubmissions = filteredSubmissions.filter((submission) => {
+        const hasRating = submission.myRating !== null && submission.myRating !== undefined;
+
+        switch (args.ratingFilter) {
+          case 'rated':
+            return hasRating;
+          case 'unrated':
+            return !hasRating;
+          case 'all':
+          default:
+            return true;
+        }
+      });
+    }
+
+    return filteredSubmissions;
   },
 });
 
@@ -492,7 +513,12 @@ export const processSubmission = internalAction({
   },
   handler: async (ctx, args) => {
     try {
-      // Fetch README first (runs in parallel, doesn't block)
+      // Get submission to check if it has a siteUrl
+      const submission = await ctx.runQuery(internal.submissions.getSubmissionInternal, {
+        submissionId: args.submissionId,
+      });
+
+      // Fetch README (runs in parallel, doesn't block)
       try {
         await ctx.scheduler.runAfter(
           0,
@@ -508,7 +534,7 @@ export const processSubmission = internalAction({
 
       // Trigger repo download/upload (but don't generate AI Search summary automatically)
       // AI Search summary is only generated when user clicks "Full Summary" button
-      // Early summary (README + screenshots) will be generated automatically when screenshots are captured
+      // Early summary (README + screenshots) will be generated automatically when README/repo/screenshots are ready
       try {
         // Use the internal action (no auth required for automated processes)
         await ctx.runAction(
@@ -520,6 +546,25 @@ export const processSubmission = internalAction({
       } catch (error) {
         console.error(`Failed to download/upload repo for submission ${args.submissionId}:`, error);
         // Don't throw - submission creation should succeed even if repo processing fails
+      }
+
+      // Trigger screenshot capture if siteUrl is provided (runs in parallel with README fetch and repo upload)
+      if (submission?.siteUrl?.trim()) {
+        try {
+          await ctx.scheduler.runAfter(
+            0,
+            internal.submissionsActions.screenshot.captureScreenshotInternal,
+            {
+              submissionId: args.submissionId,
+            },
+          );
+        } catch (error) {
+          // Log but don't fail - screenshot capture is optional
+          console.warn(
+            `Failed to schedule screenshot capture for submission ${args.submissionId}:`,
+            error,
+          );
+        }
       }
     } catch (error) {
       console.error(`Failed to process submission ${args.submissionId}:`, error);

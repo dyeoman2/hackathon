@@ -1387,6 +1387,63 @@ async function generateSummaryWithAI(
 }
 
 /**
+ * Helper function to check if summary should be generated based on submission state
+ * - If siteUrl exists: requires both README and screenshots
+ * - If no siteUrl: requires only README
+ */
+async function shouldGenerateSummary(
+  ctx: ActionCtx,
+  submissionId: Id<'submissions'>,
+): Promise<{ shouldGenerate: boolean; reason?: string }> {
+  const submission = await ctx.runQuery(
+    (internal.submissions as unknown as { getSubmissionInternal: GetSubmissionInternalRef })
+      .getSubmissionInternal,
+    {
+      submissionId,
+    },
+  );
+
+  if (!submission) {
+    return { shouldGenerate: false, reason: 'Submission not found' };
+  }
+
+  // If summary already exists, don't generate
+  if (submission.source?.aiSummary) {
+    return { shouldGenerate: false, reason: 'Summary already exists' };
+  }
+
+  const hasReadme = !!submission.source?.readme;
+  const hasScreenshots = (submission.screenshots?.length ?? 0) > 0;
+  const hasSiteUrl = !!submission.siteUrl?.trim();
+
+  // If submission has siteUrl, need both README and screenshots
+  if (hasSiteUrl) {
+    if (hasReadme && hasScreenshots) {
+      return { shouldGenerate: true };
+    }
+    if (!hasReadme && !hasScreenshots) {
+      return { shouldGenerate: false, reason: 'Waiting for README and screenshots' };
+    }
+    if (!hasReadme) {
+      return { shouldGenerate: false, reason: 'Waiting for README' };
+    }
+    if (!hasScreenshots) {
+      return { shouldGenerate: false, reason: 'Waiting for screenshots' };
+    }
+  }
+
+  // If no siteUrl, only need README
+  if (!hasSiteUrl) {
+    if (hasReadme) {
+      return { shouldGenerate: true };
+    }
+    return { shouldGenerate: false, reason: 'Waiting for README' };
+  }
+
+  return { shouldGenerate: false, reason: 'Unknown state' };
+}
+
+/**
  * Helper function to generate early summary (extracted so it can be called from both internal and public actions)
  */
 async function generateSummaryHelper(
@@ -1439,16 +1496,16 @@ async function generateSummaryHelper(
     );
   }
 
-  // Check if we have at least README (stored or in R2) or screenshots to work with
+  // Check if we have at least README (stored or in R2), R2 files, or screenshots to work with
   const hasStoredReadme = !!submission.source?.readme;
   const hasR2Files = !!submission.source?.r2Key;
   const hasScreenshots = (submission.screenshots?.length ?? 0) > 0;
 
   if (!hasStoredReadme && !hasR2Files && !hasScreenshots) {
     console.log(
-      `[Early Summary] Submission ${args.submissionId} has no README or screenshots yet - skipping`,
+      `[Early Summary] Submission ${args.submissionId} has no README, R2 files, or screenshots yet - skipping`,
     );
-    return { success: false, reason: 'No README or screenshots available' };
+    return { success: false, reason: 'No README, R2 files, or screenshots available' };
   }
 
   try {
