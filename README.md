@@ -1,23 +1,21 @@
-# TanStack Start Template
+# Hackathon Platform
 
-A TanStack Start Template built with TanStack Start, featuring modern full-stack TypeScript architecture with end-to-end type safety, authentication, real-time database, and production-ready components.
+A modern hackathon management platform built with TanStack Start, featuring automated submission processing, AI-powered judging tools, live reveal ceremonies, and comprehensive competition workflows.
 
-## 🎯 Demo Features
+## 🎯 Platform Features
 
-After registering and logging in, you can explore these demo features:
+After registering and logging in, you can explore these hackathon management features:
 
-- **📊 Dashboard** - View real-time statistics and metrics with live data updates via Convex subscriptions
-- **🤖 AI Playground** - Interactive AI playground featuring:
-  - Streaming text generation with Cloudflare Workers AI
-  - Structured output generation (JSON, markdown, etc.)
-  - Web scraping and content extraction with Firecrawl
-  - Gateway diagnostics and request monitoring
-  - Usage metering with Autumn billing integration (10 free messages, then upgrade prompts)
+- **🏆 Hackathon Management** - Create and manage hackathons with custom deadlines, judging rubrics, and participant invites
+- **🚀 Automated Submission Processing** - Auto-download GitHub repos, capture live site screenshots, and generate AI project summaries
+- **⭐ Judging System** - Interactive rating interface with 0-10 scale, emoji feedback, and real-time result calculations
+- **🎪 Live Reveal Ceremony** - Dramatic podium reveals with confetti animations and step-by-step winner announcements
+- **📊 Real-Time Results** - Live-updating rankings and voting progress with presenter controls
 - **👥 Admin Dashboard** - Full admin interface with:
   - User management (view, edit, delete users)
   - System statistics and analytics
-  - Data management tools
-- **👤 Profile** - User profile management and settings
+  - Hackathon oversight and moderation
+- **👤 Profile** - User profile management and competition participation tracking
 
 ## ✨ What's Included
 
@@ -80,7 +78,7 @@ After registering and logging in, you can explore these demo features:
 
 ### ⚡ Quick Start (Local Development)
 
-1. **[Create your repository](https://github.com/new?template_name=tanstack-start-template&template_owner=dyeoman2)** from this template
+1. **[Create your repository](https://github.com/new?template_name=hackathon&template_owner=dyeoman2)** from this template
 
 2. **Clone your new repository**:
 
@@ -145,7 +143,6 @@ In order to send password reset and transactional emails, you need to set up Res
 - [Firecrawl Setup](docs/FIRECRAWL_SETUP.md) - Web scraping and content extraction for AI playground
 
 - [CodeRabbit CLI Setup](docs/CODERABBIT_CLI_SETUP.md) - AI-powered code review assistance
-
 
 ## 📄 License
 

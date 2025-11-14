@@ -50,7 +50,7 @@ export function NewSubmissionModal({ hackathonId, open, onClose }: NewSubmission
     defaultValues: {
       title: 'My Awesome Project',
       team: 'Team Awesome',
-      repoUrl: 'https://github.com/dyeoman2/tanstack-start-template',
+      repoUrl: 'https://github.com/dyeoman2/hackathon',
       siteUrl: 'https://tanstack-start-convex.netlify.app/',
     },
     onSubmit: async ({ value }) => {

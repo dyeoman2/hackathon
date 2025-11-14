@@ -136,31 +136,26 @@ export function MarketingHome() {
     <div className="flex flex-col gap-16 py-16">
       <section className="text-center space-y-6">
         <span className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-sm font-medium text-primary">
-          Free Open Source Template
+          Open Source Hackathon Platform
         </span>
         <h1 className="text-4xl font-semibold tracking-tight text-foreground sm:text-5xl lg:text-6xl">
-          A production-ready starter template for TanStack Start
+          Hackathons made simple
         </h1>
         <p className="mx-auto max-w-2xl text-lg text-muted-foreground">
-          {getAppName()} is a free, open-source starter that pairs modern tooling, auth, and
-          real-time data so you can focus on your product instead of plumbing. Server-first by
-          default, progressively enhanced for the richest user experiences.
-        </p>
-        <p className="mx-auto max-w-2xl text-sm text-muted-foreground">
-          Explore a fully functional demo with dashboard analytics, AI playground (streaming text
-          generation, structured output, web scraping), admin user management, and profile
-          settings—all showcasing real-time data updates and production-ready patterns.
+          Launch your hackathon, invite your judges, and gather submissions as AI indexes the
+          codebases for interactive Q&A, crawls and captures screenshots of sites, generates
+          detailed summaries, and powers live judging with spectacular winner announcements
         </p>
         <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
           <Button asChild size="lg">
             <Link to="/register" preload="intent" className="inline-flex items-center gap-2">
-              Explore the Demo
+              Start Your Hackathon
               <ArrowRight className="h-4 w-4" />
             </Link>
           </Button>
           <Button asChild variant="outline" size="lg">
             <a
-              href="https://github.com/dyeoman2/tanstack-start-template"
+              href="https://github.com/dyeoman2/hackathon"
               className="inline-flex items-center gap-2"
               target="_blank"
               rel="noopener noreferrer"
@@ -170,19 +165,220 @@ export function MarketingHome() {
             </a>
           </Button>
         </div>
+        <div className="flex items-center justify-center gap-2 mt-4">
+          <span className="text-xs text-muted-foreground">
+            10 free submissions. No credit card required.
+          </span>
+        </div>
+      </section>
+
+      <section className="rounded-3xl border border-border bg-linear-to-br from-primary/5 to-secondary/5 p-10 shadow-sm">
+        <div className="text-center space-y-3 mb-10">
+          <span className="text-sm font-medium uppercase tracking-widest text-muted-foreground">
+            Competition-Ready Features
+          </span>
+          <h2 className="text-3xl font-semibold text-foreground sm:text-4xl">
+            Built for the intensity of hackathon management
+          </h2>
+          <p className="text-base text-muted-foreground">
+            Designed specifically for high-stakes competitions with real-time collaboration,
+            automated workflows, and spectacular presentation features.
+          </p>
+        </div>
+
+        <div className="grid gap-8 md:grid-cols-3">
+          <div className="space-y-4">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
+              <Zap className="h-6 w-6 text-primary" />
+            </div>
+            <h3 className="text-xl font-semibold text-foreground">Automated Processing</h3>
+            <p className="text-muted-foreground">
+              Submissions are automatically processed—repositories downloaded, screenshots captured,
+              and AI summaries generated. Judges get rich project insights instantly without manual
+              work.
+            </p>
+          </div>
+
+          <div className="space-y-4">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
+              <Monitor className="h-6 w-6 text-primary" />
+            </div>
+            <h3 className="text-xl font-semibold text-foreground">Live Judging & Results</h3>
+            <p className="text-muted-foreground">
+              Real-time rating updates, live leaderboard changes, and synchronized judging
+              workflows. Everyone sees results update instantly as votes come in during intense
+              judging sessions.
+            </p>
+          </div>
+
+          <div className="space-y-4">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
+              <Shield className="h-6 w-6 text-primary" />
+            </div>
+            <h3 className="text-xl font-semibold text-foreground">Spectacular Reveals</h3>
+            <p className="text-muted-foreground">
+              Professional podium ceremonies with confetti animations, step-by-step winner reveals,
+              and presenter controls. Create unforgettable moments for your hackathon participants.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section className="rounded-3xl border border-border bg-card p-10 shadow-sm">
+        <div className="text-center space-y-3 mb-10">
+          <span className="text-sm font-medium uppercase tracking-widest text-muted-foreground">
+            Choose Your Deployment
+          </span>
+          <h2 className="text-3xl font-semibold text-foreground sm:text-4xl">
+            Hosted or self-hosted options
+          </h2>
+          <p className="text-base text-muted-foreground">
+            Run your hackathon with full control, or let us handle everything.
+          </p>
+        </div>
+
+        <div className="grid gap-8 md:grid-cols-2 max-w-6xl mx-auto">
+          {/* Self-Hosted Option */}
+          <div className="relative rounded-2xl border border-border bg-background p-8 shadow-lg">
+            <div className="text-center space-y-6">
+              <div>
+                <h3 className="text-2xl font-semibold text-foreground mb-2">Self-Hosted</h3>
+                <p className="text-muted-foreground">
+                  Deploy on your own infrastructure with full control
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                <div className="flex items-center justify-center">
+                  <div className="text-center">
+                    <div className="text-4xl font-bold text-foreground">$0</div>
+                    <div className="text-sm text-muted-foreground">forever free</div>
+                  </div>
+                </div>
+
+                <div className="bg-muted/50 rounded-lg p-4 text-sm text-muted-foreground">
+                  <strong>Completely free:</strong> Host it yourself with no usage fees or
+                  restrictions.
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <h4 className="text-lg font-semibold text-foreground">Perfect for:</h4>
+                <ul className="space-y-3 text-left">
+                  <li className="flex items-center gap-3">
+                    <div className="h-1.5 w-1.5 rounded-full bg-green-500"></div>
+                    Organizations with dev teams
+                  </li>
+                  <li className="flex items-center gap-3">
+                    <div className="h-1.5 w-1.5 rounded-full bg-green-500"></div>
+                    Custom deployments and integrations
+                  </li>
+                  <li className="flex items-center gap-3">
+                    <div className="h-1.5 w-1.5 rounded-full bg-green-500"></div>
+                    Data sovereignty requirements
+                  </li>
+                  <li className="flex items-center gap-3">
+                    <div className="h-1.5 w-1.5 rounded-full bg-green-500"></div>
+                    Community and open source events
+                  </li>
+                </ul>
+              </div>
+
+              <Button asChild variant="outline" size="lg">
+                <a
+                  href="https://github.com/dyeoman2/hackathon"
+                  className="inline-flex items-center gap-2"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <SiGithub className="h-4 w-4" />
+                  Get the Code
+                </a>
+              </Button>
+            </div>
+          </div>
+          {/* Hosted Option */}
+          <div className="relative rounded-2xl border-2 border-primary bg-primary/5 p-8 shadow-lg">
+            <div className="absolute -top-3 left-1/2 -translate-x-1/2">
+              <span className="rounded-full bg-primary px-3 py-1 text-xs font-medium text-primary-foreground">
+                Recommended
+              </span>
+            </div>
+            <div className="absolute -top-3 right-4">
+              <span className="rounded-full bg-green-500 px-3 py-1 text-xs font-medium text-white">
+                No Credit Card Required
+              </span>
+            </div>
+            <div className="text-center space-y-6">
+              <div>
+                <h3 className="text-2xl font-semibold text-foreground mb-2">Pay as you go</h3>
+                <p className="text-muted-foreground">
+                  We manage everything - just focus on your hackathon
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                <div className="flex items-center justify-center gap-4">
+                  <div className="text-center">
+                    <div className="text-4xl font-bold text-foreground">$0</div>
+                    <div className="text-sm text-muted-foreground">first 10 submissions</div>
+                  </div>
+                  <div className="text-2xl text-muted-foreground">+</div>
+                  <div className="text-center">
+                    <div className="text-4xl font-bold text-foreground">$1</div>
+                    <div className="text-sm text-muted-foreground">per additional submission</div>
+                  </div>
+                </div>
+
+                <div className="bg-primary/10 border border-primary/20 rounded-lg p-4 text-sm">
+                  <strong>Includes:</strong> Hosting, maintenance, backups, and premium support
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <h4 className="text-lg font-semibold text-foreground">Perfect for:</h4>
+                <ul className="space-y-3 text-left">
+                  <li className="flex items-center gap-3">
+                    <div className="h-1.5 w-1.5 rounded-full bg-green-500"></div>
+                    Organizations without dev resources
+                  </li>
+                  <li className="flex items-center gap-3">
+                    <div className="h-1.5 w-1.5 rounded-full bg-green-500"></div>
+                    Quick setup for one-off events
+                  </li>
+                  <li className="flex items-center gap-3">
+                    <div className="h-1.5 w-1.5 rounded-full bg-green-500"></div>
+                    Enterprise compliance requirements
+                  </li>
+                  <li className="flex items-center gap-3">
+                    <div className="h-1.5 w-1.5 rounded-full bg-green-500"></div>
+                    24/7 monitoring and support
+                  </li>
+                </ul>
+              </div>
+
+              <Button asChild className="w-full" size="lg">
+                <Link to="/register" preload="intent">
+                  Start your Hackathon
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+              </Button>
+            </div>
+          </div>
+        </div>
       </section>
 
       <section className="rounded-3xl border border-border bg-muted/40 p-10 shadow-sm">
         <div className="text-center space-y-3">
           <span className="text-sm font-medium uppercase tracking-widest text-muted-foreground">
-            Core Technology Stack
+            Built for Scale
           </span>
           <h2 className="text-3xl font-semibold text-foreground sm:text-4xl">
-            Pre-configured with a production-ready toolchain
+            Enterprise-grade technology powering hackathon success
           </h2>
           <p className="text-base text-muted-foreground">
-            Best-of-breed platforms wired together in this free, open-source template so teams can
-            ship quickly without compromising on reliability or developer experience.
+            Professional tooling that handles thousands of submissions, real-time judging, and live
+            ceremonies with zero downtime or performance issues.
           </p>
         </div>
         <div className="mt-10 grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
@@ -209,61 +405,6 @@ export function MarketingHome() {
               </a>
             );
           })}
-        </div>
-      </section>
-
-      <section className="rounded-3xl border border-border bg-linear-to-br from-primary/5 to-secondary/5 p-10 shadow-sm">
-        <div className="text-center space-y-3 mb-10">
-          <span className="text-sm font-medium uppercase tracking-widest text-muted-foreground">
-            Performance-First Architecture
-          </span>
-          <h2 className="text-3xl font-semibold text-foreground sm:text-4xl">
-            Optimized for speed, security, and real-time experiences
-          </h2>
-          <p className="text-base text-muted-foreground">
-            Built with modern web patterns that deliver exceptional performance while maintaining
-            strict security boundaries.
-          </p>
-        </div>
-
-        <div className="grid gap-8 md:grid-cols-3">
-          <div className="space-y-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
-              <Zap className="h-6 w-6 text-primary" />
-            </div>
-            <h3 className="text-xl font-semibold text-foreground">SSG for Public Pages</h3>
-            <p className="text-muted-foreground">
-              Marketing and authentication routes render as static HTML for instant first paint and
-              optimal SEO. No JavaScript required for initial page loads, with progressive
-              enhancement for rich interactions.
-            </p>
-          </div>
-
-          <div className="space-y-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
-              <Monitor className="h-6 w-6 text-primary" />
-            </div>
-            <h3 className="text-xl font-semibold text-foreground">
-              SPA Mode for Authenticated Pages
-            </h3>
-            <p className="text-muted-foreground">
-              Application routes run as a single-page app with Convex real-time queries. Zero
-              waterfalls, instant updates, and seamless navigation between protected areas of your
-              application.
-            </p>
-          </div>
-
-          <div className="space-y-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
-              <Shield className="h-6 w-6 text-primary" />
-            </div>
-            <h3 className="text-xl font-semibold text-foreground">Universal RBAC Infrastructure</h3>
-            <p className="text-muted-foreground">
-              Role-based access control enforced on both client and server with minimal database
-              hits. Single capability map drives all authorization, with automatic cache
-              invalidation for real-time role updates.
-            </p>
-          </div>
         </div>
       </section>
     </div>

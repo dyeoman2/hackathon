@@ -1,5 +1,5 @@
 {
-  "name": "tanstack-start-template",
+  "name": "hackathon",
   "private": true,
   "sideEffects": false,
   "type": "module",
@@ -7,10 +7,10 @@
   "author": "Daniel Yeoman",
   "version": "1.0.0",
   "description": "TanStack Start Template built with TanStack Start, Better Auth, Convex, Tailwind CSS, Shadcn/UI, and Resend",
-  "homepage": "https://github.com/dyeoman2/tanstack-start-template",
+  "homepage": "https://github.com/dyeoman2/hackathon",
   "repository": {
     "type": "git",
-    "url": "https://github.com/dyeoman2/tanstack-start-template.git"
+    "url": "https://github.com/dyeoman2/hackathon.git"
   },
   "engines": {
     "node": ">=24"

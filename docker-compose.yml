@@ -3,7 +3,7 @@ version: '3.8'
 services:
   minio:
     image: minio/minio:latest
-    container_name: tanstack-start-template-minio
+    container_name: hackathon-minio
     ports:
       - '9000:9000'
       - '9001:9001'

@@ -745,7 +745,7 @@ Focus on:
 4. Project structure overview
 5. Notable patterns or architectural decisions
 
-IMPORTANT: If you see files from other repositories (like "tanstack-start-template" or any other repo), ignore them completely. Only analyze files from the path "${r2PathPrefix}".
+IMPORTANT: If you see files from other repositories (like "hackathon" or any other repo), ignore them completely. Only analyze files from the path "${r2PathPrefix}".
 
 Keep it concise but informative (500-1000 words).`;
 

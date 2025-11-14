@@ -10,7 +10,7 @@ export function cn(...inputs: ClassValue[]) {
  * Falls back to a default name if not set
  */
 export function getAppName(): string {
-  return import.meta.env.VITE_APP_NAME || 'TanStack Start Template';
+  return import.meta.env.VITE_APP_NAME || 'Hackathon';
 }
 
 /**
