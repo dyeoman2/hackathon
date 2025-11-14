@@ -365,14 +365,14 @@ export const updateHackathon = mutation({
 });
 
 /**
- * Delete hackathon (owner only)
+ * Delete hackathon (owner/admin only)
  */
 export const deleteHackathon = mutation({
   args: {
     hackathonId: v.id('hackathons'),
   },
   handler: async (ctx, args) => {
-    await requireHackathonRole(ctx, args.hackathonId, ['owner']);
+    await requireHackathonRole(ctx, args.hackathonId, ['owner', 'admin']);
 
     // Note: We allow deletion even if this is the only owner, since they're explicitly choosing to delete
 

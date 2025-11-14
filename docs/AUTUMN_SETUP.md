@@ -102,14 +102,17 @@ All packages should use:
 
 #### Convex (Server-Side)
 
-Set the Autumn secret key for your development Convex deployment:
+Set the Autumn secret key and credit feature ID for your development Convex deployment:
 
 ```bash
 # Set the Autumn secret key (development)
 npx convex env set AUTUMN_SECRET_KEY am_sk_your_secret_key_here
+
+# Set the credit feature ID (development)
+npx convex env set VITE_AUTUMN_CREDIT_FEATURE_ID submissions
 ```
 
-**Important**: This variable must be set in Convex, not in your local `.env` file.
+**Important**: These variables must be set in Convex, not in your local `.env` file.
 
 #### Client-Side (`.env.local`)
 
@@ -129,14 +132,17 @@ Restart the dev server after updating environment variables so that both Convex 
 
 #### Convex (Server-Side)
 
-Set the Autumn secret key for your production Convex deployment:
+Set the Autumn secret key and credit feature ID for your production Convex deployment:
 
 ```bash
 # Set the Autumn secret key (production)
 npx convex env set AUTUMN_SECRET_KEY am_sk_your_secret_key_here --prod
+
+# Set the credit feature ID (production)
+npx convex env set VITE_AUTUMN_CREDIT_FEATURE_ID submissions --prod
 ```
 
-**Important**: This variable must be set in Convex, not in Netlify.
+**Important**: These variables must be set in Convex, not in Netlify.
 
 #### Netlify (Client-Side)
 
@@ -155,18 +161,19 @@ npx netlify env:set VITE_AUTUMN_50_CREDITS_ID prod_50_submissions
 npx netlify env:set VITE_AUTUMN_CREDIT_FEATURE_ID submissions
 ```
 
-**Note**: `VITE_AUTUMN_50_CREDITS_ID` and `VITE_AUTUMN_CREDIT_FEATURE_ID` are client-side variables (prefixed with `VITE_`), so they need to be set in Netlify for production builds. The `AUTUMN_SECRET_KEY` is server-side and only needs to be in Convex.
+**Note**: `VITE_AUTUMN_50_CREDITS_ID` is a client-side variable (prefixed with `VITE_`), so it needs to be set in Netlify for production builds. `VITE_AUTUMN_CREDIT_FEATURE_ID` and `AUTUMN_SECRET_KEY` are server-side variables that need to be set in Convex for both development and production.
 
 ### Using the Convex Dashboard
 
-You can also set the Convex environment variable via the dashboard:
+You can also set the Convex environment variables via the dashboard:
 
 1. Go to your [Convex Dashboard](https://dashboard.convex.dev)
 2. Select your project
 3. Go to **Settings > Environment Variables**
 4. Select the environment (Development or Production) from the dropdown
-5. Add the variable:
+5. Add the variables:
    - `AUTUMN_SECRET_KEY`: Your Autumn secret key (`am_sk_...`)
+   - `VITE_AUTUMN_CREDIT_FEATURE_ID`: `submissions` (or your custom feature ID)
 6. Click **Save** - Convex will automatically redeploy your functions
 
 ## 5. Verify the Integration
@@ -189,11 +196,15 @@ npx convex codegen
 
 ## Troubleshooting
 
-- **"Autumn billing is not configured" message**: 
-  - Verify that `AUTUMN_SECRET_KEY` is set in Convex (check both Development and Production environments if needed)
-  - **For development**: Use `npx convex env set AUTUMN_SECRET_KEY am_sk_your_secret_key_here`
-  - **For production**: Use `npx convex env set AUTUMN_SECRET_KEY am_sk_your_secret_key_here --prod`
-  - Use `npx convex env ls` to list all environment variables and verify `AUTUMN_SECRET_KEY` is present
+- **"Autumn billing is not configured" message**:
+  - Verify that `AUTUMN_SECRET_KEY` and `VITE_AUTUMN_CREDIT_FEATURE_ID` are set in Convex (check both Development and Production environments if needed)
+  - **For development**:
+    - `npx convex env set AUTUMN_SECRET_KEY am_sk_your_secret_key_here`
+    - `npx convex env set VITE_AUTUMN_CREDIT_FEATURE_ID submissions`
+  - **For production**:
+    - `npx convex env set AUTUMN_SECRET_KEY am_sk_your_secret_key_here --prod`
+    - `npx convex env set VITE_AUTUMN_CREDIT_FEATURE_ID submissions --prod`
+  - Use `npx convex env ls` to list all environment variables and verify both `AUTUMN_SECRET_KEY` and `VITE_AUTUMN_CREDIT_FEATURE_ID` are present
 - **Checkout dialog does not open**: Ensure product IDs match your Autumn dashboard
 - **Credits not added after purchase**: Check that the `messages` feature is properly configured
 

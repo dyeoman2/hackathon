@@ -229,6 +229,10 @@ async function main() {
       name: 'VITE_APP_NAME',
       value: process.env.VITE_APP_NAME,
     },
+    {
+      name: 'VITE_AUTUMN_CREDIT_FEATURE_ID',
+      value: process.env.VITE_AUTUMN_CREDIT_FEATURE_ID || 'submissions',
+    },
   ];
 
   for (const { name, value } of envVars) {

@@ -72,3 +72,17 @@ export function getBetterAuthSecret(): string {
 
   return secret;
 }
+
+/**
+ * Get the Autumn credit feature ID, with validation.
+ */
+export function getAutumnCreditFeatureId(): string {
+  const featureId = process.env.VITE_AUTUMN_CREDIT_FEATURE_ID;
+  if (!featureId || featureId.length === 0) {
+    throw new Error(
+      'VITE_AUTUMN_CREDIT_FEATURE_ID environment variable is required. ' +
+        'Please set it in your Convex environment. See docs/AUTUMN_SETUP.md for setup instructions.',
+    );
+  }
+  return featureId;
+}

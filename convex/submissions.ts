@@ -1,7 +1,7 @@
 import type { FunctionReference } from 'convex/server';
 import { v } from 'convex/values';
 import { FREE_SUBMISSION_LIMIT } from '../src/features/hackathons/constants';
-import { AUTUMN_CREDIT_FEATURE_ID } from '../src/lib/shared/autumn';
+import { getAutumnCreditFeatureId } from '../src/lib/server/env.server';
 import { calculateAverageRating, extractRatingValues } from '../src/lib/shared/rating-utils';
 import { assertUserId } from '../src/lib/shared/user-id';
 import { internal } from './_generated/api';
@@ -275,7 +275,7 @@ export const createSubmission = action({
       }
 
       const checkResult = await autumn.check(ctx, {
-        featureId: AUTUMN_CREDIT_FEATURE_ID,
+        featureId: getAutumnCreditFeatureId(),
       });
 
       if (checkResult.error) {
@@ -309,7 +309,7 @@ export const createSubmission = action({
     if (usingPaidCredit) {
       try {
         const trackResult = await autumn.track(ctx, {
-          featureId: AUTUMN_CREDIT_FEATURE_ID,
+          featureId: getAutumnCreditFeatureId(),
           value: 1,
           properties: {
             resource: 'hackathon_submission',
