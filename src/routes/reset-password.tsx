@@ -91,7 +91,7 @@ function ResetPasswordPage() {
 
         // Navigate to the app after showing success message
         setTimeout(() => {
-          router.navigate({ to: '/app' });
+          router.navigate({ to: '/app/h' });
         }, 2000);
       } catch (error: unknown) {
         if (
@@ -122,7 +122,7 @@ function ResetPasswordPage() {
   useEffect(() => {
     if (session?.user && success) {
       setTimeout(() => {
-        router.navigate({ to: '/app' });
+        router.navigate({ to: '/app/h' });
       }, 1000);
     }
   }, [session, success, router]);
@@ -133,7 +133,7 @@ function ResetPasswordPage() {
     }
 
     if (authState.isAuthenticated) {
-      throw redirect({ to: '/app' });
+      throw redirect({ to: '/app/h' });
     }
   }
 
@@ -175,7 +175,7 @@ function ResetPasswordPage() {
             </h2>
             <p className="mt-2 text-center text-sm text-muted-foreground">
               Your password has been successfully updated. You are now signed in and will be
-              redirected to your dashboard...
+              redirected to hackathons...
             </p>
           </div>
         </div>

@@ -35,7 +35,7 @@ export const Route = createFileRoute('/register')({
 
 function resolveRedirectTarget(value?: string | null): string {
   if (!value) {
-    return '/app';
+    return '/app/h';
   }
 
   const [path] = value.split('?');
@@ -45,8 +45,8 @@ function resolveRedirectTarget(value?: string | null): string {
     return path;
   }
 
-  // Default to app
-  return '/app';
+  // Default to hackathons
+  return '/app/h';
 }
 
 function RegisterPage() {
@@ -174,7 +174,7 @@ function RegisterPage() {
                 console.error('Failed to accept invite after registration:', inviteError);
                 // Fallback to regular redirect if invite acceptance fails
                 setTimeout(() => {
-                  navigate({ to: '/app' });
+                  navigate({ to: '/app/h' });
                 }, 2000);
               }
             } else {

@@ -33,7 +33,7 @@ export const Route = createFileRoute('/login')({
 });
 
 const REDIRECT_TARGETS = [
-  '/app',
+  '/app/h',
   '/app/profile',
   '/app/admin',
   '/app/admin/users',
@@ -42,7 +42,7 @@ const REDIRECT_TARGETS = [
 
 function resolveRedirectTarget(value?: string | null): string {
   if (!value) {
-    return '/app';
+    return '/app/h';
   }
 
   // Extract path from URL if full URL is provided
@@ -60,7 +60,7 @@ function resolveRedirectTarget(value?: string | null): string {
 
   // Prevent redirect loops to auth pages
   if (['/login', '/register', '/forgot-password', '/reset-password'].includes(path)) {
-    return '/app';
+    return '/app/h';
   }
 
   // Allow invite routes
@@ -70,7 +70,7 @@ function resolveRedirectTarget(value?: string | null): string {
 
   // Check other allowed routes
   const match = REDIRECT_TARGETS.find((route) => route === path || path.startsWith(`${route}/`));
-  return match ?? '/app';
+  return match ?? '/app/h';
 }
 
 function LoginPage() {
@@ -162,7 +162,7 @@ function LoginPage() {
               console.error('Failed to accept invite after login:', inviteError);
               // Fallback to regular redirect if invite acceptance fails
               setTimeout(() => {
-                navigate({ to: '/app' });
+                navigate({ to: '/app/h' });
               }, 50);
             }
           } else {

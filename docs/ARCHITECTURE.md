@@ -33,7 +33,7 @@ export const Route = createFileRoute('/login')({
 function LoginPage() {
   const { isAuthenticated, isPending } = useAuth();
   if (isPending) return <AuthSkeleton />;
-  if (isAuthenticated) throw redirect({ to: '/app' });
+  if (isAuthenticated) throw redirect({ to: '/app/h' });
   // ...
 }
 ```
@@ -57,7 +57,7 @@ function AppLayout() {
   const navigate = useNavigate();
   const { isAuthenticated, isPending } = useAuth();
   const redirectRef = useRef(false);
-  const redirectTarget = location.href ?? '/app';
+  const redirectTarget = location.href ?? '/app/h';
 
   useEffect(() => {
     if (isPending) return;
@@ -624,21 +624,28 @@ The RBAC system is designed to minimize database queries while maintaining secur
 
 ## 8. Data Access & Real-Time Updates
 
-### 8.1 Dashboard Example
+### 8.1 Route Redirect Example
 
-- Loader removed; page fetches via Convex `useQuery` and handles the `undefined` (pending) state.
+- `/app/` redirects to `/app/h` (hackathons list). Routes fetch via Convex `useQuery` and handle the `undefined` (pending) state.
 
 ```tsx
 // src/routes/app/index.tsx
 export const Route = createFileRoute('/app/')({
-  staleTime: 30_000,
-  gcTime: 120_000,
-  component: DashboardComponent,
+  beforeLoad: () => {
+    throw redirect({ to: '/app/h', replace: true });
+  },
 });
 
-function DashboardComponent() {
-  const dashboardData = useQuery(api.dashboard.getDashboardData, {});
-  return <Dashboard data={dashboardData ?? null} isLoading={dashboardData === undefined} />;
+// Example: Hackathons list route
+// src/routes/app/h/index.tsx
+export const Route = createFileRoute('/app/h/')({
+  component: HackathonListComponent,
+});
+
+function HackathonListComponent() {
+  const hackathons = useQuery(api.hackathons.listHackathons, {});
+  if (hackathons === undefined) return <Skeleton />;
+  return <HackathonList data={hackathons} />;
 }
 ```
 

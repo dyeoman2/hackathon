@@ -156,26 +156,11 @@ export function AppNavigation() {
             {isAuthenticated && (
               <div className="flex items-center space-x-1">
                 <Link
-                  to="/app"
-                  preload="intent"
-                  className={cn(navigationMenuTriggerStyle(), 'no-underline')}
-                  activeOptions={{ exact: true }}
-                >
-                  Dashboard
-                </Link>
-                <Link
                   to="/app/h"
                   preload="intent"
                   className={cn(navigationMenuTriggerStyle(), 'no-underline')}
                 >
                   Hackathons
-                </Link>
-                <Link
-                  to="/app/ai-playground"
-                  preload="intent"
-                  className={cn(navigationMenuTriggerStyle(), 'no-underline')}
-                >
-                  AI Playground
                 </Link>
               </div>
             )}

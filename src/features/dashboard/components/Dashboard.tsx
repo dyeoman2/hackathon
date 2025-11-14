@@ -37,7 +37,7 @@ export function Dashboard({ data, isLoading }: DashboardProps) {
       await signOut();
     } finally {
       setIsSigningOut(false);
-      router.navigate({ to: '/login', search: { redirect: '/app' } });
+      router.navigate({ to: '/login', search: { redirect: '/app/h' } });
     }
   }, [router]);
 
