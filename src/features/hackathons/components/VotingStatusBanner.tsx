@@ -52,12 +52,18 @@ export function VotingStatusBanner({ hackathonId, hackathonRole }: VotingStatusB
 
   // Show options when voting is closed (only for admins/owners)
   if (isVotingClosed && isAdminOrOwner) {
-    const handleStartReveal = () => {
-      void router.navigate({
-        to: '/app/h/$id/reveal',
-        params: { id: hackathonId },
-        search: { autostart: true },
-      });
+    const handleStartReveal = async () => {
+      try {
+        await revealSync.startReveal();
+        void router.navigate({
+          to: '/app/h/$id/reveal',
+          params: { id: hackathonId },
+          search: { autostart: false },
+        });
+      } catch (error) {
+        console.error('Failed to start reveal:', error);
+        toast.showToast(error instanceof Error ? error.message : 'Failed to start reveal', 'error');
+      }
     };
 
     const handleReopenVotingClick = () => {
