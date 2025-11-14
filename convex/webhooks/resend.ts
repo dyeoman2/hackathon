@@ -39,11 +39,15 @@ async function forwardEmail(event: ResendEmailReceivedEvent): Promise<void> {
     }
 
     // Fetch the full email content from Resend
-    const { data: emailContent } = await resend.emails.get(event.data.email_id);
+    const emailContent = await resend.emails.get(event.data.email_id);
 
     if (!emailContent) {
       throw new Error('Failed to fetch email content');
     }
+
+    // Note: Attachments are not forwarded in this basic implementation
+    // To add attachment forwarding, you'll need to implement the attachments API
+    // as shown in the Resend documentation
 
     await resend.emails.send({
       from: process.env.RESEND_EMAIL_SENDER || 'onboarding@resend.dev',
@@ -57,7 +61,7 @@ async function forwardEmail(event: ResendEmailReceivedEvent): Promise<void> {
           <p><strong>Received:</strong> ${new Date(event.data.created_at).toLocaleString()}</p>
         </div>
         <hr style="margin: 20px 0; border: none; border-top: 1px solid #eee;">
-        ${emailContent.html || emailContent.text || 'No content available'}
+        ${emailContent.data?.html || emailContent.data?.text || 'No content available'}
       `,
       text: `
 -------- Forwarded Message --------
@@ -67,7 +71,7 @@ Original Subject: ${event.data.subject}
 Received: ${new Date(event.data.created_at).toLocaleString()}
 
 -------- Original Message --------
-${emailContent.text || emailContent.html || 'No content available'}
+${emailContent.data?.text || emailContent.data?.html || 'No content available'}
       `,
     });
 
