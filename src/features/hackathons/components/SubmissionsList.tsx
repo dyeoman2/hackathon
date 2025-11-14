@@ -2,7 +2,7 @@ import { api } from '@convex/_generated/api';
 import type { Id } from '@convex/_generated/dataModel';
 import { useRouter } from '@tanstack/react-router';
 import { useQuery } from 'convex/react';
-import { Eye, EyeOff, Plus, Trash2 } from 'lucide-react';
+import { ExternalLink, Eye, EyeOff, Github, Plus } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Badge } from '~/components/ui/badge';
 import { Button } from '~/components/ui/button';
@@ -59,12 +59,6 @@ export function SubmissionsList({ hackathonId }: SubmissionsListProps) {
       params: { id: hackathonId, submissionId },
     });
   };
-
-  // Memoize permission checks to avoid recalculation on every render
-  const canDelete = useMemo(
-    () => hackathon?.role === 'owner' || hackathon?.role === 'admin',
-    [hackathon?.role],
-  );
 
   const hasEnded = useMemo(
     () =>
@@ -134,7 +128,7 @@ export function SubmissionsList({ hackathonId }: SubmissionsListProps) {
         <div className="flex flex-col gap-2">
           <div className="flex items-center gap-3">
             <h2 className="text-2xl font-semibold">Submissions</h2>
-            {hackathon?.role === 'judge' && ratingStats.total > 0 && ratingStats.unrated > 0 && (
+            {(hackathon?.role === 'judge' || hackathon?.role === 'owner' || hackathon?.role === 'admin') && ratingStats.total > 0 && ratingStats.unrated > 0 && (
               <Button
                 variant={showOnlyUnrated ? 'secondary' : 'outline'}
                 size="sm"
@@ -234,38 +228,14 @@ export function SubmissionsList({ hackathonId }: SubmissionsListProps) {
                   </>
                 )}
 
-                {/* Rating badge and delete button in top right */}
-                <div className="absolute top-2 right-2 flex items-center gap-2 z-10">
-                  {canDelete && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSubmissionToDelete(submission._id);
-                      }}
-                      className={`h-6 w-6 p-0 backdrop-blur-sm ${
-                        homepageScreenshot
-                          ? 'text-white hover:text-destructive hover:bg-white/20 bg-black/30'
-                          : 'text-muted-foreground hover:text-destructive hover:bg-background/20 bg-background/50'
-                      }`}
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
-                  )}
+                {/* Rating badge in top right */}
+                <div className="absolute top-2 right-2 z-10">
                   {submission.myRating !== null && submission.myRating !== undefined ? (
                     <Badge
                       variant="default"
                       className="backdrop-blur-sm bg-primary/90 text-primary-foreground shadow-lg"
                     >
                       {submission.myRating.toFixed(1)}
-                    </Badge>
-                  ) : canDelete ? (
-                    <Badge
-                      variant="outline"
-                      className="backdrop-blur-sm bg-background/90 border-2 shadow-lg"
-                    >
-                      {submission.averageRating.toFixed(1)}
                     </Badge>
                   ) : (
                     <Badge
@@ -279,16 +249,58 @@ export function SubmissionsList({ hackathonId }: SubmissionsListProps) {
 
                 {/* Title and team at bottom */}
                 <div className="absolute bottom-0 left-0 right-0 p-4 z-10">
-                  <CardTitle
-                    className={`mb-1 line-clamp-2 ${homepageScreenshot ? 'text-white' : 'text-foreground'}`}
-                  >
-                    {submission.title}
-                  </CardTitle>
-                  <CardDescription
-                    className={homepageScreenshot ? 'text-white/80' : 'text-muted-foreground'}
-                  >
-                    {submission.team}
-                  </CardDescription>
+                  <div className="flex items-end justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <CardTitle
+                        className={`mb-1 line-clamp-2 ${homepageScreenshot ? 'text-white' : 'text-foreground'}`}
+                      >
+                        {submission.title}
+                      </CardTitle>
+                      <CardDescription
+                        className={homepageScreenshot ? 'text-white/80' : 'text-muted-foreground'}
+                      >
+                        {submission.team}
+                      </CardDescription>
+                    </div>
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      {submission.repoUrl && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            window.open(submission.repoUrl, '_blank', 'noopener,noreferrer');
+                          }}
+                          className={`h-8 w-8 p-0 backdrop-blur-sm ${
+                            homepageScreenshot
+                              ? 'text-white hover:bg-white/20 bg-black/30'
+                              : 'text-muted-foreground hover:bg-background/20 bg-background/50'
+                          }`}
+                          title="View on GitHub"
+                        >
+                          <Github className="h-4 w-4" />
+                        </Button>
+                      )}
+                      {submission.siteUrl && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            window.open(submission.siteUrl, '_blank', 'noopener,noreferrer');
+                          }}
+                          className={`h-8 w-8 p-0 backdrop-blur-sm ${
+                            homepageScreenshot
+                              ? 'text-white hover:bg-white/20 bg-black/30'
+                              : 'text-muted-foreground hover:bg-background/20 bg-background/50'
+                          }`}
+                          title="View live site"
+                        >
+                          <ExternalLink className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </Card>
             );
