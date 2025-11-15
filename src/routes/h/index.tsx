@@ -21,20 +21,11 @@ function HackathonListComponent() {
   const router = useRouter();
   const { isAuthenticated } = useAuth();
 
-  // Use different queries based on authentication status
-  const authenticatedHackathons = useQuery(
-    api.hackathons.listHackathons,
-    isAuthenticated ? {} : 'skip',
-  );
-  const publicHackathons = useQuery(
-    api.hackathons.listPublicHackathons,
-    !isAuthenticated ? {} : 'skip',
-  );
-
-  const hackathons = isAuthenticated ? authenticatedHackathons : publicHackathons;
+  // Always show all public hackathons to everyone
+  const hackathons = useQuery(api.hackathons.listPublicHackathons, {});
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  // Auto-open modal only for authenticated users with no hackathons
+  // Auto-open modal only for authenticated users when there are no hackathons at all
   useEffect(() => {
     if (isAuthenticated && hackathons !== undefined && hackathons.length === 0) {
       setIsModalOpen(true);
@@ -57,9 +48,7 @@ function HackathonListComponent() {
       <div className="space-y-6">
         <PageHeader
           title="Hackathons"
-          description={
-            isAuthenticated ? 'Manage your hackathon events' : 'Discover and join hackathon events'
-          }
+          description="Discover and join hackathon events"
           actions={<Skeleton className="h-10 w-32" />}
         />
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -84,9 +73,7 @@ function HackathonListComponent() {
     <div className="space-y-6">
       <PageHeader
         title="Hackathons"
-        description={
-          isAuthenticated ? 'Manage your hackathon events' : 'Discover and join hackathon events'
-        }
+        description="Discover and join hackathon events"
         actions={
           <Button onClick={handleCreateHackathon}>
             <Plus className="h-4 w-4" />
@@ -99,9 +86,7 @@ function HackathonListComponent() {
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
             <p className="text-muted-foreground mb-4 text-center">
-              {isAuthenticated
-                ? "You don't have any hackathons yet. Create your first one to get started!"
-                : 'No hackathons available yet. Be the first to create one!'}
+              No hackathons available yet. Be the first to create one!
             </p>
             <Button onClick={handleCreateHackathon}>
               <Plus className="h-4 w-4" />

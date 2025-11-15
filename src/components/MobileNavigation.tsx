@@ -1,4 +1,4 @@
-import { Link, useLocation, useNavigate } from '@tanstack/react-router';
+import { Link, useLocation, useNavigate, useRouter } from '@tanstack/react-router';
 import { LogOut, type LucideIcon, Menu, Shield, Trophy, User } from 'lucide-react';
 import { useState } from 'react';
 import {
@@ -32,6 +32,7 @@ export function MobileNavigation() {
   const session = { user: isAuthenticated ? user : null };
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
+  const router = useRouter();
   const location = useLocation();
 
   const navItems: NavItem[] = [{ to: '/h', label: 'Hackathons', icon: Trophy }];
@@ -42,15 +43,21 @@ export function MobileNavigation() {
 
   const handleSignOut = async () => {
     try {
+      console.log('🔄 MOBILE NAVIGATION: Starting sign out process');
       await signOut();
+      console.log('✅ MOBILE NAVIGATION: Sign out completed successfully');
       handleLinkClick(); // Close the mobile menu
-      // Navigate to home page after successful sign out
-      navigate({ to: '/' });
+
+      // Force a full page reload to ensure all auth state is cleared
+      // This is more reliable than trying to manage complex state transitions
+      console.log('🔄 MOBILE NAVIGATION: Reloading page to clear all state');
+      window.location.href = '/login';
     } catch (error) {
-      console.error('Error signing out:', error);
+      console.error('❌ MOBILE NAVIGATION: Error signing out:', error);
       handleLinkClick(); // Close the mobile menu
-      // Still navigate to home even if there's an error
-      navigate({ to: '/' });
+      // Even on error, force a reload to clear state
+      console.log('🔄 MOBILE NAVIGATION: Reloading page after error');
+      window.location.href = '/login';
     }
   };
 

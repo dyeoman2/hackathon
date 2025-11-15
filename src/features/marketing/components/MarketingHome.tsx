@@ -1,150 +1,37 @@
 import { Link } from '@tanstack/react-router';
-import { ArrowRight, Monitor, Shield, Zap } from 'lucide-react';
-import type { ComponentProps } from 'react';
-import React from 'react';
-import type { IconType } from 'react-icons';
+import {
+  ArrowRight,
+  Bot,
+  Camera,
+  Eye,
+  Monitor,
+  Search,
+  Settings,
+  Shield,
+  Sparkles,
+  Trophy,
+  Upload,
+  Users,
+  Vote,
+  Zap,
+} from 'lucide-react';
 import { SiGithub } from 'react-icons/si';
 import { Button } from '~/components/ui/button';
-import { cn } from '~/lib/utils';
-
-type GenericIconProps = ComponentProps<'img'> & ComponentProps<'svg'>;
-
-const TanStackIcon: React.FC<GenericIconProps> = ({ className }) => (
-  <img src="/android-chrome-192x192.png" alt="TanStack" className={className} />
-);
-
-const ConvexIcon: React.FC<GenericIconProps> = ({ className }) => (
-  <img src="/convex.png" alt="Convex" className={className} />
-);
-
-const BetterAuthIcon: React.FC<GenericIconProps> = ({ className }) => (
-  <img src="/better-auth.png" alt="BetterAuth" className={className} />
-);
-
-type MarketingIcon = IconType | React.FC<{ className?: string; color?: string }>;
-
-type TechItem = {
-  name: string;
-  description: string;
-  Icon: MarketingIcon;
-  iconColor?: string;
-  iconClassName?: string;
-  url: string;
-};
-
-// Create lazy-loaded icon components to avoid bundling issues
-const createLazyIcon = (iconName: string) => {
-  const LazyIcon = React.lazy(() =>
-    import('react-icons/si').then((module) => ({
-      default: module[iconName as keyof typeof module] as React.ComponentType<
-        React.SVGProps<SVGSVGElement>
-      >,
-    })),
-  );
-  return LazyIcon;
-};
-
-const coreTechnologies: TechItem[] = [
-  {
-    name: 'TanStack Start',
-    description: 'File-based routing, SSR, and progressive enhancement.',
-    Icon: TanStackIcon,
-    iconColor: '#f97316',
-    url: 'https://tanstack.com/start',
-  },
-  {
-    name: 'Convex',
-    description: 'Realtime database operations with zero client boilerplate.',
-    Icon: ConvexIcon,
-    iconColor: '#0f172a',
-    url: 'https://www.convex.dev/',
-  },
-  {
-    name: 'Netlify',
-    description: 'Serverless hosting and edge delivery tuned for TanStack Start.',
-    Icon: createLazyIcon('SiNetlify'),
-    iconClassName: 'text-emerald-500',
-    url: 'https://www.netlify.com/',
-  },
-  {
-    name: 'BetterAuth',
-    description: 'Email-first authentication with session management baked in.',
-    Icon: BetterAuthIcon,
-    iconColor: '#be123c',
-    url: 'https://www.better-auth.com/',
-  },
-  {
-    name: 'Resend',
-    description: 'Transactional emails for auth flows and lifecycle messaging.',
-    Icon: createLazyIcon('SiResend'),
-    iconClassName: 'text-slate-900',
-    url: 'https://resend.com/',
-  },
-  {
-    name: 'Biome',
-    description: 'Fast linting and formatting to keep the codebase consistent.',
-    Icon: createLazyIcon('SiBiome'),
-    iconClassName: 'text-blue-600',
-    url: 'https://biomejs.dev/',
-  },
-  {
-    name: 'React 19',
-    description: 'Modern UI library powering server and client rendering.',
-    Icon: createLazyIcon('SiReact'),
-    iconClassName: 'text-sky-400',
-    url: 'https://react.dev/',
-  },
-  {
-    name: 'Shadcn/UI',
-    description: 'Accessible component primitives ready for rapid iteration.',
-    Icon: createLazyIcon('SiShadcnui'),
-    iconClassName: 'text-slate-900',
-    url: 'https://ui.shadcn.com/',
-  },
-  {
-    name: 'Tailwind',
-    description: 'Utility-first styling with design tokens configured for the platform.',
-    Icon: createLazyIcon('SiTailwindcss'),
-    iconClassName: 'text-sky-500',
-    url: 'https://tailwindcss.com/',
-  },
-  {
-    name: 'TypeScript',
-    description: 'Type-safe foundations from server to client with strict typing.',
-    Icon: createLazyIcon('SiTypescript'),
-    iconClassName: 'text-blue-600',
-    url: 'https://www.typescriptlang.org/',
-  },
-  {
-    name: 'Vite',
-    description: 'Lightning-fast dev server and build pipeline optimized for React.',
-    Icon: createLazyIcon('SiVite'),
-    iconClassName: 'text-purple-600',
-    url: 'https://vitejs.dev/',
-  },
-  {
-    name: 'Zod',
-    description: 'Type-safe validation for data schemas.',
-    Icon: createLazyIcon('SiZod'),
-    iconClassName: 'text-blue-500',
-    url: 'https://zod.dev/',
-  },
-];
 
 export function MarketingHome() {
   return (
     <div className="flex flex-col gap-16 py-16">
       <section className="text-center space-y-6">
         <span className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-sm font-medium text-primary">
-          Open Source Hackathon Platform
+          Find Events & Host Hackathons
         </span>
         <h1 className="text-4xl font-semibold tracking-tight text-foreground sm:text-5xl lg:text-6xl">
-          Hackathons made simple
+          Find your next hackathon or launch your own
         </h1>
         <p className="mx-auto max-w-2xl text-lg text-muted-foreground">
-          Launch your hackathon, invite your judges, and gather submissions as AI indexes the
-          codebases for interactive Q&A, crawls and captures screenshots of sites, generates
-          detailed summaries, and powers live judging with spectacular winner announcements
+          Discover exciting hackathons to join, or create your own competition with AI-powered
+          insights, automatic screenshot capture, interactive code analysis, and spectacular winner
+          reveals that make every hackathon unforgettable.
         </p>
         <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
           <Button asChild size="lg">
@@ -154,25 +41,223 @@ export function MarketingHome() {
             </Link>
           </Button>
           <Button asChild variant="outline" size="lg">
-            <a
-              href="https://github.com/dyeoman2/hackathon"
-              className="inline-flex items-center gap-2"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              <SiGithub className="h-4 w-4" />
-              View on GitHub
-            </a>
+            <Link to="/h" preload="intent" className="inline-flex items-center gap-2">
+              Find Hackathons
+              <ArrowRight className="h-4 w-4" />
+            </Link>
           </Button>
         </div>
         <div className="flex items-center justify-center gap-2 mt-4">
           <span className="text-xs text-muted-foreground">
-            3 free submissions. No credit card required.
+            Join hackathons for free. 3 submissions free for organizers.
           </span>
         </div>
       </section>
 
-      <section className="rounded-3xl border border-border bg-linear-to-br from-primary/5 to-secondary/5 p-10 shadow-sm">
+      {/* How it Works Section */}
+      <section className="rounded-3xl border border-border bg-linear-to-br from-green-500/5 to-emerald-500/5 p-10 shadow-sm">
+        <div className="text-center space-y-3 mb-10">
+          <span className="text-sm font-medium uppercase tracking-widest text-muted-foreground">
+            How it Works
+          </span>
+          <h2 className="text-3xl font-semibold text-foreground sm:text-4xl">
+            Launch your hackathon in minutes
+          </h2>
+          <p className="text-base text-muted-foreground">
+            From idea to spectacular winner announcement - we've automated everything in between.
+          </p>
+        </div>
+
+        <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-5">
+          <div className="text-center space-y-4">
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-blue-500/10 mx-auto">
+              <Settings className="h-8 w-8 text-blue-600" />
+            </div>
+            <div className="space-y-2">
+              <div className="text-sm font-semibold text-blue-600">1</div>
+              <h3 className="text-lg font-semibold text-foreground">Setup & Invite</h3>
+              <p className="text-sm text-muted-foreground">
+                Configure your hackathon details and invite judges to get started
+              </p>
+            </div>
+          </div>
+
+          <div className="text-center space-y-4">
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-green-500/10 mx-auto">
+              <Upload className="h-8 w-8 text-green-600" />
+            </div>
+            <div className="space-y-2">
+              <div className="text-sm font-semibold text-green-600">2</div>
+              <h3 className="text-lg font-semibold text-foreground">Collect Submissions</h3>
+              <p className="text-sm text-muted-foreground">
+                Participants submit their projects with GitHub links
+              </p>
+            </div>
+          </div>
+
+          <div className="text-center space-y-4">
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-orange-500/10 mx-auto">
+              <Bot className="h-8 w-8 text-orange-600" />
+            </div>
+            <div className="space-y-2">
+              <div className="text-sm font-semibold text-orange-600">3</div>
+              <h3 className="text-lg font-semibold text-foreground">AI Processes</h3>
+              <p className="text-sm text-muted-foreground">
+                Submissions auto-analyzed with summaries, screenshots & repo chat
+              </p>
+            </div>
+          </div>
+
+          <div className="text-center space-y-4">
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-purple-500/10 mx-auto">
+              <Vote className="h-8 w-8 text-purple-600" />
+            </div>
+            <div className="space-y-2">
+              <div className="text-sm font-semibold text-purple-600">4</div>
+              <h3 className="text-lg font-semibold text-foreground">Voting</h3>
+              <p className="text-sm text-muted-foreground">
+                Judges score projects and community voting adds engagement
+              </p>
+            </div>
+          </div>
+
+          <div className="text-center space-y-4">
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-pink-500/10 mx-auto">
+              <Sparkles className="h-8 w-8 text-pink-600" />
+            </div>
+            <div className="space-y-2">
+              <div className="text-sm font-semibold text-pink-600">5</div>
+              <h3 className="text-lg font-semibold text-foreground">Celebrate</h3>
+              <p className="text-sm text-muted-foreground">
+                Live judging, leaderboards, and winner reveals
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="text-center mt-8">
+          <Button asChild size="lg">
+            <Link to="/register" preload="intent" className="inline-flex items-center gap-2">
+              Start Your Hackathon Now
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          </Button>
+        </div>
+      </section>
+
+      {/* New Discover Hackathons Section */}
+      <section className="rounded-3xl border border-border bg-linear-to-br from-blue-500/5 to-purple-500/5 p-10 shadow-sm">
+        <div className="text-center space-y-3 mb-10">
+          <span className="text-sm font-medium uppercase tracking-widest text-muted-foreground">
+            Join the Community
+          </span>
+          <h2 className="text-3xl font-semibold text-foreground sm:text-4xl">
+            Discover hackathons happening now
+          </h2>
+          <p className="text-base text-muted-foreground">
+            Browse public hackathons, submit your projects, and compete with developers worldwide.
+            No account required to explore events.
+          </p>
+        </div>
+
+        <div className="grid gap-8 md:grid-cols-3">
+          <div className="space-y-4">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-500/10">
+              <Search className="h-6 w-6 text-blue-600" />
+            </div>
+            <h3 className="text-xl font-semibold text-foreground">Browse Events</h3>
+            <p className="text-muted-foreground">
+              Explore hackathons by category, deadline, or popularity. Find the perfect challenge
+              for your skills and interests.
+            </p>
+          </div>
+
+          <div className="space-y-4">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-purple-500/10">
+              <Users className="h-6 w-6 text-purple-600" />
+            </div>
+            <h3 className="text-xl font-semibold text-foreground">Join Communities</h3>
+            <p className="text-muted-foreground">
+              Connect with organizers and fellow participants. Get insights into judging criteria
+              and submission requirements before you start.
+            </p>
+          </div>
+
+          <div className="space-y-4">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-500/10">
+              <Trophy className="h-6 w-6 text-green-600" />
+            </div>
+            <h3 className="text-xl font-semibold text-foreground">Showcase Your Work</h3>
+            <p className="text-muted-foreground">
+              Submit your projects with automatic processing, screenshots, and AI-generated
+              summaries that highlight your best work to judges.
+            </p>
+          </div>
+        </div>
+
+        <div className="text-center mt-8">
+          <Button asChild size="lg" variant="outline">
+            <Link to="/h" preload="intent" className="inline-flex items-center gap-2">
+              Browse Hackathons
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          </Button>
+        </div>
+      </section>
+
+      {/* AI-Powered Features Section */}
+      <section className="rounded-3xl border border-border bg-linear-to-br from-purple-500/5 to-pink-500/5 p-10 shadow-sm">
+        <div className="text-center space-y-3 mb-10">
+          <span className="text-sm font-medium uppercase tracking-widest text-muted-foreground">
+            AI-Powered Intelligence
+          </span>
+          <h2 className="text-3xl font-semibold text-foreground sm:text-4xl">
+            Smart automation for modern hackathons
+          </h2>
+          <p className="text-base text-muted-foreground">
+            Our AI analyzes every submission automatically, giving judges deep insights and
+            participants rich project understanding.
+          </p>
+        </div>
+
+        <div className="grid gap-8 md:grid-cols-3">
+          <div className="space-y-4">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-purple-500/10">
+              <Bot className="h-6 w-6 text-purple-600" />
+            </div>
+            <h3 className="text-xl font-semibold text-foreground">AI Repository Chat</h3>
+            <p className="text-muted-foreground">
+              Ask questions about any codebase in natural language. Get instant answers about
+              architecture, implementation details, and technical decisions from the full
+              repository.
+            </p>
+          </div>
+
+          <div className="space-y-4">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-500/10">
+              <Eye className="h-6 w-6 text-blue-600" />
+            </div>
+            <h3 className="text-xl font-semibold text-foreground">Smart Project Summaries</h3>
+            <p className="text-muted-foreground">
+              AI analyzes README files and project structure to generate comprehensive summaries,
+              highlighting key features, technologies, and what makes each project unique.
+            </p>
+          </div>
+
+          <div className="space-y-4">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-500/10">
+              <Camera className="h-6 w-6 text-green-600" />
+            </div>
+            <h3 className="text-xl font-semibold text-foreground">Automatic Screenshots</h3>
+            <p className="text-muted-foreground">
+              Live websites are automatically captured and displayed to judges, ensuring they see
+              your application exactly as users experience it, without manual setup.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section className="rounded-3xl border border-border bg-card p-10 shadow-sm">
         <div className="text-center space-y-3 mb-10">
           <span className="text-sm font-medium uppercase tracking-widest text-muted-foreground">
             Competition-Ready Features
@@ -186,7 +271,7 @@ export function MarketingHome() {
           </p>
         </div>
 
-        <div className="grid gap-8 md:grid-cols-3">
+        <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-4">
           <div className="space-y-4">
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
               <Zap className="h-6 w-6 text-primary" />
@@ -208,6 +293,17 @@ export function MarketingHome() {
               Real-time rating updates, live leaderboard changes, and synchronized judging
               workflows. Everyone sees results update instantly as votes come in during intense
               judging sessions.
+            </p>
+          </div>
+
+          <div className="space-y-4">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
+              <Vote className="h-6 w-6 text-primary" />
+            </div>
+            <h3 className="text-xl font-semibold text-foreground">Community Voting</h3>
+            <p className="text-muted-foreground">
+              Enable public voting alongside judge scoring. Participants and attendees can vote for
+              their favorite projects, creating engagement and additional recognition categories.
             </p>
           </div>
 
@@ -365,46 +461,6 @@ export function MarketingHome() {
               </Button>
             </div>
           </div>
-        </div>
-      </section>
-
-      <section className="rounded-3xl border border-border bg-muted/40 p-10 shadow-sm">
-        <div className="text-center space-y-3">
-          <span className="text-sm font-medium uppercase tracking-widest text-muted-foreground">
-            Built for Scale
-          </span>
-          <h2 className="text-3xl font-semibold text-foreground sm:text-4xl">
-            Enterprise-grade technology powering hackathon success
-          </h2>
-          <p className="text-base text-muted-foreground">
-            Professional tooling that handles thousands of submissions, real-time judging, and live
-            ceremonies with zero downtime or performance issues.
-          </p>
-        </div>
-        <div className="mt-10 grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
-          {coreTechnologies.map((tech) => {
-            const Icon = tech.Icon;
-            return (
-              <a
-                key={tech.name}
-                href={tech.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-4 rounded-2xl border border-border/60 bg-background px-4 py-4 shadow-sm transition-colors hover:bg-muted/50"
-              >
-                <div
-                  className="flex h-12 w-12 items-center justify-center rounded-full"
-                  aria-hidden
-                >
-                  <Icon className={cn('h-6 w-6', tech.iconClassName)} color={tech.iconColor} />
-                </div>
-                <div className="space-y-1">
-                  <p className="text-base font-semibold text-foreground">{tech.name}</p>
-                  <p className="text-sm text-muted-foreground">{tech.description}</p>
-                </div>
-              </a>
-            );
-          })}
         </div>
       </section>
     </div>

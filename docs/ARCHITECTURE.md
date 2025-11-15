@@ -643,7 +643,8 @@ export const Route = createFileRoute('/h/')({
 });
 
 function HackathonListComponent() {
-  const hackathons = useQuery(api.hackathons.listHackathons, {});
+  // Always show all public hackathons to everyone (authenticated and unauthenticated users)
+  const hackathons = useQuery(api.hackathons.listPublicHackathons, {});
   if (hackathons === undefined) return <Skeleton />;
   return <HackathonList data={hackathons} />;
 }

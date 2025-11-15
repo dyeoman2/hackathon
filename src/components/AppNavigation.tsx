@@ -28,16 +28,19 @@ function AuthNavigation({ currentPath }: { currentPath: string }) {
 
   const handleSignOut = async () => {
     try {
+      console.log('🔄 DESKTOP NAVIGATION: Starting sign out process');
       await signOut();
-      // Invalidate the root route loader which caches auth state
-      // Convex handles auth state automatically, so no need for React Query invalidation
-      await router.invalidate();
-      navigate({ to: '/' });
+      console.log('✅ DESKTOP NAVIGATION: Sign out completed successfully');
+
+      // Force a full page reload to ensure all auth state is cleared
+      // This is more reliable than trying to manage complex state transitions
+      console.log('🔄 DESKTOP NAVIGATION: Reloading page to clear all state');
+      window.location.href = '/login';
     } catch (error) {
-      console.error('❌ NAVIGATION: Error signing out:', error);
-      // Still try to invalidate even on error
-      await router.invalidate();
-      navigate({ to: '/' });
+      console.error('❌ DESKTOP NAVIGATION: Error signing out:', error);
+      // Even on error, force a reload to clear state
+      console.log('🔄 DESKTOP NAVIGATION: Reloading page after error');
+      window.location.href = '/login';
     }
   };
 
