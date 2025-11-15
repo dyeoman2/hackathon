@@ -321,7 +321,7 @@ export function MarketingHome() {
                 <div className="flex items-center justify-center gap-4">
                   <div className="text-center">
                     <div className="text-4xl font-bold text-foreground">$0</div>
-                    <div className="text-sm text-muted-foreground">first 10 submissions</div>
+                    <div className="text-sm text-muted-foreground">first 3 submissions</div>
                   </div>
                   <div className="text-2xl text-muted-foreground">+</div>
                   <div className="text-center">

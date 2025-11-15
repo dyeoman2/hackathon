@@ -1,7 +1,14 @@
 import { api } from '@convex/_generated/api';
 import type { Doc } from '@convex/_generated/dataModel';
 import { useAction, useQuery } from 'convex/react';
-import { useLayoutEffect, useRef, useState } from 'react';
+import {
+  isValidElement,
+  type ReactElement,
+  type ReactNode,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
 import { SiGithub } from 'react-icons/si';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -42,6 +49,22 @@ export function SubmissionRepoChat({ submission }: SubmissionRepoChatProps) {
   };
 
   const githubRepoBase = getGitHubRepoBase();
+
+  const extractLinkText = (node: ReactNode): string => {
+    if (typeof node === 'string') {
+      return node;
+    }
+    if (Array.isArray(node)) {
+      return node.map((child) => extractLinkText(child)).join('');
+    }
+    if (isValidElement(node)) {
+      const element = node as ReactElement<{ children?: ReactNode }>;
+      if (element.props?.children) {
+        return extractLinkText(element.props.children);
+      }
+    }
+    return '';
+  };
 
   // Transform file paths in message content from R2 paths to GitHub paths
   const transformFilePaths = (content: string): string => {
@@ -650,17 +673,17 @@ export function SubmissionRepoChat({ submission }: SubmissionRepoChatProps) {
 
                               // Extract trailing punctuation and commas from children if present
                               // ReactMarkdown may include punctuation in the link text when markdown has [link](url).
-                              const childrenStr =
-                                typeof children === 'string'
-                                  ? children
-                                  : Array.isArray(children)
-                                    ? children.map((c) => (typeof c === 'string' ? c : '')).join('')
-                                    : displayPath;
+                              const rawLinkText = extractLinkText(children);
+                              const childrenStr = rawLinkText.trim().length > 0 ? rawLinkText : '';
 
                               // Check if link text ends with punctuation: . : , or )
                               // Handle cases like: [link](url), [link](url). [link](url): or [link](url))
                               // ReactMarkdown may include trailing ) in link text when markdown has [link](url))
                               let linkText = childrenStr || displayPath;
+                              // Prefer display path over an auto-linked URL to keep the chip readable
+                              if (linkText.startsWith('http')) {
+                                linkText = displayPath;
+                              }
                               let trailingPunct: string | null = null;
 
                               // Remove trailing punctuation - be aggressive to catch all cases

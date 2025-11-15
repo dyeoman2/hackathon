@@ -56,6 +56,8 @@ function buildFolderFilter(
   };
 }
 
+type CloudflareJobStatus = Awaited<ReturnType<typeof checkAISearchJobStatus>>;
+
 /**
  * Internal action to check if files are indexed in Cloudflare AI Search
  * Uses Convex scheduler to poll without blocking - reschedules itself if not ready
@@ -253,6 +255,8 @@ export const checkCloudflareIndexing = internalAction({
 
       // Check if files are indexed by checking job status first, then falling back to querying documents
       let indexed = false;
+      let jobStatus: CloudflareJobStatus = null;
+      let waitForJobCompletion = false;
 
       // Log current state for debugging
       console.log(
@@ -289,7 +293,7 @@ export const checkCloudflareIndexing = internalAction({
         console.log(
           `[AI Search] Checking job status for job ${submission.source.aiSearchSyncJobId}...`,
         );
-        const jobStatus = await checkAISearchJobStatus(ctx, submission.source.aiSearchSyncJobId);
+        jobStatus = await checkAISearchJobStatus(ctx, submission.source.aiSearchSyncJobId);
         console.log(
           `[AI Search] Job ${submission.source.aiSearchSyncJobId} status: ${jobStatus || 'unknown (null)'}`,
         );
@@ -323,6 +327,7 @@ export const checkCloudflareIndexing = internalAction({
           );
           // Job is still running, don't mark as indexed yet
           indexed = false;
+          waitForJobCompletion = true;
         } else {
           // Job not found (null) or status unknown - check if enough time has passed
           // Cloudflare may clean up completed jobs after some time
@@ -368,7 +373,7 @@ export const checkCloudflareIndexing = internalAction({
       // - No job_id was stored (older submissions)
       // - Job status check failed
       // - Job completed but we want to verify documents are actually indexed
-      if (!indexed) {
+      if (!indexed && !waitForJobCompletion) {
         // If enough time has passed since upload (12+ minutes), assume indexing is complete
         // Sync jobs can take up to 10 minutes, so we wait at least 12 minutes before assuming completion
         // This handles cases where AI Search is indexed but our query detection isn't working
@@ -496,6 +501,7 @@ export const checkCloudflareIndexing = internalAction({
                   `[AI Search] Diagnostic query returned ${diagnosticDocs.length} documents - inspecting paths`,
                 );
 
+                let logDiagnosticDetail = false;
                 if (diagnosticDocs.length > 0) {
                   const samplePaths = diagnosticDocs.slice(0, 10).map((doc) => {
                     const docPath = doc.attributes?.path || doc.path || doc.filename || 'Unknown';
@@ -504,45 +510,54 @@ export const checkCloudflareIndexing = internalAction({
                       path: docPath,
                       matchesPrefix,
                       submissionId: docPath.match(/repos\/([^/]+)\//)?.[1] || 'unknown',
-                      fullDoc: doc,
                     };
                   });
-                  console.log(
-                    `[AI Search] Sample paths from diagnostic query:`,
-                    JSON.stringify(samplePaths, null, 2),
-                  );
 
                   const matchingDocs = samplePaths.filter((p) => p.matchesPrefix).length;
-                  const otherDocs = samplePaths.filter((p) => !p.matchesPrefix).length;
-                  console.log(
-                    `[AI Search] Path analysis: ${matchingDocs} from this submission, ${otherDocs} from other submissions`,
-                  );
-
-                  if (otherDocs > 0) {
-                    const otherSubmissionIds = Array.from(
-                      new Set(
-                        samplePaths.filter((p) => !p.matchesPrefix).map((p) => p.submissionId),
-                      ),
-                    );
-                    console.warn(
-                      `[AI Search] ⚠️ Diagnostic query returned files from other submissions: ${otherSubmissionIds.join(', ')}`,
+                  logDiagnosticDetail = args.attempt === 0 || args.attempt % 5 === 0;
+                  if (logDiagnosticDetail) {
+                    const sampleSummary = samplePaths
+                      .slice(0, 3)
+                      .map((p) => `${p.matchesPrefix ? '✓' : '✗'} ${p.path}`);
+                    console.log(
+                      `[AI Search] Diagnostic sample (${matchingDocs}/${samplePaths.length} match target): ${sampleSummary.join('; ')}`,
                     );
                   }
                 }
 
+                const mismatchedDocs: Array<{ path: string; submissionId: string }> = [];
                 const matchingDocsNoFilter = diagnosticDocs.filter((doc) => {
                   const docPath = doc.attributes?.path || doc.path || doc.filename || '';
                   const matches = docPath.startsWith(r2PathPrefix);
                   if (!matches && docPath.includes('repos/')) {
                     const otherSubmissionId = docPath.match(/repos\/([^/]+)\//)?.[1];
                     if (otherSubmissionId && otherSubmissionId !== args.submissionId) {
-                      console.warn(
-                        `[AI Search] ⚠️ Found file from different submission: ${docPath} (submission: ${otherSubmissionId}, expected: ${args.submissionId})`,
-                      );
+                      mismatchedDocs.push({
+                        path: docPath,
+                        submissionId: otherSubmissionId,
+                      });
                     }
                   }
                   return matches;
                 });
+
+                if (mismatchedDocs.length > 0) {
+                  const uniqueOtherSubmissions = Array.from(
+                    new Set(mismatchedDocs.map((doc) => doc.submissionId)),
+                  );
+                  if (logDiagnosticDetail) {
+                    const sampleMismatches = mismatchedDocs
+                      .slice(0, 5)
+                      .map((doc) => `${doc.submissionId}: ${doc.path}`);
+                    console.warn(
+                      `[AI Search] ⚠️ Diagnostic query returned ${mismatchedDocs.length} documents from other submissions (${uniqueOtherSubmissions.join(', ')}) while checking ${args.submissionId}. Sample paths: ${sampleMismatches.join('; ')}`,
+                    );
+                  } else {
+                    console.warn(
+                      `[AI Search] ⚠️ Diagnostic query returned ${mismatchedDocs.length} documents from other submissions (${uniqueOtherSubmissions.join(', ')}) while checking ${args.submissionId} (suppressed details until attempt divisible by 5).`,
+                    );
+                  }
+                }
 
                 if (matchingDocsNoFilter.length > 0) {
                   console.log(
@@ -578,6 +593,10 @@ export const checkCloudflareIndexing = internalAction({
             );
           }
         }
+      } else if (!indexed && waitForJobCompletion) {
+        console.log(
+          `[AI Search] ⏳ Job ${submission.source?.aiSearchSyncJobId} still ${jobStatus} - skipping document verification until the job finishes.`,
+        );
       }
 
       if (!indexed) {

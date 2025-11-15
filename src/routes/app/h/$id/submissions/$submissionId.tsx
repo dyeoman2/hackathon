@@ -177,18 +177,9 @@ function SubmissionDetailComponent() {
 
   useEffect(() => {
     if (!currentSubmissionId) {
-      console.info('[RepoChat] Effect skipped: no submission loaded');
       indexingRefreshRef.current = null;
       return;
     }
-
-    console.info('[RepoChat] Effect state snapshot', {
-      submissionId: currentSubmissionId,
-      processingState: submissionProcessingState,
-      aiSearchSyncCompletedAt: submissionAiSearchSyncCompletedAt,
-      hasR2Key: Boolean(submissionR2Key),
-      pendingRefreshFor: indexingRefreshRef.current,
-    });
 
     const shouldRefreshIndexing =
       !!submissionR2Key &&
@@ -197,27 +188,12 @@ function SubmissionDetailComponent() {
 
     if (shouldRefreshIndexing) {
       if (indexingRefreshRef.current === currentSubmissionId) {
-        console.info('[RepoChat] Skipping refresh; already requested for submission', {
-          submissionId: currentSubmissionId,
-        });
         return;
       }
 
       indexingRefreshRef.current = currentSubmissionId;
-      console.info('[RepoChat] Triggering refreshSubmissionIndexingStatus', {
-        submissionId: currentSubmissionId,
-        processingState: submissionProcessingState,
-        reason:
-          submissionProcessingState === 'complete'
-            ? 'missing aiSearchSyncCompletedAt'
-            : 'indexing in progress',
-      });
       refreshIndexingStatus({ submissionId: currentSubmissionId })
-        .then((result) => {
-          console.info('[RepoChat] refreshSubmissionIndexingStatus resolved', {
-            submissionId: currentSubmissionId,
-            result,
-          });
+        .then(() => {
           indexingRefreshRef.current = null;
         })
         .catch((error) => {
@@ -229,13 +205,6 @@ function SubmissionDetailComponent() {
       submissionProcessingState === 'error' ||
       submissionAiSearchSyncCompletedAt
     ) {
-      if (indexingRefreshRef.current) {
-        console.info('[RepoChat] Clearing pending refresh token', {
-          submissionId: currentSubmissionId,
-          processingState: submissionProcessingState,
-          aiSearchSyncCompletedAt: submissionAiSearchSyncCompletedAt,
-        });
-      }
       indexingRefreshRef.current = null;
     }
   }, [
