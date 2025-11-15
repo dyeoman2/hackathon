@@ -15,6 +15,7 @@ import {
   query,
 } from './_generated/server';
 import { authComponent } from './auth';
+import { guarded } from './authz/guardFactory';
 import { AUTUMN_NOT_CONFIGURED_ERROR, autumn, isAutumnConfigured } from './autumn';
 import { requireHackathonRole } from './hackathons';
 import type { CheckCloudflareIndexingRef } from './submissionsActions/types';
@@ -1360,3 +1361,87 @@ export const getUserRating = query({
     return rating;
   },
 });
+
+/**
+ * Seed hackathon with submissions (admin only)
+ * Creates multiple submissions from provided data with 10-second delays between each
+ */
+export const seedHackathonSubmissions = guarded.action(
+  'user.write',
+  {
+    hackathonId: v.id('hackathons'),
+    submissions: v.array(
+      v.object({
+        repoUrl: v.string(),
+        siteUrl: v.optional(v.string()),
+        team: v.string(),
+        title: v.string(),
+      }),
+    ),
+  },
+  async (ctx, args, _role) => {
+    // For actions, we need to check access via query since actions don't have direct db access
+    const hackathon = await ctx.runQuery(internal.hackathons.getHackathonInternal, {
+      hackathonId: args.hackathonId,
+    });
+
+    if (!hackathon) {
+      throw new Error('Hackathon not found');
+    }
+
+    // Note: Admin role check is already handled by the guarded wrapper using 'user.write' capability
+
+    const results = [];
+    const errors = [];
+
+    for (let i = 0; i < args.submissions.length; i++) {
+      const submissionData = args.submissions[i];
+
+      try {
+        // Create submission using internal mutation (bypasses credit checks for admin seeding)
+        const result = await ctx.runMutation(
+          submissionsInternalApi.submissions.createSubmissionInternal,
+          {
+            hackathonId: args.hackathonId,
+            title: submissionData.title,
+            team: submissionData.team,
+            repoUrl: submissionData.repoUrl,
+            siteUrl: submissionData.siteUrl,
+            usingPaidCredit: false, // Admin seeding doesn't consume credits
+          },
+        );
+
+        results.push({
+          index: i,
+          submissionId: result.submissionId,
+          title: submissionData.title,
+          team: submissionData.team,
+        });
+
+        console.log(
+          `Created submission ${i + 1}/${args.submissions.length}: ${submissionData.title}`,
+        );
+
+        // Wait 10 seconds before creating the next submission (except for the last one)
+        if (i < args.submissions.length - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 10000));
+        }
+      } catch (error) {
+        console.error(`Failed to create submission ${i + 1}: ${submissionData.title}`, error);
+        errors.push({
+          index: i,
+          title: submissionData.title,
+          team: submissionData.team,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    }
+
+    return {
+      success: errors.length === 0,
+      message: `Created ${results.length} submissions${errors.length > 0 ? `, ${errors.length} failed` : ''}`,
+      results,
+      errors,
+    };
+  },
+);

@@ -23,10 +23,10 @@ function HackathonListComponent() {
 
   // Auto-open modal if no hackathons
   useEffect(() => {
-    if (hackathons !== undefined && hackathons.length === 0 && !isModalOpen) {
+    if (hackathons !== undefined && hackathons.length === 0) {
       setIsModalOpen(true);
     }
-  }, [hackathons, isModalOpen]);
+  }, [hackathons]);
 
   if (hackathons === undefined) {
     return (

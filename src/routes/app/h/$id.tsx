@@ -1,7 +1,7 @@
 import { api } from '@convex/_generated/api';
 import type { Id } from '@convex/_generated/dataModel';
 import { createFileRoute, Outlet, useLocation, useRouter } from '@tanstack/react-router';
-import { useMutation, useQuery } from 'convex/react';
+import { useAction, useMutation, useQuery } from 'convex/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { z } from 'zod';
 import { NotFound } from '~/components/NotFound';
@@ -10,6 +10,7 @@ import { DashboardErrorBoundary } from '~/components/RouteErrorBoundaries';
 import { DeleteConfirmationDialog } from '~/components/ui/delete-confirmation-dialog';
 import { Skeleton } from '~/components/ui/skeleton';
 import { useToast } from '~/components/ui/toast';
+import { useAuth } from '~/features/auth/hooks/useAuth';
 import { HackathonActionsMenu } from '~/features/hackathons/components/HackathonActionsMenu';
 import { HackathonSettingsModal } from '~/features/hackathons/components/HackathonSettingsModal';
 import { HackathonTimeBadge } from '~/features/hackathons/components/HackathonTimeBadge';
@@ -43,6 +44,8 @@ function HackathonWorkspaceComponent() {
   const paymentHandledRef = useRef<string | undefined>(undefined);
 
   const deleteHackathon = useMutation(api.hackathons.deleteHackathon);
+  const seedHackathonSubmissions = useAction(api.submissions.seedHackathonSubmissions);
+  const { isAdmin: isSiteAdmin } = useAuth();
 
   // Check if we're on a nested route (like /judges) - must be called before early returns
   const isNestedRoute = useMemo(
@@ -65,6 +68,53 @@ function HackathonWorkspaceComponent() {
     () => hackathon?.role === 'owner' || hackathon?.role === 'admin',
     [hackathon?.role],
   );
+
+  const handleSeedSubmissions = async () => {
+    if (!hackathon) return;
+
+    try {
+      // Parse the YAML data from Untitled-1.yaml
+      const submissionsData = [
+        {
+          repoUrl: 'https://github.com/brenelz/live-olympic-hockey-draft',
+          siteUrl: 'https://live-olympic-hockey-draft.netlify.app/',
+          team: 'Brenelz',
+          title: 'Live Olympic Hockey Draft',
+        },
+        {
+          repoUrl: 'https://github.com/somayaj/stockit',
+          siteUrl: 'https://stockit-1762128572.netlify.app/',
+          team: 'Somayaj',
+          title: 'Stockit',
+        },
+        {
+          repoUrl: 'https://github.com/JealousGx/EventFlow',
+          siteUrl: 'https://eventflow.foundersignal.app/',
+          team: 'JealousGx',
+          title: 'EventFlow',
+        },
+      ];
+
+      toast.showToast('Creating submissions with 10-second delays between each...', 'info');
+
+      const result = await seedHackathonSubmissions({
+        hackathonId: id as Id<'hackathons'>,
+        submissions: submissionsData,
+      });
+
+      if (result.success) {
+        toast.showToast(result.message, 'success');
+      } else {
+        toast.showToast(result.message, 'error');
+      }
+    } catch (error) {
+      console.error('Failed to seed submissions:', error);
+      toast.showToast(
+        error instanceof Error ? error.message : 'Failed to seed submissions',
+        'error',
+      );
+    }
+  };
 
   useEffect(() => {
     if (!payment || paymentHandledRef.current === payment) {
@@ -135,6 +185,7 @@ function HackathonWorkspaceComponent() {
                 canEdit={canEdit}
                 canManageJudges={canManageJudges}
                 canDelete={canDelete}
+                isSiteAdmin={isSiteAdmin}
                 onEdit={() => setIsSettingsModalOpen(true)}
                 onManageJudges={() => {
                   void router.navigate({
@@ -144,6 +195,7 @@ function HackathonWorkspaceComponent() {
                 }}
                 onInviteJudge={() => setIsInviteJudgeModalOpen(true)}
                 onDelete={() => setIsDeleteDialogOpen(true)}
+                onSeedSubmissions={handleSeedSubmissions}
               />
             }
           />

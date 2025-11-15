@@ -1,4 +1,4 @@
-import { Edit, MoreVertical, Scale, Send, Trash2 } from 'lucide-react';
+import { Edit, MoreVertical, Scale, Send, Sprout, Trash2 } from 'lucide-react';
 import { Button } from '~/components/ui/button';
 import {
   DropdownMenu,
@@ -12,22 +12,26 @@ interface HackathonActionsMenuProps {
   canEdit: boolean;
   canManageJudges: boolean;
   canDelete: boolean;
+  isSiteAdmin: boolean;
   onEdit: () => void;
   onManageJudges: () => void;
   onInviteJudge: () => void;
   onDelete: () => void;
+  onSeedSubmissions: () => void;
 }
 
 export function HackathonActionsMenu({
   canEdit,
   canManageJudges,
   canDelete,
+  isSiteAdmin,
   onEdit,
   onManageJudges,
   onInviteJudge,
   onDelete,
+  onSeedSubmissions,
 }: HackathonActionsMenuProps) {
-  const hasAnyActions = canEdit || canManageJudges || canDelete;
+  const hasAnyActions = canEdit || canManageJudges || canDelete || isSiteAdmin;
 
   if (!hasAnyActions) {
     return null;
@@ -59,6 +63,15 @@ export function HackathonActionsMenu({
             <Send className="h-4 w-4" />
             Invite Judge
           </DropdownMenuItem>
+        )}
+        {isSiteAdmin && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={onSeedSubmissions}>
+              <Sprout className="h-4 w-4" />
+              Seed Submissions
+            </DropdownMenuItem>
+          </>
         )}
         {canDelete && (
           <>
