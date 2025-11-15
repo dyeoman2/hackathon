@@ -234,7 +234,7 @@ function LoginPage() {
     // Redirect directly to the target
     void navigate({
       to: redirectTarget,
-      replace: true
+      replace: true,
     });
   }, [isAuthenticated, isPending, navigate, redirectTarget]);
 

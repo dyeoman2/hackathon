@@ -1233,7 +1233,9 @@ export const leaveHackathon = mutation({
         .collect();
 
       if (otherOwners.length === 0) {
-        throw new Error('Cannot leave hackathon as the only owner. Transfer ownership first or delete the hackathon.');
+        throw new Error(
+          'Cannot leave hackathon as the only owner. Transfer ownership first or delete the hackathon.',
+        );
       }
     }
 

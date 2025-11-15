@@ -80,18 +80,14 @@ export function HackathonActionsMenu({
             Invite Judge
           </DropdownMenuItem>
         )}
-        {isSiteAdmin && hasMultipleItems && (
-          <DropdownMenuSeparator />
-        )}
+        {isSiteAdmin && hasMultipleItems && <DropdownMenuSeparator />}
         {isSiteAdmin && (
           <DropdownMenuItem onClick={onSeedSubmissions}>
             <Sprout className="h-4 w-4" />
             Seed Submissions
           </DropdownMenuItem>
         )}
-        {(canLeave || canDelete) && hasNonDestructiveActions && (
-          <DropdownMenuSeparator />
-        )}
+        {(canLeave || canDelete) && hasNonDestructiveActions && <DropdownMenuSeparator />}
         {canLeave && (
           <DropdownMenuItem variant="destructive" onClick={onLeave}>
             <LogOut className="h-4 w-4" />

@@ -73,8 +73,8 @@ function HackathonListComponent() {
 
   // Filter hackathons into "my hackathons" and "other hackathons"
   const myHackathons = userHackathons || [];
-  const myHackathonIds = new Set(myHackathons.map(h => h._id));
-  const otherHackathons = allPublicHackathons.filter(h => !myHackathonIds.has(h._id));
+  const myHackathonIds = new Set(myHackathons.map((h) => h._id));
+  const otherHackathons = allPublicHackathons.filter((h) => !myHackathonIds.has(h._id));
 
   return (
     <div className="space-y-6">

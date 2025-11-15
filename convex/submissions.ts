@@ -18,7 +18,6 @@ import { authComponent } from './auth';
 import { guarded } from './authz/guardFactory';
 import { AUTUMN_NOT_CONFIGURED_ERROR, autumn, isAutumnConfigured } from './autumn';
 import { requireHackathonRole } from './hackathons';
-import type { CheckCloudflareIndexingRef } from './submissionsActions/types';
 
 const submissionsInternalApi = internal as unknown as {
   submissions: {
@@ -26,14 +25,6 @@ const submissionsInternalApi = internal as unknown as {
     getSubmissionInternal: FunctionReference<'query', 'internal'>;
     getSubmissionWithAccessInternal: FunctionReference<'query', 'internal'>;
     createSubmissionInternal: FunctionReference<'mutation', 'internal'>;
-  };
-};
-
-const submissionsActionsInternalApi = internal as unknown as {
-  submissionsActions: {
-    aiSummary: {
-      checkCloudflareIndexing: CheckCloudflareIndexingRef;
-    };
   };
 };
 
@@ -379,7 +370,11 @@ export const createSubmission = action({
       userId,
     });
 
-    if (!membership || membership.status !== 'active' || !['owner', 'admin', 'judge', 'contestant'].includes(membership.role)) {
+    if (
+      !membership ||
+      membership.status !== 'active' ||
+      !['owner', 'admin', 'judge', 'contestant'].includes(membership.role)
+    ) {
       throw new Error('Access denied');
     }
 
@@ -399,9 +394,12 @@ export const createSubmission = action({
     }
 
     // Get submission creation context using internal query
-    const context = await ctx.runQuery(submissionsInternalApi.submissions.getSubmissionCreationContext, {
-      hackathonId: args.hackathonId,
-    });
+    const context = await ctx.runQuery(
+      submissionsInternalApi.submissions.getSubmissionCreationContext,
+      {
+        hackathonId: args.hackathonId,
+      },
+    );
 
     const hackathonOwnerUserId = hackathon.ownerUserId;
     const freeSubmissionsRemaining = context.freeSubmissionsRemaining;
@@ -434,11 +432,9 @@ export const createSubmission = action({
           },
         });
 
-        const ownerAutumnApi = ownerAutumn.api();
-        // The check method is a registered action that uses our custom identify function
-        // biome-ignore lint/suspicious/noExplicitAny: Autumn API methods are registered actions that TypeScript doesn't recognize as callable, but they work at runtime
-        const checkMethod = ownerAutumnApi.check as any;
-        const ownerCheckResult = await checkMethod(ctx, {
+        // Call the Autumn instance method directly instead of the Convex action
+        // This avoids calling Convex functions from within other Convex functions
+        const ownerCheckResult = await ownerAutumn.check(ctx, {
           featureId: getAutumnCreditFeatureId(),
         });
 
@@ -564,7 +560,11 @@ export const checkOwnerCredits = action({
       userId,
     });
 
-    if (!membership || membership.status !== 'active' || !['judge', 'contestant'].includes(membership.role)) {
+    if (
+      !membership ||
+      membership.status !== 'active' ||
+      !['judge', 'contestant'].includes(membership.role)
+    ) {
       throw new Error('Access denied');
     }
 
@@ -603,14 +603,10 @@ export const checkOwnerCredits = action({
       },
     });
 
-    const ownerAutumnApi = ownerAutumn.api();
-
     try {
-      // The check method from the API is a registered action that uses our custom identify function
-      // TypeScript doesn't recognize it as callable, but it works at runtime
-      // biome-ignore lint/suspicious/noExplicitAny: Autumn API methods are registered actions that TypeScript doesn't recognize as callable, but they work at runtime
-      const checkMethod = ownerAutumnApi.check as any;
-      const checkResult = await checkMethod(ctx, {
+      // Call the Autumn instance method directly instead of the Convex action
+      // This avoids calling Convex functions from within other Convex functions
+      const checkResult = await ownerAutumn.check(ctx, {
         featureId: getAutumnCreditFeatureId(),
       });
 
@@ -726,9 +722,12 @@ export const refreshSubmissionIndexingStatus = action({
     const userId = assertUserId(authUser, 'User ID not found');
 
     // Get submission using internal query
-    const submission = await ctx.runQuery(submissionsInternalApi.submissions.getSubmissionInternal, {
-      submissionId: args.submissionId,
-    });
+    const submission = await ctx.runQuery(
+      submissionsInternalApi.submissions.getSubmissionInternal,
+      {
+        submissionId: args.submissionId,
+      },
+    );
     if (!submission) {
       throw new Error('Submission not found');
     }
@@ -792,7 +791,7 @@ export const refreshSubmissionIndexingStatus = action({
         {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${apiToken}`,
+            Authorization: `Bearer ${apiToken}`,
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
