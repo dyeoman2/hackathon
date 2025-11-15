@@ -56,11 +56,6 @@ export function PublicSubmissionsList({ hackathonId }: PublicSubmissionsListProp
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-col gap-2">
           <h2 className="text-2xl font-semibold">Submissions</h2>
-          <p className="text-muted-foreground">
-            {submissions.length === 0
-              ? 'No submissions yet. Be the first to submit!'
-              : `${submissions.length} submission${submissions.length === 1 ? '' : 's'}`}
-          </p>
         </div>
       </div>
 
@@ -134,9 +129,7 @@ export function PublicSubmissionsList({ hackathonId }: PublicSubmissionsListProp
                             window.open(submission.repoUrl, '_blank', 'noopener,noreferrer');
                           }}
                           className={`h-8 w-8 p-0 backdrop-blur-sm ${
-                            homepageScreenshot
-                              ? 'text-white hover:bg-white/20 bg-black/30'
-                              : ''
+                            homepageScreenshot ? 'text-white hover:bg-white/20 bg-black/30' : ''
                           }`}
                           title="View on GitHub"
                         >
@@ -152,9 +145,7 @@ export function PublicSubmissionsList({ hackathonId }: PublicSubmissionsListProp
                             window.open(submission.siteUrl, '_blank', 'noopener,noreferrer');
                           }}
                           className={`h-8 w-8 p-0 backdrop-blur-sm ${
-                            homepageScreenshot
-                              ? 'text-white hover:bg-white/20 bg-black/30'
-                              : ''
+                            homepageScreenshot ? 'text-white hover:bg-white/20 bg-black/30' : ''
                           }`}
                           title="View live site"
                         >

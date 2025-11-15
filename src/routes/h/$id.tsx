@@ -28,10 +28,7 @@ function PublicHackathonPage() {
   });
 
   // Check if we're on a nested route (like /submissions) - must be called before early returns
-  const isNestedRoute = useMemo(
-    () => location.pathname !== `/h/${id}`,
-    [location.pathname, id],
-  );
+  const isNestedRoute = useMemo(() => location.pathname !== `/h/${id}`, [location.pathname, id]);
 
   // Redirect authenticated users to full-featured page
   useEffect(() => {
