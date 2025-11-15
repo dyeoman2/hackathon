@@ -1,7 +1,7 @@
 import { api } from '@convex/_generated/api';
 import type { Doc } from '@convex/_generated/dataModel';
 import { useAction } from 'convex/react';
-import { FileText, Loader2, MoreVertical, Zap } from 'lucide-react';
+import { Edit, FileText, Loader2, MoreVertical, Zap } from 'lucide-react';
 import { useCallback, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -12,11 +12,13 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '~/components/ui/dropdown-menu';
 import { ProcessingLoader } from '~/components/ui/processing-loader';
 import { SimpleTooltip } from '~/components/ui/simple-tooltip';
 import { useToast } from '~/components/ui/toast';
+import { EditSummaryModal } from './EditSummaryModal';
 
 type EarlyProcessingStage =
   | 'fetching-readme'
@@ -120,11 +122,14 @@ export function SubmissionRepositorySummary({
   submission,
   canEdit = false,
 }: SubmissionRepositorySummaryProps) {
-  // Show summary from aiSummary field (can be early summary from README + screenshots or AI Search summary)
-  // The summary should be displayed regardless of processing state once it's generated
-  const summary = submission.source?.aiSummary;
+  // Show manual summary if it exists, otherwise show AI summary
+  // Manual summary takes priority over AI-generated summaries
+  const manualSummary = submission.manualSummary;
+  const aiSummary = submission.source?.aiSummary;
+  const summary = manualSummary || aiSummary;
   const processingState = submission.source?.processingState;
   const isAISearchComplete = processingState === 'complete';
+  const hasManualSummary = !!manualSummary;
 
   // Show summary if it exists, regardless of processing state
   // The summary should not change when Cloudflare AI Search indexing finishes
@@ -221,6 +226,7 @@ export function SubmissionRepositorySummary({
   const [isGeneratingQuick, setIsGeneratingQuick] = useState(false);
   const [isGeneratingFull, setIsGeneratingFull] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const toast = useToast();
   const generateQuickSummary = useAction(api.submissionsActions.aiSummary.generateSummaryPublic);
   const generateFullSummary = useAction(api.submissionsActions.aiSummary.generateRepoSummary);
@@ -294,7 +300,11 @@ export function SubmissionRepositorySummary({
         <div className="flex items-start justify-between gap-4">
           <div>
             <CardTitle>Summary</CardTitle>
-            <CardDescription>AI-generated summary of the project.</CardDescription>
+            <CardDescription>
+              {hasManualSummary
+                ? 'Custom summary of the project.'
+                : 'AI-generated summary of the project.'}
+            </CardDescription>
           </div>
           {canEdit && (
             <DropdownMenu>
@@ -305,6 +315,13 @@ export function SubmissionRepositorySummary({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="flex flex-col">
+                <SimpleTooltip content="Edit the manual summary for this submission">
+                  <DropdownMenuItem onClick={() => setIsEditModalOpen(true)}>
+                    <Edit className="h-4 w-4" />
+                    Edit Summary
+                  </DropdownMenuItem>
+                </SimpleTooltip>
+                <DropdownMenuSeparator />
                 <SimpleTooltip content="Generated from the repository README and screenshots of the website">
                   <DropdownMenuItem
                     onClick={handleGenerateQuickSummary}
@@ -392,6 +409,11 @@ export function SubmissionRepositorySummary({
           </p>
         )}
       </CardContent>
+      <EditSummaryModal
+        submission={submission}
+        open={isEditModalOpen}
+        onOpenChange={setIsEditModalOpen}
+      />
     </Card>
   );
 }

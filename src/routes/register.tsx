@@ -1,4 +1,5 @@
 import { api } from '@convex/_generated/api';
+import type { Id } from '@convex/_generated/dataModel';
 import { useForm } from '@tanstack/react-form';
 import { createFileRoute, Link, useNavigate, useRouter } from '@tanstack/react-router';
 import { useMutation, useQuery } from 'convex/react';
@@ -14,6 +15,11 @@ import { signIn } from '~/features/auth/auth-client';
 import { useAuthState } from '~/features/auth/hooks/useAuthState';
 import { signUpWithFirstAdminServerFn } from '~/features/auth/server/user-management';
 import { getAppName } from '~/lib/utils';
+
+function extractHackathonIdFromPath(path: string): string | null {
+  const match = path.match(/^\/app\/h\/([^/?]+)/);
+  return match ? match[1] : null;
+}
 
 export const Route = createFileRoute('/register')({
   staticData: true,
@@ -45,6 +51,11 @@ function resolveRedirectTarget(value?: string | null): string {
     return path;
   }
 
+  // Allow hackathon routes (for contestant registration)
+  if (path.startsWith('/app/h/')) {
+    return value; // Preserve query params like ?newSubmission=true
+  }
+
   // Default to hackathons
   return '/app/h';
 }
@@ -60,6 +71,7 @@ function RegisterPage() {
   const navigate = useNavigate();
   const router = useRouter();
   const acceptInvite = useMutation(api.hackathons.acceptInvite);
+  const createContestantMembership = useMutation(api.hackathons.createContestantMembership);
 
   // Use Convex query directly instead of server function wrapper
   const userCountResult = useQuery(api.users.getUserCount, {});
@@ -181,6 +193,39 @@ function RegisterPage() {
               } catch (inviteError) {
                 console.error('Failed to accept invite after registration:', inviteError);
                 // Fallback to regular redirect if invite acceptance fails
+                hasHandledAuthRedirectRef.current = true;
+                setTimeout(() => {
+                  void (async () => {
+                    await navigate({ to: '/app/h' });
+                    void router.invalidate();
+                  })();
+                }, 2000);
+              }
+            } else if (redirectTarget.startsWith('/app/h/')) {
+              // Handle hackathon redirects - create contestant membership
+              try {
+                const hackathonId = extractHackathonIdFromPath(redirectTarget);
+                if (hackathonId) {
+                  // Create contestant membership
+                  await createContestantMembership({
+                    hackathonId: hackathonId as Id<'hackathons'>,
+                    userId: data.user.id,
+                  });
+                }
+
+                hasHandledAuthRedirectRef.current = true;
+                setTimeout(() => {
+                  void (async () => {
+                    await navigate({ to: redirectTarget });
+                    void router.invalidate();
+                  })();
+                }, 2000);
+              } catch (membershipError) {
+                console.error(
+                  'Failed to create contestant membership after registration:',
+                  membershipError,
+                );
+                // Fallback to hackathons list if membership creation fails
                 hasHandledAuthRedirectRef.current = true;
                 setTimeout(() => {
                   void (async () => {

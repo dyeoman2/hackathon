@@ -19,7 +19,7 @@ import { useRevealSync } from '~/features/reveal/hooks/useRevealSync';
 
 interface VotingStatusBannerProps {
   hackathonId: Id<'hackathons'>;
-  hackathonRole?: 'owner' | 'admin' | 'judge' | null;
+  hackathonRole?: 'owner' | 'admin' | 'judge' | 'contestant' | null;
 }
 
 export function VotingStatusBanner({ hackathonId, hackathonRole }: VotingStatusBannerProps) {

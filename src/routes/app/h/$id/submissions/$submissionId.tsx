@@ -13,6 +13,7 @@ import { DeleteConfirmationDialog } from '~/components/ui/delete-confirmation-di
 import { Skeleton } from '~/components/ui/skeleton';
 import { useToast } from '~/components/ui/toast';
 import { useOptimisticMutation } from '~/features/admin/hooks/useOptimisticUpdates';
+import { useAuth } from '~/features/auth/hooks/useAuth';
 import { EditSubmissionModal } from '~/features/hackathons/components/EditSubmissionModal';
 import { SubmissionActionsMenu } from '~/features/hackathons/components/SubmissionActionsMenu';
 import { SubmissionNavigation } from '~/features/hackathons/components/SubmissionNavigation';
@@ -33,6 +34,7 @@ function SubmissionDetailComponent() {
   usePerformanceMonitoring('SubmissionDetail');
   const navigate = useNavigate();
   const toast = useToast();
+  const { user } = useAuth();
   const { id: hackathonId, submissionId } = Route.useParams();
   const submission = useQuery(api.submissions.getSubmission, {
     submissionId: submissionId as Id<'submissions'>,
@@ -83,14 +85,20 @@ function SubmissionDetailComponent() {
   const [isDeleting, setIsDeleting] = useState(false);
 
   // Memoize permission checks to avoid recalculation on every render
+  const isSubmissionOwner = useMemo(
+    () => !!submission?.userId && submission.userId === user?.id,
+    [submission?.userId, user?.id],
+  );
+
   const canEdit = useMemo(
-    () => hackathon?.role === 'owner' || hackathon?.role === 'admin' || hackathon?.role === 'judge',
-    [hackathon?.role],
+    () => hackathon?.role === 'owner' || hackathon?.role === 'admin' || isSubmissionOwner,
+    [hackathon?.role, isSubmissionOwner],
   );
   const canDelete = useMemo(
-    () => hackathon?.role === 'owner' || hackathon?.role === 'admin',
-    [hackathon?.role],
+    () => hackathon?.role === 'owner' || hackathon?.role === 'admin' || isSubmissionOwner,
+    [hackathon?.role, isSubmissionOwner],
   );
+  const isContestant = useMemo(() => hackathon?.role === 'contestant', [hackathon?.role]);
 
   // Calculate navigation indices
   const { currentIndex, previousSubmissionId, nextSubmissionId } = useMemo(() => {
@@ -277,19 +285,21 @@ function SubmissionDetailComponent() {
                 </Button>
               )}
             </div>
-            <div className="sm:hidden">
-              <SubmissionActionsMenu
-                canEdit={canEdit}
-                canDelete={canDelete}
-                hasSiteUrl={!!submission.siteUrl}
-                isCapturingScreenshot={false}
-                onEdit={() => setIsEditModalOpen(true)}
-                onDelete={() => setIsDeleteDialogOpen(true)}
-                onCaptureScreenshot={() => {
-                  // Moved to SubmissionScreenshots component
-                }}
-              />
-            </div>
+            {(canEdit || canDelete) && (
+              <div className="sm:hidden">
+                <SubmissionActionsMenu
+                  canEdit={canEdit}
+                  canDelete={canDelete}
+                  hasSiteUrl={!!submission.siteUrl}
+                  isCapturingScreenshot={false}
+                  onEdit={() => setIsEditModalOpen(true)}
+                  onDelete={() => setIsDeleteDialogOpen(true)}
+                  onCaptureScreenshot={() => {
+                    // Moved to SubmissionScreenshots component
+                  }}
+                />
+              </div>
+            )}
           </>
         }
         actions={
@@ -308,31 +318,35 @@ function SubmissionDetailComponent() {
                 </Button>
               )}
             </div>
-            <div className="flex items-center gap-2">
-              <div className="hidden sm:block">
-                <SubmissionActionsMenu
-                  canEdit={canEdit}
-                  canDelete={canDelete}
-                  hasSiteUrl={!!submission.siteUrl}
-                  isCapturingScreenshot={false}
-                  onEdit={() => setIsEditModalOpen(true)}
-                  onDelete={() => setIsDeleteDialogOpen(true)}
-                  onCaptureScreenshot={() => {
-                    // Moved to SubmissionScreenshots component
-                  }}
-                />
+            {(canEdit || canDelete) && (
+              <div className="flex items-center gap-2">
+                <div className="hidden sm:block">
+                  <SubmissionActionsMenu
+                    canEdit={canEdit}
+                    canDelete={canDelete}
+                    hasSiteUrl={!!submission.siteUrl}
+                    isCapturingScreenshot={false}
+                    onEdit={() => setIsEditModalOpen(true)}
+                    onDelete={() => setIsDeleteDialogOpen(true)}
+                    onCaptureScreenshot={() => {
+                      // Moved to SubmissionScreenshots component
+                    }}
+                  />
+                </div>
               </div>
-            </div>
+            )}
           </div>
         }
       />
 
       <div className="space-y-6">
-        <SubmissionRatingSlider
-          hackathonId={hackathonId as Id<'hackathons'>}
-          submissionId={submissionId as Id<'submissions'>}
-          hackathonRole={hackathon.role}
-        />
+        {!isContestant && (
+          <SubmissionRatingSlider
+            hackathonId={hackathonId as Id<'hackathons'>}
+            submissionId={submissionId as Id<'submissions'>}
+            hackathonRole={hackathon.role}
+          />
+        )}
 
         <SubmissionRepositorySummary submission={submission} canEdit={canEdit} />
 

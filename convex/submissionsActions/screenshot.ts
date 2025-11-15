@@ -1125,8 +1125,8 @@ export const deleteScreenshot = guarded.action(
       throw new Error('Not a member of this hackathon');
     }
 
-    const allowedRoles: Array<'owner' | 'admin' | 'judge'> = ['owner', 'admin', 'judge'];
-    if (!allowedRoles.includes(membership.role)) {
+    const allowedRoles = ['owner', 'admin', 'contestant'] as const;
+    if (!(allowedRoles as readonly string[]).includes(membership.role)) {
       throw new Error(`Insufficient permissions. Required: ${allowedRoles.join(' or ')}`);
     }
 

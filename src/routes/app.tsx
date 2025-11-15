@@ -41,13 +41,27 @@ function AppLayout() {
           }
 
           redirectRef.current = true;
-          void navigate({
-            to: '/login',
-            search: { redirect: redirectTarget },
-            replace: true,
-          }).catch(() => {
-            redirectRef.current = false;
-          });
+
+          // Check if this is a hackathon route - redirect to public route instead of login
+          const hackathonRouteMatch = location.pathname.match(/^\/app\/h\/([^/]+)$/);
+          if (hackathonRouteMatch) {
+            const hackathonId = hackathonRouteMatch[1];
+            void navigate({
+              to: '/h/$id',
+              params: { id: hackathonId },
+              replace: true,
+            }).catch(() => {
+              redirectRef.current = false;
+            });
+          } else {
+            void navigate({
+              to: '/login',
+              search: { redirect: redirectTarget },
+              replace: true,
+            }).catch(() => {
+              redirectRef.current = false;
+            });
+          }
         }, 400);
       }
     } else {
@@ -58,7 +72,7 @@ function AppLayout() {
 
       redirectRef.current = false;
     }
-  }, [isAuthenticated, isPending, navigate, redirectTarget]);
+  }, [isAuthenticated, isPending, navigate, redirectTarget, location.pathname]);
 
   useEffect(() => {
     return () => {

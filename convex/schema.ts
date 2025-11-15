@@ -81,7 +81,12 @@ export default defineSchema({
     hackathonId: v.id('hackathons'),
     userId: v.optional(v.string()),
     invitedEmail: v.optional(v.string()),
-    role: v.union(v.literal('owner'), v.literal('admin'), v.literal('judge')),
+    role: v.union(
+      v.literal('owner'),
+      v.literal('admin'),
+      v.literal('judge'),
+      v.literal('contestant'),
+    ),
     status: v.union(v.literal('invited'), v.literal('active')),
     tokenHash: v.optional(v.string()),
     tokenExpiresAt: v.optional(v.number()),
@@ -95,10 +100,12 @@ export default defineSchema({
 
   submissions: defineTable({
     hackathonId: v.id('hackathons'),
+    userId: v.optional(v.string()), // User who created the submission
     title: v.string(),
     team: v.string(),
     repoUrl: v.string(),
     siteUrl: v.optional(v.string()),
+    manualSummary: v.optional(v.string()), // Manual summary that can be edited by owners/admins/submitters
     source: v.optional(
       v.object({
         r2Key: v.optional(v.string()),

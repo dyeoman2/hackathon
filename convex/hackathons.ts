@@ -10,7 +10,7 @@ import type { MutationCtx, QueryCtx } from './_generated/server';
 import { internalQuery, mutation, query } from './_generated/server';
 import { authComponent } from './auth';
 
-type HackathonRole = 'owner' | 'admin' | 'judge';
+type HackathonRole = 'owner' | 'admin' | 'judge' | 'contestant';
 
 interface RequireHackathonRoleResult {
   userId: string;
@@ -146,6 +146,34 @@ export const listHackathons = query({
 });
 
 /**
+ * Get public hackathon data (no authentication required)
+ *
+ * This query provides basic hackathon information for public viewing,
+ * allowing potential contestants to discover and learn about hackathons.
+ */
+export const getPublicHackathon = query({
+  args: {
+    hackathonId: v.id('hackathons'),
+  },
+  handler: async (ctx, args) => {
+    const hackathon = await ctx.db.get(args.hackathonId);
+    if (!hackathon) {
+      return null;
+    }
+
+    // Return only public fields - no sensitive data like ownerUserId
+    return {
+      _id: hackathon._id,
+      title: hackathon.title,
+      description: hackathon.description,
+      dates: hackathon.dates,
+      createdAt: hackathon.createdAt,
+      updatedAt: hackathon.updatedAt,
+    };
+  },
+});
+
+/**
  * Get single hackathon with membership check
  *
  * ACCESS CONTROL: This query intentionally returns `null` for unauthenticated users or
@@ -155,7 +183,7 @@ export const listHackathons = query({
  * 3. Avoid error boundary triggers for expected authorization failures
  *
  * This is a deliberate design choice for better UX. The client should check for `null`
- * and render appropriate UI (sign-in prompt, "not found" message, etc.).
+ * and render appropriate UI (sign-in prompt, "no access" message, etc.).
  */
 export const getHackathon = query({
   args: {
@@ -189,6 +217,47 @@ export const getHackathon = query({
       ...hackathon,
       role: membership.role,
     };
+  },
+});
+
+/**
+ * Create a contestant membership for a user in a hackathon
+ * Called during registration when users register from a public hackathon page
+ */
+export const createContestantMembership = mutation({
+  args: {
+    hackathonId: v.id('hackathons'),
+    userId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    // Verify the hackathon exists
+    const hackathon = await ctx.db.get(args.hackathonId);
+    if (!hackathon) {
+      throw new Error('Hackathon not found');
+    }
+
+    // Check if membership already exists
+    const existingMembership = await ctx.db
+      .query('memberships')
+      .withIndex('by_hackathonId', (q) => q.eq('hackathonId', args.hackathonId))
+      .filter((q) => q.eq(q.field('userId'), args.userId))
+      .first();
+
+    if (existingMembership) {
+      // Already a member, just return
+      return { success: true };
+    }
+
+    // Create contestant membership
+    await ctx.db.insert('memberships', {
+      hackathonId: args.hackathonId,
+      userId: args.userId,
+      role: 'contestant',
+      status: 'active',
+      createdAt: Date.now(),
+    });
+
+    return { success: true };
   },
 });
 

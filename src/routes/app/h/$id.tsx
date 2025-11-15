@@ -15,18 +15,20 @@ import { HackathonActionsMenu } from '~/features/hackathons/components/Hackathon
 import { HackathonSettingsModal } from '~/features/hackathons/components/HackathonSettingsModal';
 import { HackathonTimeBadge } from '~/features/hackathons/components/HackathonTimeBadge';
 import { InviteJudgeModal } from '~/features/hackathons/components/InviteJudgeModal';
+import { ShareButton } from '~/features/hackathons/components/ShareButton';
 import { SubmissionsList } from '~/features/hackathons/components/SubmissionsList';
 import { VotingStatusBanner } from '~/features/hackathons/components/VotingStatusBanner';
 import { usePerformanceMonitoring } from '~/hooks/use-performance-monitoring';
 
-const paymentStatusSearchSchema = z.object({
+const hackathonSearchSchema = z.object({
   payment: z.enum(['success', 'cancelled', 'failed']).optional(),
+  newSubmission: z.literal('true').optional(),
 });
 
 export const Route = createFileRoute('/app/h/$id')({
   component: HackathonWorkspaceComponent,
   errorComponent: DashboardErrorBoundary,
-  validateSearch: paymentStatusSearchSchema,
+  validateSearch: hackathonSearchSchema,
 });
 
 function HackathonWorkspaceComponent() {
@@ -35,13 +37,17 @@ function HackathonWorkspaceComponent() {
   const location = useLocation();
   const toast = useToast();
   const { id } = Route.useParams();
-  const { payment } = Route.useSearch();
+  const { payment, newSubmission } = Route.useSearch();
   const hackathon = useQuery(api.hackathons.getHackathon, { hackathonId: id as Id<'hackathons'> });
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isInviteJudgeModalOpen, setIsInviteJudgeModalOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isNewSubmissionModalOpen, setIsNewSubmissionModalOpen] = useState(
+    newSubmission === 'true',
+  );
   const paymentHandledRef = useRef<string | undefined>(undefined);
+  const newSubmissionHandledRef = useRef(false);
 
   const deleteHackathon = useMutation(api.hackathons.deleteHackathon);
   const seedHackathonSubmissions = useAction(api.submissions.seedHackathonSubmissions);
@@ -139,6 +145,19 @@ function HackathonWorkspaceComponent() {
     }
   }, [payment, router, id, toast]);
 
+  // Handle newSubmission query param - clear it after opening modal
+  useEffect(() => {
+    if (newSubmission && !newSubmissionHandledRef.current) {
+      newSubmissionHandledRef.current = true;
+      // Clear the query param after the modal opens
+      void router.navigate({
+        to: '/app/h/$id',
+        params: { id },
+        replace: true,
+      });
+    }
+  }, [newSubmission, router, id]);
+
   const handleDelete = async () => {
     setIsDeleting(true);
     try {
@@ -181,29 +200,41 @@ function HackathonWorkspaceComponent() {
               <HackathonTimeBadge submissionDeadline={hackathon.dates?.submissionDeadline} />
             }
             actions={
-              <HackathonActionsMenu
-                canEdit={canEdit}
-                canManageJudges={canManageJudges}
-                canDelete={canDelete}
-                isSiteAdmin={isSiteAdmin}
-                onEdit={() => setIsSettingsModalOpen(true)}
-                onManageJudges={() => {
-                  void router.navigate({
-                    to: '/app/h/$id/judges',
-                    params: { id },
-                  });
-                }}
-                onInviteJudge={() => setIsInviteJudgeModalOpen(true)}
-                onDelete={() => setIsDeleteDialogOpen(true)}
-                onSeedSubmissions={handleSeedSubmissions}
-              />
+              <div className="flex items-center gap-2">
+                <ShareButton hackathonId={id} />
+                <HackathonActionsMenu
+                  canEdit={canEdit}
+                  canManageJudges={canManageJudges}
+                  canDelete={canDelete}
+                  isSiteAdmin={isSiteAdmin}
+                  onEdit={() => setIsSettingsModalOpen(true)}
+                  onManageJudges={() => {
+                    void router.navigate({
+                      to: '/app/h/$id/judges',
+                      params: { id },
+                    });
+                  }}
+                  onInviteJudge={() => setIsInviteJudgeModalOpen(true)}
+                  onDelete={() => setIsDeleteDialogOpen(true)}
+                  onSeedSubmissions={handleSeedSubmissions}
+                />
+              </div>
             }
           />
           <VotingStatusBanner hackathonId={id as Id<'hackathons'>} hackathonRole={hackathon.role} />
         </>
       )}
 
-      {isNestedRoute ? <Outlet /> : <SubmissionsList hackathonId={id as Id<'hackathons'>} />}
+      {isNestedRoute ? (
+        <Outlet />
+      ) : (
+        <SubmissionsList
+          hackathonId={id as Id<'hackathons'>}
+          isNewSubmissionModalOpen={isNewSubmissionModalOpen}
+          onNewSubmissionModalOpen={() => setIsNewSubmissionModalOpen(true)}
+          onNewSubmissionModalClose={() => setIsNewSubmissionModalOpen(false)}
+        />
+      )}
 
       <HackathonSettingsModal
         hackathonId={id as Id<'hackathons'>}

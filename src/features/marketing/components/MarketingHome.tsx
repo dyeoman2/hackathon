@@ -325,7 +325,7 @@ export function MarketingHome() {
                   </div>
                   <div className="text-2xl text-muted-foreground">+</div>
                   <div className="text-center">
-                    <div className="text-4xl font-bold text-foreground">$1</div>
+                    <div className="text-4xl font-bold text-foreground">$0.10</div>
                     <div className="text-sm text-muted-foreground">per additional submission</div>
                   </div>
                 </div>

@@ -15,7 +15,7 @@ const emojiScale = ['💀', '😬', '🥴', '🫠', '😅', '🙂', '🔥', '�
 interface SubmissionRatingSliderProps {
   submissionId: Id<'submissions'>;
   hackathonId: Id<'hackathons'>;
-  hackathonRole?: 'owner' | 'admin' | 'judge' | null;
+  hackathonRole?: 'owner' | 'admin' | 'judge' | 'contestant' | null;
   className?: string;
 }
 
@@ -49,8 +49,8 @@ export function SubmissionRatingSlider({
         return;
       }
       setDisplayValue(nextValue);
-      queueSubmissionRatingSave(submissionId, nextValue).catch((error) => {
-        console.error('Failed to save rating:', error);
+      queueSubmissionRatingSave(submissionId, nextValue).catch(() => {
+        // Rating save error handled by queue system
       });
     },
     [submissionId],
@@ -64,8 +64,8 @@ export function SubmissionRatingSlider({
       }
 
       setDisplayValue(newValue);
-      queueSubmissionRatingSave(submissionId, newValue).catch((error) => {
-        console.error('Failed to save rating:', error);
+      queueSubmissionRatingSave(submissionId, newValue).catch(() => {
+        // Rating save error handled by queue system
       });
     },
     [submissionId],

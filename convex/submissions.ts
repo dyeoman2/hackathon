@@ -40,6 +40,69 @@ const submissionsActionsInternalApi = internal as unknown as {
 // Status transitions are now unrestricted - any status can transition to any other status
 
 /**
+ * Get public submission data (no authentication required)
+ *
+ * This query provides basic submission information for public viewing.
+ */
+export const getPublicSubmission = query({
+  args: {
+    submissionId: v.id('submissions'),
+  },
+  handler: async (ctx, args) => {
+    const submission = await ctx.db.get(args.submissionId);
+    if (!submission) {
+      return null;
+    }
+
+    // Return submission with public data (no ratings, no sensitive user data)
+    return {
+      _id: submission._id,
+      _creationTime: submission._creationTime,
+      hackathonId: submission.hackathonId,
+      userId: submission.userId,
+      title: submission.title,
+      team: submission.team,
+      repoUrl: submission.repoUrl,
+      siteUrl: submission.siteUrl,
+      source: submission.source,
+      screenshots: submission.screenshots,
+      createdAt: submission.createdAt,
+      updatedAt: submission.updatedAt,
+    };
+  },
+});
+
+/**
+ * List public submissions by hackathon (no authentication required)
+ *
+ * This query provides basic submission information for public viewing,
+ * allowing potential contestants to see existing submissions and get inspired.
+ */
+export const listPublicSubmissions = query({
+  args: {
+    hackathonId: v.id('hackathons'),
+  },
+  handler: async (ctx, args) => {
+    const submissions = await ctx.db
+      .query('submissions')
+      .withIndex('by_hackathonId_createdAt', (q) => q.eq('hackathonId', args.hackathonId))
+      .order('desc') // Newest first
+      .collect();
+
+    // Return submissions without private data like ratings
+    return submissions.map((submission) => ({
+      _id: submission._id,
+      title: submission.title,
+      team: submission.team,
+      repoUrl: submission.repoUrl,
+      siteUrl: submission.siteUrl,
+      screenshots: submission.screenshots,
+      createdAt: submission.createdAt,
+    }));
+  },
+});
+
+/**
  * List submissions by hackathon
  *
  * ACCESS CONTROL: This query intentionally returns an empty array `[]` for unauthenticated
@@ -226,6 +289,7 @@ export const getSubmissionCreationContext = internalQuery({
       'owner',
       'admin',
       'judge',
+      'contestant',
     ]);
 
     if (hackathon.dates?.submissionDeadline && Date.now() > hackathon.dates.submissionDeadline) {
@@ -252,6 +316,7 @@ export const getSubmissionCreationContext = internalQuery({
 export const createSubmissionInternal = internalMutation({
   args: {
     hackathonId: v.id('hackathons'),
+    userId: v.string(),
     title: v.string(),
     team: v.string(),
     repoUrl: v.string(),
@@ -264,6 +329,7 @@ export const createSubmissionInternal = internalMutation({
       'owner',
       'admin',
       'judge',
+      'contestant',
     ]);
 
     // Check if hackathon has ended
@@ -287,6 +353,7 @@ export const createSubmissionInternal = internalMutation({
 
     const submissionId = await ctx.db.insert('submissions', {
       hackathonId: args.hackathonId,
+      userId: args.userId,
       title: args.title.trim(),
       team: args.team.trim(),
       repoUrl: args.repoUrl.trim(),
@@ -329,13 +396,16 @@ export const createSubmission = action({
       { hackathonId: args.hackathonId },
     );
 
+    // Allow contestants to create submissions
+    // Note: Hackathon deadline check is already done in getSubmissionCreationContext for all roles
+
     const requiresPaidCredits = freeSubmissionsRemaining <= 0;
     let usingPaidCredit = false;
 
     // When paid credits are required, check credits for owners/admins
-    // For judges, check the hackathon owner's credits instead
+    // For judges and contestants, check the hackathon owner's credits instead
     if (requiresPaidCredits) {
-      if (role === 'judge') {
+      if (role === 'judge' || role === 'contestant') {
         // Judges need to verify the owner has credits before creating submissions
         if (!isAutumnConfigured()) {
           throw new Error(
@@ -410,6 +480,7 @@ export const createSubmission = action({
       submissionsInternalApi.submissions.createSubmissionInternal,
       {
         hackathonId: args.hackathonId,
+        userId: userId,
         title: args.title,
         team: args.team,
         repoUrl: args.repoUrl,
@@ -419,7 +490,7 @@ export const createSubmission = action({
     );
 
     if (usingPaidCredit) {
-      // Track usage against the owner's account (whether created by owner/admin or judge)
+      // Track usage against the owner's account (whether created by owner/admin, judge, or contestant)
       try {
         // Create a temporary Autumn instance that identifies as the owner for tracking
         const ownerAutumn = new Autumn(components.autumn, {
@@ -463,7 +534,7 @@ export const createSubmission = action({
 
 /**
  * Check hackathon owner's credits
- * Used by judges to verify if the owner has credits before creating submissions
+ * Used by judges and contestants to verify if the owner has credits before creating submissions
  */
 export const checkOwnerCredits = action({
   args: {
@@ -476,9 +547,9 @@ export const checkOwnerCredits = action({
       { hackathonId: args.hackathonId },
     );
 
-    // Only judges need to check owner credits
-    if (role !== 'judge') {
-      throw new Error('Only judges can check owner credits');
+    // Only judges and contestants need to check owner credits
+    if (role !== 'judge' && role !== 'contestant') {
+      throw new Error('Only judges and contestants can check owner credits');
     }
 
     if (!isAutumnConfigured()) {
@@ -515,17 +586,6 @@ export const checkOwnerCredits = action({
       const checkResult = await checkMethod(ctx, {
         featureId: getAutumnCreditFeatureId(),
       });
-
-      // Log for debugging
-      if (checkResult.error) {
-        console.warn('Owner credit check returned error:', checkResult.error);
-      } else if (checkResult.data) {
-        console.log('Owner credit check result:', {
-          allowed: checkResult.data.allowed,
-          balance: checkResult.data.balance,
-          unlimited: checkResult.data.unlimited,
-        });
-      }
 
       return checkResult;
     } catch (error) {
@@ -803,6 +863,7 @@ export const updateSubmission = mutation({
     team: v.optional(v.string()),
     repoUrl: v.optional(v.string()),
     siteUrl: v.optional(v.string()),
+    manualSummary: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const submission = await ctx.db.get(args.submissionId);
@@ -810,14 +871,30 @@ export const updateSubmission = mutation({
       throw new Error('Submission not found');
     }
 
-    // Check membership
-    await requireHackathonRole(ctx, submission.hackathonId, ['owner', 'admin', 'judge']);
+    // Check membership and ownership
+    const authUser = await authComponent.getAuthUser(ctx);
+    if (!authUser) {
+      throw new Error('Authentication required');
+    }
+    const userId = assertUserId(authUser, 'User ID not found');
+
+    // Allow if user has admin/owner role OR is the submission owner
+    const hasRole = await requireHackathonRole(ctx, submission.hackathonId, [
+      'owner',
+      'admin',
+    ]).catch(() => null);
+    const isOwner = submission.userId === userId;
+
+    if (!hasRole && !isOwner) {
+      throw new Error('Insufficient permissions. You can only edit your own submissions.');
+    }
 
     const updateData: {
       title?: string;
       team?: string;
       repoUrl?: string;
       siteUrl?: string;
+      manualSummary?: string;
       updatedAt: number;
     } = {
       updatedAt: Date.now(),
@@ -834,6 +911,9 @@ export const updateSubmission = mutation({
     }
     if (args.siteUrl !== undefined) {
       updateData.siteUrl = args.siteUrl.trim();
+    }
+    if (args.manualSummary !== undefined) {
+      updateData.manualSummary = args.manualSummary.trim();
     }
 
     await ctx.db.patch(args.submissionId, updateData);
@@ -874,8 +954,23 @@ export const deleteSubmission = mutation({
       throw new Error('Submission not found');
     }
 
-    // Check membership - only owners and admins can delete submissions
-    await requireHackathonRole(ctx, submission.hackathonId, ['owner', 'admin']);
+    // Check membership and ownership
+    const authUser = await authComponent.getAuthUser(ctx);
+    if (!authUser) {
+      throw new Error('Authentication required');
+    }
+    const userId = assertUserId(authUser, 'User ID not found');
+
+    // Allow if user has admin/owner role OR is the submission owner
+    const hasRole = await requireHackathonRole(ctx, submission.hackathonId, [
+      'owner',
+      'admin',
+    ]).catch(() => null);
+    const isOwner = submission.userId === userId;
+
+    if (!hasRole && !isOwner) {
+      throw new Error('Insufficient permissions. You can only delete your own submissions.');
+    }
 
     // Delete all R2 files for this submission (fire and forget - don't block deletion if R2 deletion fails)
     // Use the broader prefix to clean up both files and screenshots

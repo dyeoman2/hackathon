@@ -15,9 +15,17 @@ import { NewSubmissionModal } from './NewSubmissionModal';
 
 interface SubmissionsListProps {
   hackathonId: Id<'hackathons'>;
+  isNewSubmissionModalOpen?: boolean;
+  onNewSubmissionModalOpen?: () => void;
+  onNewSubmissionModalClose?: () => void;
 }
 
-export function SubmissionsList({ hackathonId }: SubmissionsListProps) {
+export function SubmissionsList({
+  hackathonId,
+  isNewSubmissionModalOpen: externalModalOpen,
+  onNewSubmissionModalOpen,
+  onNewSubmissionModalClose,
+}: SubmissionsListProps) {
   const toast = useToast();
   const router = useRouter();
   const [showOnlyUnrated, setShowOnlyUnrated] = useState(false);
@@ -26,6 +34,9 @@ export function SubmissionsList({ hackathonId }: SubmissionsListProps) {
     hackathonId,
     ratingFilter: 'all',
   });
+
+  // Check if user is a contestant
+  const isContestant = hackathon?.role === 'contestant';
 
   // Filter client-side for instant toggle without re-fetching
   const submissions = useMemo(() => {
@@ -41,7 +52,6 @@ export function SubmissionsList({ hackathonId }: SubmissionsListProps) {
       toast.showToast('Submission deleted successfully', 'success');
     },
     onError: (error) => {
-      console.error('Failed to delete submission:', error);
       toast.showToast(
         error instanceof Error ? error.message : 'Failed to delete submission',
         'error',
@@ -49,9 +59,16 @@ export function SubmissionsList({ hackathonId }: SubmissionsListProps) {
     },
   });
 
-  const [isNewSubmissionModalOpen, setIsNewSubmissionModalOpen] = useState(false);
   const [submissionToDelete, setSubmissionToDelete] = useState<Id<'submissions'> | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // Use external modal state if provided, otherwise use internal state
+  const isNewSubmissionModalOpen = externalModalOpen !== undefined ? externalModalOpen : false;
+  const handleModalClose = () => {
+    if (onNewSubmissionModalClose) {
+      onNewSubmissionModalClose();
+    }
+  };
 
   const handleViewSubmission = (submissionId: Id<'submissions'>) => {
     void router.navigate({
@@ -156,7 +173,11 @@ export function SubmissionsList({ hackathonId }: SubmissionsListProps) {
           </div>
         </div>
         <Button
-          onClick={() => setIsNewSubmissionModalOpen(true)}
+          onClick={() => {
+            if (onNewSubmissionModalOpen) {
+              onNewSubmissionModalOpen();
+            }
+          }}
           className="w-full sm:w-auto"
           disabled={hasEnded}
           title={
@@ -179,9 +200,11 @@ export function SubmissionsList({ hackathonId }: SubmissionsListProps) {
                 ? 'This hackathon is no longer accepting submissions. No new submissions can be added.'
                 : 'No submissions yet.'}
           </p>
-          {!showOnlyUnrated && (
+          {!showOnlyUnrated && externalModalOpen === undefined && (
             <Button
-              onClick={() => setIsNewSubmissionModalOpen(true)}
+              onClick={() => {
+                // Fallback for internal modal state - should not be used in new implementation
+              }}
               disabled={hasEnded}
               title={
                 hasEnded
@@ -233,24 +256,26 @@ export function SubmissionsList({ hackathonId }: SubmissionsListProps) {
                   </>
                 )}
 
-                {/* Rating badge in top right */}
-                <div className="absolute top-2 right-2 z-10">
-                  {submission.myRating !== null && submission.myRating !== undefined ? (
-                    <Badge
-                      variant="default"
-                      className="backdrop-blur-sm bg-primary/90 text-primary-foreground shadow-lg"
-                    >
-                      {submission.myRating.toFixed(1)}
-                    </Badge>
-                  ) : (
-                    <Badge
-                      variant="warning"
-                      className="bg-orange-500/90 dark:bg-orange-500/90 text-white shadow-lg border-0"
-                    >
-                      Unrated
-                    </Badge>
-                  )}
-                </div>
+                {/* Rating badge in top right - only show for non-contestants */}
+                {!isContestant && (
+                  <div className="absolute top-2 right-2 z-10">
+                    {submission.myRating !== null && submission.myRating !== undefined ? (
+                      <Badge
+                        variant="default"
+                        className="backdrop-blur-sm bg-primary/90 text-primary-foreground shadow-lg"
+                      >
+                        {submission.myRating.toFixed(1)}
+                      </Badge>
+                    ) : (
+                      <Badge
+                        variant="warning"
+                        className="bg-orange-500/90 dark:bg-orange-500/90 text-white shadow-lg border-0"
+                      >
+                        Unrated
+                      </Badge>
+                    )}
+                  </div>
+                )}
 
                 {/* Title and team at bottom */}
                 <div className="absolute bottom-0 left-0 right-0 p-4 z-10">
@@ -316,9 +341,9 @@ export function SubmissionsList({ hackathonId }: SubmissionsListProps) {
       <NewSubmissionModal
         hackathonId={hackathonId}
         open={isNewSubmissionModalOpen}
-        onClose={() => setIsNewSubmissionModalOpen(false)}
+        onClose={handleModalClose}
         totalSubmissions={submissions.length}
-        userRole={hackathon?.role || 'judge'}
+        userRole={(hackathon?.role as 'owner' | 'admin' | 'judge' | 'contestant') || 'judge'}
       />
 
       {submissionToDelete && (
