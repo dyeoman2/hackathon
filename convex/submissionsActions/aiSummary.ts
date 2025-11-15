@@ -10,6 +10,7 @@ import { guarded } from '../authz/guardFactory';
 import { checkAISearchJobStatus, downloadAndUploadRepoHelper } from './repoProcessing';
 import type {
   CheckCloudflareIndexingRef,
+  ContinueCloudflareIndexingRef,
   GetSubmissionInternalRef,
   UpdateSubmissionAIInternalRef,
   UpdateSubmissionSourceInternalRef,
@@ -331,10 +332,10 @@ export const checkCloudflareIndexing = internalAction({
         } else {
           // Job not found (null) or status unknown - check if enough time has passed
           // Cloudflare may clean up completed jobs after some time
-          // Sync jobs can take up to 10 minutes, so we wait at least 12 minutes before assuming completion
+          // Timeout matches scheduler runtime (~15 minutes total with backoff)
           const syncStartedAt = submission.source?.aiSearchSyncStartedAt || 0;
           const timeSinceSyncStart = Date.now() - syncStartedAt;
-          const MIN_TIME_FOR_JOB_COMPLETION = 12 * 60 * 1000; // 12 minutes (sync can take up to 10 minutes)
+          const MIN_TIME_FOR_JOB_COMPLETION = 15 * 60 * 1000; // 15 minutes (matches scheduler runtime)
 
           if (syncStartedAt > 0 && timeSinceSyncStart > MIN_TIME_FOR_JOB_COMPLETION) {
             // Job was started but is now not found - likely completed and cleaned up
@@ -374,10 +375,10 @@ export const checkCloudflareIndexing = internalAction({
       // - Job status check failed
       // - Job completed but we want to verify documents are actually indexed
       if (!indexed && !waitForJobCompletion) {
-        // If enough time has passed since upload (12+ minutes), assume indexing is complete
-        // Sync jobs can take up to 10 minutes, so we wait at least 12 minutes before assuming completion
+        // If enough time has passed since upload (15+ minutes), assume indexing is complete
+        // Timeout matches scheduler runtime to handle long-running Cloudflare sync jobs
         // This handles cases where AI Search is indexed but our query detection isn't working
-        const MIN_TIME_FOR_INDEXING = 12 * 60 * 1000; // 12 minutes (sync can take up to 10 minutes)
+        const MIN_TIME_FOR_INDEXING = 15 * 60 * 1000; // 15 minutes (matches scheduler runtime)
         if (timeSinceUpload > MIN_TIME_FOR_INDEXING && args.attempt >= 10) {
           console.log(
             `[AI Search] ✅ Files uploaded ${Math.round(timeSinceUpload / 1000)}s ago (${Math.round(timeSinceUpload / 60000)} minutes, attempt ${args.attempt}). Assuming indexing is complete and proceeding.`,
@@ -420,6 +421,14 @@ export const checkCloudflareIndexing = internalAction({
               console.log(
                 `[AI Search] Filtered query returned ${filteredDocs.length} documents for prefix ${r2PathPrefix}`,
               );
+
+              // Diagnostic: Log metadata structure for first document on first attempt
+              if (filteredDocs.length > 0 && args.attempt === 0) {
+                console.log(
+                  `[AI Search] Diagnostic - first document metadata structure:`,
+                  JSON.stringify(filteredDocs[0], null, 2),
+                );
+              }
 
               if (filteredDocs.length > 0) {
                 const filteredMatches = filteredDocs.filter((doc) => {
@@ -620,27 +629,30 @@ export const checkCloudflareIndexing = internalAction({
           );
           return; // Exit early, will be called again by scheduler
         } else {
-          // Max attempts reached - log warning but proceed anyway
+          // Max attempts reached - start continuation polling for long-running jobs
           console.warn(
-            `[AI Search] ⚠️ Indexing status unclear for submission ${args.submissionId} after ${maxAttempts} attempts. Marking as complete anyway.`,
+            `[AI Search] ⚠️ Initial indexing checks exhausted for submission ${args.submissionId} after ${maxAttempts} attempts. Starting continuation polling for long-running jobs.`,
           );
-          // Mark sync as completed even though we're not sure - at least we tried
-          const completedAt = Date.now();
-          console.log(
-            `[AI Search] Recording sync completion time (max attempts): ${new Date(completedAt).toISOString()}`,
-          );
-          await ctx.runMutation(
+
+          // Schedule continuation action to keep checking every 5 minutes
+          await ctx.scheduler.runAfter(
+            0, // Start immediately
             (
-              internal.submissions as unknown as {
-                updateSubmissionSourceInternal: UpdateSubmissionSourceInternalRef;
+              internal.submissionsActions.aiSummary as unknown as {
+                continueCloudflareIndexing: ContinueCloudflareIndexingRef;
               }
-            ).updateSubmissionSourceInternal,
+            ).continueCloudflareIndexing,
             {
               submissionId: args.submissionId,
-              aiSearchSyncCompletedAt: completedAt,
+              continuationAttempt: 1,
+              forceRegenerate: args.forceRegenerate ?? false,
             },
           );
-          console.log(`[AI Search] ✅ Sync completion recorded (max attempts reached)`);
+
+          console.log(
+            `[AI Search] 🔄 Scheduled continuation polling for submission ${args.submissionId}`,
+          );
+          return; // Exit without marking complete - continuation will handle completion
         }
       } else {
         // Files are indexed - record sync completion time
@@ -662,28 +674,31 @@ export const checkCloudflareIndexing = internalAction({
         console.log(`[AI Search] ✅ Sync completion recorded successfully`);
       }
 
-      // Files are indexed (or we've given up waiting) - mark indexing as complete
-      // The summary was already generated by generateSummary, so we don't need to generate another one
-      console.log(
-        `[AI Search] ✅ Indexing complete - marking processing state as complete at ${new Date().toISOString()}`,
-      );
+      // Files are indexed - mark indexing as complete
+      // Only run finalization if we actually found indexed documents (indexed === true)
+      if (indexed) {
+        // The summary was already generated by generateSummary, so we don't need to generate another one
+        console.log(
+          `[AI Search] ✅ Indexing complete - marking processing state as complete at ${new Date().toISOString()}`,
+        );
 
-      // Set processing state to complete (final check - in case score generation didn't update it)
-      console.log(
-        `[AI Search] ✅ Finalizing - ensuring processing state is 'complete' at ${new Date().toISOString()}`,
-      );
-      await ctx.runMutation(
-        (
-          internal.submissions as unknown as {
-            updateSubmissionSourceInternal: UpdateSubmissionSourceInternalRef;
-          }
-        ).updateSubmissionSourceInternal,
-        {
-          submissionId: args.submissionId,
-          processingState: 'complete',
-        },
-      );
-      console.log(`[AI Search] ✅ Final processing state update complete`);
+        // Set processing state to complete (final check - in case score generation didn't update it)
+        console.log(
+          `[AI Search] ✅ Finalizing - ensuring processing state is 'complete' at ${new Date().toISOString()}`,
+        );
+        await ctx.runMutation(
+          (
+            internal.submissions as unknown as {
+              updateSubmissionSourceInternal: UpdateSubmissionSourceInternalRef;
+            }
+          ).updateSubmissionSourceInternal,
+          {
+            submissionId: args.submissionId,
+            processingState: 'complete',
+          },
+        );
+        console.log(`[AI Search] ✅ Final processing state update complete`);
+      }
     } catch (error) {
       // Log error details
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -931,6 +946,212 @@ async function extractReadmeFromR2(
 
   return null;
 }
+
+/**
+ * Continuation action for long-running Cloudflare indexing jobs
+ * Called when the initial checkCloudflareIndexing hits maxAttempts
+ * Polls less frequently (every 5 minutes) to handle jobs taking 30-60+ minutes
+ */
+export const continueCloudflareIndexing = internalAction({
+  args: {
+    submissionId: v.id('submissions'),
+    continuationAttempt: v.number(),
+    forceRegenerate: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const maxContinuationAttempts = 20; // Allow up to 20 * 5min = 100 minutes additional
+    const continuationIntervalMs = 5 * 60 * 1000; // Poll every 5 minutes
+
+    console.log(
+      `[AI Search] 🔄 Continuation check for submission ${args.submissionId}, attempt ${args.continuationAttempt}/${maxContinuationAttempts}`,
+    );
+
+    // Get submission
+    const submission = await ctx.runQuery(
+      (internal.submissions as unknown as { getSubmissionInternal: GetSubmissionInternalRef })
+        .getSubmissionInternal,
+      {
+        submissionId: args.submissionId,
+      },
+    );
+
+    if (!submission) {
+      console.warn(`[AI Search] Continuation: Submission ${args.submissionId} not found`);
+      return;
+    }
+
+    // Check if already completed by another path
+    if (submission.source?.aiSearchSyncCompletedAt) {
+      console.log(
+        `[AI Search] Continuation: Submission ${args.submissionId} already marked complete at ${new Date(submission.source.aiSearchSyncCompletedAt).toISOString()}`,
+      );
+      return;
+    }
+
+    // R2 path prefix for this submission
+    const r2PathPrefix = submission.source?.r2Key;
+    if (!r2PathPrefix) {
+      console.error(
+        `[AI Search] Continuation: No R2 path prefix for submission ${args.submissionId} - marking as error`,
+      );
+      // Mark as error since indexing can't proceed without uploaded files
+      await ctx.runMutation(
+        (
+          internal.submissions as unknown as {
+            updateSubmissionSourceInternal: UpdateSubmissionSourceInternalRef;
+          }
+        ).updateSubmissionSourceInternal,
+        {
+          submissionId: args.submissionId,
+          aiSearchSyncCompletedAt: Date.now(),
+          processingState: 'error',
+        },
+      );
+      return;
+    }
+
+    // Check Cloudflare AI Search for document count
+    const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
+    const aiSearchInstanceId = process.env.CLOUDFLARE_AI_SEARCH_INSTANCE_ID;
+    const apiToken = process.env.CLOUDFLARE_API_TOKEN;
+
+    if (!aiSearchInstanceId || !accountId || !apiToken) {
+      console.error(
+        `[AI Search] Continuation: Cloudflare AI Search not configured - marking as error`,
+      );
+      // Mark as error since indexing can't proceed without configuration
+      await ctx.runMutation(
+        (
+          internal.submissions as unknown as {
+            updateSubmissionSourceInternal: UpdateSubmissionSourceInternalRef;
+          }
+        ).updateSubmissionSourceInternal,
+        {
+          submissionId: args.submissionId,
+          aiSearchSyncCompletedAt: Date.now(),
+          processingState: 'error',
+        },
+      );
+      return;
+    }
+
+    try {
+      const testQueryUrl = `https://api.cloudflare.com/client/v4/accounts/${accountId}/autorag/rags/${aiSearchInstanceId}/ai-search`;
+      const folderFilter = buildFolderFilter(r2PathPrefix, args.submissionId);
+
+      type SearchDoc = {
+        filename?: string;
+        attributes?: { path?: string; folder?: string };
+        path?: string;
+      };
+
+      const filteredResponse = await fetch(testQueryUrl, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          query: `files in path ${r2PathPrefix} for submission ${args.submissionId}`,
+          max_num_results: 10, // Just check if any documents exist
+          filters: folderFilter,
+        }),
+      });
+
+      if (filteredResponse.ok) {
+        const filteredData = await filteredResponse.json();
+        const filteredDocs: SearchDoc[] = (filteredData.data ||
+          filteredData.result?.data ||
+          []) as SearchDoc[];
+
+        if (filteredDocs.length > 0) {
+          // Found documents - mark as complete
+          const completedAt = Date.now();
+          console.log(
+            `[AI Search] ✅ Continuation found ${filteredDocs.length} indexed documents for submission ${args.submissionId} after ${args.continuationAttempt} continuation attempts`,
+          );
+          await ctx.runMutation(
+            (
+              internal.submissions as unknown as {
+                updateSubmissionSourceInternal: UpdateSubmissionSourceInternalRef;
+              }
+            ).updateSubmissionSourceInternal,
+            {
+              submissionId: args.submissionId,
+              aiSearchSyncCompletedAt: completedAt,
+              processingState: 'complete',
+            },
+          );
+          console.log(`[AI Search] ✅ Continuation: Processing state marked as complete`);
+          return;
+        }
+      }
+
+      // No documents found yet
+      if (args.continuationAttempt < maxContinuationAttempts) {
+        // Schedule next continuation check
+        console.log(
+          `[AI Search] ⏳ Continuation: No documents found yet for submission ${args.submissionId}, scheduling next check in ${continuationIntervalMs / 1000}s`,
+        );
+        await ctx.scheduler.runAfter(
+          continuationIntervalMs,
+          (
+            internal.submissionsActions.aiSummary as unknown as {
+              continueCloudflareIndexing: ContinueCloudflareIndexingRef;
+            }
+          ).continueCloudflareIndexing,
+          {
+            submissionId: args.submissionId,
+            continuationAttempt: args.continuationAttempt + 1,
+            forceRegenerate: args.forceRegenerate ?? false,
+          },
+        );
+      } else {
+        // Max continuation attempts reached - indexing failed, mark as error
+        const completedAt = Date.now();
+        console.error(
+          `[AI Search] ❌ Continuation: Max attempts reached for submission ${args.submissionId} without finding any indexed documents after ${(maxContinuationAttempts * continuationIntervalMs) / 1000 / 60} minutes. Indexing failed.`,
+        );
+        await ctx.runMutation(
+          (
+            internal.submissions as unknown as {
+              updateSubmissionSourceInternal: UpdateSubmissionSourceInternalRef;
+            }
+          ).updateSubmissionSourceInternal,
+          {
+            submissionId: args.submissionId,
+            aiSearchSyncCompletedAt: completedAt,
+            processingState: 'error',
+          },
+        );
+        console.log(
+          `[AI Search] ❌ Continuation: Processing state marked as error (indexing failed after max attempts)`,
+        );
+      }
+    } catch (error) {
+      console.error(
+        `[AI Search] Continuation error for submission ${args.submissionId}:`,
+        error instanceof Error ? error.message : String(error),
+      );
+      // On error, still schedule next continuation unless we've hit max attempts
+      if (args.continuationAttempt < maxContinuationAttempts) {
+        await ctx.scheduler.runAfter(
+          continuationIntervalMs,
+          (
+            internal.submissionsActions.aiSummary as unknown as {
+              continueCloudflareIndexing: ContinueCloudflareIndexingRef;
+            }
+          ).continueCloudflareIndexing,
+          {
+            submissionId: args.submissionId,
+            continuationAttempt: args.continuationAttempt + 1,
+            forceRegenerate: args.forceRegenerate ?? false,
+          },
+        );
+      }
+    }
+  },
+});
 
 /**
  * Generate summary using AI Gateway/Workers with README + screenshots

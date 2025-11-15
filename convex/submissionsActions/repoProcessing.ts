@@ -511,8 +511,15 @@ export async function downloadAndUploadRepoHelper(
     });
 
     // Upload each file to R2 with metadata
+    console.log(
+      `[R2 Upload] Starting upload of ${codeFiles.length} files to prefix ${r2PathPrefix}`,
+    );
+
+    const uploadStartTime = Date.now();
+
     for (const file of codeFiles) {
       const r2Key = `${r2PathPrefix}${file.path}`;
+      const fileUploadStart = Date.now();
       await s3Client.send(
         new PutObjectCommand({
           Bucket: r2BucketName,
@@ -525,7 +532,16 @@ export async function downloadAndUploadRepoHelper(
           },
         }),
       );
+      const uploadDuration = Date.now() - fileUploadStart;
+      console.log(
+        `[R2 Upload] ✅ Uploaded ${file.path} (${file.content.length} bytes) in ${uploadDuration}ms`,
+      );
     }
+
+    const totalUploadTime = Date.now() - uploadStartTime;
+    console.log(
+      `[R2 Upload] ✅ Successfully uploaded ${codeFiles.length} files in ${totalUploadTime}ms`,
+    );
 
     // Update submission with R2 path prefix, record upload completion, and set state to indexing
     const uploadCompletedAt = Date.now();

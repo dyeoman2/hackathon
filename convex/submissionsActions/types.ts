@@ -95,6 +95,13 @@ export type CheckCloudflareIndexingRef = FunctionReference<
   void
 >;
 
+export type ContinueCloudflareIndexingRef = FunctionReference<
+  'action',
+  'internal',
+  { submissionId: Id<'submissions'>; continuationAttempt: number; forceRegenerate?: boolean },
+  void
+>;
+
 export type GenerateSummaryRef = FunctionReference<
   'action',
   'internal',
