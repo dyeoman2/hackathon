@@ -96,6 +96,8 @@ export const checkCloudflareIndexing = internalAction({
       // BUT: If forceRegenerate is true, always regenerate regardless of existing summary
       const hasSummary = !!submission.source?.aiSummary;
       const isComplete = submission.source?.processingState === 'complete';
+      const hasRecordedSyncCompletion =
+        typeof submission.source?.aiSearchSyncCompletedAt === 'number';
 
       if (hasSummary && isComplete && !args.forceRegenerate) {
         console.log(
@@ -138,9 +140,9 @@ export const checkCloudflareIndexing = internalAction({
       }
 
       // Check if we have summary but processing state isn't marked complete - fix the state
-      if (hasSummary && !isComplete) {
+      if (hasSummary && !isComplete && hasRecordedSyncCompletion) {
         console.log(
-          `[AI Search] Submission ${args.submissionId} has summary but state not complete - fixing state`,
+          `[AI Search] Submission ${args.submissionId} has summary and recorded sync completion but state not complete - fixing state`,
         );
         await ctx.runMutation(
           (

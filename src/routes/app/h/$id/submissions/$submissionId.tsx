@@ -1,9 +1,9 @@
 import { api } from '@convex/_generated/api';
 import type { Id } from '@convex/_generated/dataModel';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
-import { useQuery } from 'convex/react';
+import { useAction, useQuery } from 'convex/react';
 import { ExternalLink } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SiGithub } from 'react-icons/si';
 import { NotFound } from '~/components/NotFound';
 import { PageHeader } from '~/components/PageHeader';
@@ -43,6 +43,12 @@ function SubmissionDetailComponent() {
   const submissions = useQuery(api.submissions.listByHackathon, {
     hackathonId: hackathonId as Id<'hackathons'>,
   });
+  const refreshIndexingStatus = useAction(api.submissions.refreshSubmissionIndexingStatus);
+  const indexingRefreshRef = useRef<Id<'submissions'> | null>(null);
+  const currentSubmissionId = submission?._id as Id<'submissions'> | undefined;
+  const submissionProcessingState = submission?.source?.processingState;
+  const submissionAiSearchSyncCompletedAt = submission?.source?.aiSearchSyncCompletedAt;
+  const submissionR2Key = submission?.source?.r2Key;
 
   const runWithRatingFlush = useCallback((task: () => Promise<void> | void) => {
     void (async () => {
@@ -168,6 +174,77 @@ function SubmissionDetailComponent() {
     },
     [hackathonId, runWithRatingFlush, navigate],
   );
+
+  useEffect(() => {
+    if (!currentSubmissionId) {
+      console.info('[RepoChat] Effect skipped: no submission loaded');
+      indexingRefreshRef.current = null;
+      return;
+    }
+
+    console.info('[RepoChat] Effect state snapshot', {
+      submissionId: currentSubmissionId,
+      processingState: submissionProcessingState,
+      aiSearchSyncCompletedAt: submissionAiSearchSyncCompletedAt,
+      hasR2Key: Boolean(submissionR2Key),
+      pendingRefreshFor: indexingRefreshRef.current,
+    });
+
+    const shouldRefreshIndexing =
+      !!submissionR2Key &&
+      ((submissionProcessingState === 'indexing' && !submissionAiSearchSyncCompletedAt) ||
+        (submissionProcessingState === 'complete' && !submissionAiSearchSyncCompletedAt));
+
+    if (shouldRefreshIndexing) {
+      if (indexingRefreshRef.current === currentSubmissionId) {
+        console.info('[RepoChat] Skipping refresh; already requested for submission', {
+          submissionId: currentSubmissionId,
+        });
+        return;
+      }
+
+      indexingRefreshRef.current = currentSubmissionId;
+      console.info('[RepoChat] Triggering refreshSubmissionIndexingStatus', {
+        submissionId: currentSubmissionId,
+        processingState: submissionProcessingState,
+        reason:
+          submissionProcessingState === 'complete'
+            ? 'missing aiSearchSyncCompletedAt'
+            : 'indexing in progress',
+      });
+      refreshIndexingStatus({ submissionId: currentSubmissionId })
+        .then((result) => {
+          console.info('[RepoChat] refreshSubmissionIndexingStatus resolved', {
+            submissionId: currentSubmissionId,
+            result,
+          });
+          indexingRefreshRef.current = null;
+        })
+        .catch((error) => {
+          console.warn('Failed to refresh submission indexing status:', error);
+          indexingRefreshRef.current = null;
+        });
+    } else if (
+      submissionProcessingState === 'complete' ||
+      submissionProcessingState === 'error' ||
+      submissionAiSearchSyncCompletedAt
+    ) {
+      if (indexingRefreshRef.current) {
+        console.info('[RepoChat] Clearing pending refresh token', {
+          submissionId: currentSubmissionId,
+          processingState: submissionProcessingState,
+          aiSearchSyncCompletedAt: submissionAiSearchSyncCompletedAt,
+        });
+      }
+      indexingRefreshRef.current = null;
+    }
+  }, [
+    currentSubmissionId,
+    submissionProcessingState,
+    submissionAiSearchSyncCompletedAt,
+    submissionR2Key,
+    refreshIndexingStatus,
+  ]);
 
   const handleDelete = async () => {
     setIsDeleting(true);

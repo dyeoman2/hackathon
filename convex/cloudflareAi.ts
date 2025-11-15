@@ -14,6 +14,16 @@ import { authComponent } from './auth';
 import { guarded } from './authz/guardFactory';
 import { isAutumnConfigured } from './autumn';
 
+// Type for AI Search document results
+interface AISearchDocument {
+  id: string;
+  path?: string;
+  folder?: string;
+  title?: string;
+  text?: string;
+  score?: number;
+}
+
 // Simple token estimation function (rough approximation)
 function estimateTokens(text: string): number {
   // Rough approximation: ~4 characters per token for English text
@@ -1294,18 +1304,11 @@ interface AISearchQueryOptions {
 
 interface AISearchResponse {
   response?: string;
-  data?: Array<{
-    filename?: string;
-    attributes?: {
-      path?: string;
-    };
-    text?: string;
-    score?: number;
-  }>;
+  data?: Array<AISearchDocument>;
   search_query?: string;
   result?: {
     response?: string;
-    data?: Array<unknown>;
+    data?: Array<AISearchDocument>;
   };
 }
 
@@ -1360,6 +1363,16 @@ async function queryAISearchHelper(options: AISearchQueryOptions): Promise<AISea
     };
   }
 
+  console.log('[AI Search] Making request:', {
+    instanceId: config.instanceId,
+    query: options.query,
+    model: requestBody.model,
+    maxNumResults: requestBody.max_num_results,
+    pathPrefix: options.pathPrefix,
+    filters: requestBody.filters,
+    queryUrl: queryUrl.replace(config.accountId, '[ACCOUNT_ID]'), // Hide account ID in logs
+  });
+
   const response = await fetch(queryUrl, {
     method: 'POST',
     headers: {
@@ -1395,6 +1408,28 @@ async function queryAISearchHelper(options: AISearchQueryOptions): Promise<AISea
   }
 
   const data = (await response.json()) as AISearchResponse;
+
+  // Extract documents for logging
+  const documents = data.data ?? data.result?.data ?? [];
+  const responseText = data.response ?? data.result?.response ?? '';
+
+  console.log('[AI Search] Response received:', {
+    hasResponse: !!responseText,
+    responseLength: responseText.length,
+    documentsFound: documents.length,
+    searchQuery: data.search_query,
+    documents: documents
+      .map((doc: AISearchDocument) => ({
+        id: doc.id,
+        path: doc.path || doc.folder,
+        title: doc.title,
+        textLength: doc.text?.length || 0,
+        score: doc.score,
+      }))
+      .slice(0, 5), // Log first 5 documents
+    hasMoreDocuments: documents.length > 5,
+  });
+
   return data;
 }
 
@@ -1608,8 +1643,19 @@ export const streamAISearchForRepoChat = guarded.action(
         pathPrefix: args.pathPrefix,
       });
 
-      // Extract the generated response
+      // Extract the generated response and documents
       const generatedResponse = result.response ?? result.result?.response ?? '';
+      const documents = result.data ?? result.result?.data ?? [];
+
+      console.log('[Repo Chat] Processing AI search result:', {
+        requestId: args.requestId,
+        responseLength: generatedResponse.length,
+        documentsCount: documents.length,
+        documentsPaths: documents
+          .map((doc: AISearchDocument) => doc.path || doc.folder)
+          .slice(0, 10),
+        hasMoreDocuments: documents.length > 10,
+      });
 
       // Update metadata
       await ctx.runMutation(internal.aiResponses.updateMetadata, {

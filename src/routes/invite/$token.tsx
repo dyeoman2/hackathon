@@ -2,7 +2,7 @@ import { api } from '@convex/_generated/api';
 import { createFileRoute, useRouter } from '@tanstack/react-router';
 import { useMutation, useQuery } from 'convex/react';
 import { AlertCircle, CheckCircle2 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, AlertDescription } from '~/components/ui/alert';
 import { Button } from '~/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~/components/ui/card';
@@ -37,6 +37,29 @@ function InviteAcceptComponent() {
   const acceptInvite = useMutation(api.hackathons.acceptInvite);
   const [isAccepting, setIsAccepting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const lastKnownHackathonIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (tokenValidation?.status === 'valid' && tokenValidation.hackathonId) {
+      lastKnownHackathonIdRef.current = tokenValidation.hackathonId;
+    }
+  }, [tokenValidation]);
+
+  const navigateToHackathon = useCallback(
+    async (hackathonId?: string | null) => {
+      const targetId = hackathonId ?? lastKnownHackathonIdRef.current;
+      if (targetId) {
+        await router.navigate({
+          to: '/app/h/$id',
+          params: { id: targetId },
+        });
+        return;
+      }
+
+      await router.navigate({ to: '/app/h' });
+    },
+    [router],
+  );
 
   // Auto-accept invite when user becomes authenticated
   useEffect(() => {
@@ -48,17 +71,34 @@ function InviteAcceptComponent() {
       acceptInvite({ token: decodedToken })
         .then((result) => {
           // Redirect to hackathon workspace
-          router.navigate({
+          void router.navigate({
             to: '/app/h/$id',
             params: { id: result.hackathonId },
           });
         })
         .catch((err) => {
+          if (
+            err instanceof Error &&
+            (err.message.includes('Invalid invite token') ||
+              err.message.includes('Invite already used'))
+          ) {
+            void navigateToHackathon(tokenValidation?.hackathonId);
+            return;
+          }
+
           setError(err instanceof Error ? err.message : 'Failed to accept invite');
           setIsAccepting(false);
         });
     }
-  }, [isAuthenticated, tokenValidation, isAccepting, decodedToken, acceptInvite, router]);
+  }, [
+    acceptInvite,
+    decodedToken,
+    isAccepting,
+    isAuthenticated,
+    navigateToHackathon,
+    router.navigate,
+    tokenValidation,
+  ]);
 
   const handleAccept = async () => {
     if (isAuthenticated) {
@@ -74,6 +114,15 @@ function InviteAcceptComponent() {
           params: { id: result.hackathonId },
         });
       } catch (err) {
+        if (
+          err instanceof Error &&
+          (err.message.includes('Invalid invite token') ||
+            err.message.includes('Invite already used'))
+        ) {
+          await navigateToHackathon(tokenValidation?.hackathonId);
+          return;
+        }
+
         setError(err instanceof Error ? err.message : 'Failed to accept invite');
         setIsAccepting(false);
       }
@@ -102,6 +151,16 @@ function InviteAcceptComponent() {
     }
   };
 
+  useEffect(() => {
+    if (!isAuthenticated || tokenValidation?.status !== 'invalid') {
+      return;
+    }
+
+    setIsAccepting(true);
+    setError(null);
+    void navigateToHackathon();
+  }, [isAuthenticated, navigateToHackathon, tokenValidation]);
+
   if (tokenValidation === undefined) {
     return (
       <div className="container mx-auto py-8">
@@ -119,6 +178,27 @@ function InviteAcceptComponent() {
   }
 
   if (tokenValidation.status === 'invalid') {
+    if (isAuthenticated && lastKnownHackathonIdRef.current) {
+      return (
+        <div className="container mx-auto py-8">
+          <Card className="max-w-2xl mx-auto">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <CheckCircle2 className="h-5 w-5 text-success" />
+                Finalizing Access...
+              </CardTitle>
+              <CardDescription>Almost there! Redirecting you to the hackathon.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center justify-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      );
+    }
+
     return (
       <div className="container mx-auto py-8">
         <Card className="max-w-2xl mx-auto">

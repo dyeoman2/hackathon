@@ -21,10 +21,23 @@ function RouteErrorBoundary({
   showHomeButton?: boolean;
 }) {
   const router = useRouter();
+  const isRedirectResponse =
+    typeof Response !== 'undefined' &&
+    error instanceof Response &&
+    error.status >= 300 &&
+    error.status < 400;
 
   useEffect(() => {
+    if (isRedirectResponse) {
+      return;
+    }
+
     Sentry.captureException(error);
-  }, [error]);
+  }, [error, isRedirectResponse]);
+
+  if (isRedirectResponse) {
+    return null;
+  }
 
   console.error(`${feature} Route Error:`, error);
 

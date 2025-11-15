@@ -17,11 +17,22 @@ import {
 import { authComponent } from './auth';
 import { AUTUMN_NOT_CONFIGURED_ERROR, autumn, isAutumnConfigured } from './autumn';
 import { requireHackathonRole } from './hackathons';
+import type { CheckCloudflareIndexingRef } from './submissionsActions/types';
 
 const submissionsInternalApi = internal as unknown as {
   submissions: {
     getSubmissionCreationContext: FunctionReference<'query', 'internal'>;
+    getSubmissionInternal: FunctionReference<'query', 'internal'>;
+    getSubmissionWithAccessInternal: FunctionReference<'query', 'internal'>;
     createSubmissionInternal: FunctionReference<'mutation', 'internal'>;
+  };
+};
+
+const submissionsActionsInternalApi = internal as unknown as {
+  submissionsActions: {
+    aiSummary: {
+      checkCloudflareIndexing: CheckCloudflareIndexingRef;
+    };
   };
 };
 
@@ -172,6 +183,36 @@ export const getSubmission = query({
       myRating,
       averageRating,
     };
+  },
+});
+
+export const getSubmissionWithAccessInternal = internalQuery({
+  args: {
+    submissionId: v.id('submissions'),
+  },
+  handler: async (ctx, args) => {
+    const authUser = await authComponent.getAuthUser(ctx);
+    if (!authUser) {
+      return null;
+    }
+
+    const userId = assertUserId(authUser, 'User ID not found');
+    const submission = await ctx.db.get(args.submissionId);
+    if (!submission) {
+      return null;
+    }
+
+    const membership = await ctx.db
+      .query('memberships')
+      .withIndex('by_hackathonId', (q) => q.eq('hackathonId', submission.hackathonId))
+      .filter((q) => q.eq(q.field('userId'), userId))
+      .first();
+
+    if (!membership || membership.status !== 'active') {
+      return null;
+    }
+
+    return submission;
   },
 });
 
@@ -566,6 +607,114 @@ export const retrySubmissionProcessing = action({
     }
 
     return { success: true };
+  },
+});
+
+/**
+ * Allow clients to manually refresh the Cloudflare AI Search indexing status
+ * Useful when the dashboard shows a completed sync but our submission is still marked as indexing
+ */
+export const refreshSubmissionIndexingStatus = action({
+  args: {
+    submissionId: v.id('submissions'),
+  },
+  handler: async (ctx, args) => {
+    const submission = await ctx.runQuery(
+      submissionsInternalApi.submissions.getSubmissionWithAccessInternal,
+      {
+        submissionId: args.submissionId,
+      },
+    );
+
+    if (!submission) {
+      throw new Error('Submission not found or access denied');
+    }
+
+    const source = submission.source;
+    const needsRefresh =
+      (source?.processingState === 'indexing' && !!source?.r2Key) ||
+      (source?.processingState === 'complete' && !source?.aiSearchSyncCompletedAt);
+
+    if (!needsRefresh) {
+      console.log(
+        '[RefreshIndexing] Skipping refresh because submission is not waiting on AI Search',
+        {
+          submissionId: args.submissionId,
+          processingState: source?.processingState,
+          aiSearchSyncCompletedAt: source?.aiSearchSyncCompletedAt ?? null,
+        },
+      );
+      return {
+        alreadyComplete: source?.processingState === 'complete',
+        aiSearchSyncCompletedAt: source?.aiSearchSyncCompletedAt ?? null,
+      };
+    }
+
+    console.log('[RefreshIndexing] Triggering Cloudflare status refresh', {
+      submissionId: args.submissionId,
+      processingState: source?.processingState,
+      aiSearchSyncCompletedAt: source?.aiSearchSyncCompletedAt ?? null,
+      r2Key: source?.r2Key ?? null,
+      uploadedAt: source?.uploadedAt ?? null,
+    });
+    try {
+      await ctx.runAction(
+        submissionsActionsInternalApi.submissionsActions.aiSummary.checkCloudflareIndexing,
+        {
+          submissionId: args.submissionId,
+          attempt: 0,
+          forceRegenerate: false,
+        },
+      );
+    } catch (error) {
+      console.warn(
+        'Failed to refresh submission indexing status:',
+        error instanceof Error ? error.message : error,
+      );
+      throw new Error('Failed to refresh Cloudflare AI Search status. Please try again.');
+    }
+
+    let updatedSubmission = await ctx.runQuery(
+      submissionsInternalApi.submissions.getSubmissionInternal,
+      {
+        submissionId: args.submissionId,
+      },
+    );
+
+    if (
+      updatedSubmission?.source?.processingState === 'complete' &&
+      !updatedSubmission.source.aiSearchSyncCompletedAt
+    ) {
+      const fallbackTimestamp = Date.now();
+      console.warn(
+        '[RefreshIndexing] Submission marked complete without aiSearchSyncCompletedAt - recording fallback timestamp',
+        {
+          submissionId: args.submissionId,
+          fallbackTimestamp,
+        },
+      );
+      await ctx.runMutation(internal.submissions.updateSubmissionSourceInternal, {
+        submissionId: args.submissionId,
+        aiSearchSyncCompletedAt: fallbackTimestamp,
+      });
+      updatedSubmission = await ctx.runQuery(
+        submissionsInternalApi.submissions.getSubmissionInternal,
+        {
+          submissionId: args.submissionId,
+        },
+      );
+    }
+
+    console.log('[RefreshIndexing] Completed status refresh', {
+      submissionId: args.submissionId,
+      newProcessingState: updatedSubmission?.source?.processingState ?? null,
+      newAiSearchSyncCompletedAt: updatedSubmission?.source?.aiSearchSyncCompletedAt ?? null,
+    });
+
+    return {
+      processingState: updatedSubmission?.source?.processingState ?? null,
+      aiSearchSyncCompletedAt: updatedSubmission?.source?.aiSearchSyncCompletedAt ?? null,
+    };
   },
 });
 

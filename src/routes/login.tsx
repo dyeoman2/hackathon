@@ -1,9 +1,9 @@
 import { api } from '@convex/_generated/api';
 import { useForm } from '@tanstack/react-form';
-import { createFileRoute, Link, redirect, useNavigate, useRouter } from '@tanstack/react-router';
+import { createFileRoute, Link, useNavigate, useRouter } from '@tanstack/react-router';
 import { useMutation } from 'convex/react';
 import { Lock, Mail } from 'lucide-react';
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { z } from 'zod';
 import { AuthSkeleton } from '~/components/AuthSkeleton';
 import { Button } from '~/components/ui/button';
@@ -83,6 +83,7 @@ function LoginPage() {
 
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState(message || '');
+  const hasHandledAuthRedirectRef = useRef(false);
   const emailId = useId();
   const passwordId = useId();
 
@@ -142,6 +143,7 @@ function LoginPage() {
         }
 
         if (data) {
+          hasHandledAuthRedirectRef.current = true;
           // Handle invite redirects specially - accept invite and redirect to hackathon
           if (redirectTarget.startsWith('/invite/')) {
             try {
@@ -150,22 +152,29 @@ function LoginPage() {
               const decodedToken = decodeURIComponent(token);
 
               // Accept the invite
-              await acceptInvite({ token: decodedToken });
+              const result = await acceptInvite({ token: decodedToken });
 
-              // Invalidate router to ensure queries are fresh
-              await router.invalidate();
+              // Navigate directly to the invited hackathon if available
+              if (result?.hackathonId) {
+                await navigate({
+                  to: '/app/h/$id',
+                  params: { id: result.hackathonId },
+                });
+              } else {
+                await navigate({ to: '/app/h' });
+              }
 
-              // Navigate to the hackathons list page
-              navigate({ to: '/app/h' });
+              void router.invalidate();
             } catch (inviteError) {
               console.error('Failed to accept invite after login:', inviteError);
               // Fallback to regular redirect if invite acceptance fails
-              navigate({ to: '/app/h' });
+              await navigate({ to: '/app/h' });
+              void router.invalidate();
             }
           } else {
-            // Invalidate router and navigate to the redirect target
-            await router.invalidate();
-            navigate({ to: redirectTarget });
+            // Navigate to the redirect target and refresh queries in the background
+            await navigate({ to: redirectTarget });
+            void router.invalidate();
           }
         } else {
           setError('An unexpected error occurred. Please try again.');
@@ -214,12 +223,25 @@ function LoginPage() {
     }
   }, [reset, form]);
 
+  useEffect(() => {
+    if (isPending || !isAuthenticated || hasHandledAuthRedirectRef.current) {
+      return;
+    }
+
+    hasHandledAuthRedirectRef.current = true;
+    void navigate({ to: redirectTarget, replace: true });
+  }, [isAuthenticated, isPending, navigate, redirectTarget]);
+
   if (isPending) {
     return <AuthSkeleton />;
   }
 
   if (isAuthenticated) {
-    throw redirect({ to: redirectTarget });
+    if (hasHandledAuthRedirectRef.current) {
+      return null;
+    }
+
+    return <AuthSkeleton />;
   }
 
   return (

@@ -5,7 +5,7 @@ import {
 } from '../src/lib/server/better-auth/adapter-utils';
 import { assertUserId } from '../src/lib/shared/user-id';
 import { components, internal } from './_generated/api';
-import type { Id } from './_generated/dataModel';
+import type { Doc, Id } from './_generated/dataModel';
 import type { MutationCtx, QueryCtx } from './_generated/server';
 import { internalQuery, mutation, query } from './_generated/server';
 import { authComponent } from './auth';
@@ -704,6 +704,54 @@ async function hashToken(token: string, secret: string): Promise<string> {
   return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
+function parseInviteToken(token: string): {
+  membershipId: Id<'memberships'>;
+  hackathonId: Id<'hackathons'>;
+} | null {
+  const parts = token.split('-');
+  if (parts.length < 4) {
+    return null;
+  }
+
+  const [rawMembershipId, rawHackathonId] = parts;
+  if (!rawMembershipId || !rawHackathonId) {
+    return null;
+  }
+
+  return {
+    membershipId: rawMembershipId as Id<'memberships'>,
+    hackathonId: rawHackathonId as Id<'hackathons'>,
+  };
+}
+
+async function findMembershipForInvite(
+  ctx: QueryCtx | MutationCtx,
+  token: string,
+  tokenHash: string,
+): Promise<Doc<'memberships'> | null> {
+  const parsedToken = parseInviteToken(token);
+  let membership: Doc<'memberships'> | null = null;
+
+  if (parsedToken) {
+    membership = await ctx.db.get(parsedToken.membershipId);
+
+    if (membership?.hackathonId !== parsedToken.hackathonId) {
+      membership = null;
+    } else if (membership?.tokenHash !== tokenHash) {
+      membership = null;
+    }
+  }
+
+  if (!membership) {
+    membership = await ctx.db
+      .query('memberships')
+      .withIndex('by_tokenHash', (q) => q.eq('tokenHash', tokenHash))
+      .first();
+  }
+
+  return membership;
+}
+
 /**
  * Validate invite token (returns membership info if valid)
  */
@@ -731,11 +779,7 @@ export const validateInviteToken = query({
     const tokenHash = await hashToken(args.token, inviteTokenSecret);
     console.log('Generated token hash:', tokenHash);
 
-    // Find membership by token hash
-    const membership = await ctx.db
-      .query('memberships')
-      .withIndex('by_tokenHash', (q) => q.eq('tokenHash', tokenHash))
-      .first();
+    const membership = await findMembershipForInvite(ctx, args.token, tokenHash);
 
     console.log('Membership found:', membership ? 'YES' : 'NO');
     if (membership) {
@@ -803,6 +847,7 @@ export const validateInviteToken = query({
 
     return {
       status: 'valid' as const,
+      hackathonId: membership.hackathonId,
       hackathonTitle: hackathon.title,
       inviterName: inviterName || 'Hackathon Owner',
       membershipId: membership._id,
@@ -832,16 +877,27 @@ export const acceptInvite = mutation({
     const tokenHash = await hashToken(args.token, inviteTokenSecret);
 
     // Find membership by token hash
-    const membership = await ctx.db
-      .query('memberships')
-      .withIndex('by_tokenHash', (q) => q.eq('tokenHash', tokenHash))
-      .first();
+    let membership = await findMembershipForInvite(ctx, args.token, tokenHash);
+
+    if (!membership) {
+      const parsedToken = parseInviteToken(args.token);
+      if (parsedToken) {
+        const membershipById = await ctx.db.get(parsedToken.membershipId);
+        if (membershipById?.hackathonId === parsedToken.hackathonId) {
+          membership = membershipById;
+        }
+      }
+    }
 
     if (!membership) {
       throw new Error('Invalid invite token');
     }
 
     if (membership.status !== 'invited') {
+      if (membership.status === 'active' && membership.userId === userId) {
+        return { hackathonId: membership.hackathonId };
+      }
+
       throw new Error('Invite already used');
     }
 

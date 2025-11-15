@@ -3,7 +3,7 @@ import { useForm } from '@tanstack/react-form';
 import { createFileRoute, Link, useNavigate, useRouter } from '@tanstack/react-router';
 import { useMutation, useQuery } from 'convex/react';
 import { Crown, Lock, Mail, ShieldCheck, User } from 'lucide-react';
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { z } from 'zod';
 import { AuthSkeleton } from '~/components/AuthSkeleton';
 import { ClientOnly } from '~/components/ClientOnly';
@@ -67,6 +67,7 @@ function RegisterPage() {
 
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState(message || '');
+  const hasHandledAuthRedirectRef = useRef(false);
 
   const form = useForm({
     defaultValues: {
@@ -161,27 +162,40 @@ function RegisterPage() {
                 const decodedToken = decodeURIComponent(token);
 
                 // Accept the invite
-                await acceptInvite({ token: decodedToken });
+                const inviteResult = await acceptInvite({ token: decodedToken });
 
-                // Invalidate router to ensure queries are fresh
-                await router.invalidate();
-
-                // Redirect to the hackathons list page after showing success message
+                hasHandledAuthRedirectRef.current = true;
                 setTimeout(() => {
-                  navigate({ to: '/app/h' });
+                  void (async () => {
+                    if (inviteResult?.hackathonId) {
+                      await navigate({
+                        to: '/app/h/$id',
+                        params: { id: inviteResult.hackathonId },
+                      });
+                    } else {
+                      await navigate({ to: '/app/h' });
+                    }
+                    void router.invalidate();
+                  })();
                 }, 2000);
               } catch (inviteError) {
                 console.error('Failed to accept invite after registration:', inviteError);
                 // Fallback to regular redirect if invite acceptance fails
+                hasHandledAuthRedirectRef.current = true;
                 setTimeout(() => {
-                  navigate({ to: '/app/h' });
+                  void (async () => {
+                    await navigate({ to: '/app/h' });
+                    void router.invalidate();
+                  })();
                 }, 2000);
               }
             } else {
-              // Invalidate router and navigate to the redirect target after showing success message
-              await router.invalidate();
+              hasHandledAuthRedirectRef.current = true;
               setTimeout(() => {
-                navigate({ to: redirectTarget });
+                void (async () => {
+                  await navigate({ to: redirectTarget });
+                  void router.invalidate();
+                })();
               }, 2000);
             }
           } else {
@@ -223,14 +237,23 @@ function RegisterPage() {
   const [currentEmail, setCurrentEmail] = useState(emailFromQuery || '');
 
   useEffect(() => {
-    if (!isAuthenticated) {
+    if (!isAuthenticated || hasHandledAuthRedirectRef.current) {
       return;
     }
 
+    hasHandledAuthRedirectRef.current = true;
     void navigate({ to: redirectTarget, replace: true });
   }, [isAuthenticated, navigate, redirectTarget]);
 
-  if (isPending || isAuthenticated) {
+  if (isPending) {
+    return <AuthSkeleton />;
+  }
+
+  if (isAuthenticated) {
+    if (hasHandledAuthRedirectRef.current) {
+      return null;
+    }
+
     return <AuthSkeleton />;
   }
 

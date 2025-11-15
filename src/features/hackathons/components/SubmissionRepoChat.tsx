@@ -396,7 +396,8 @@ export function SubmissionRepoChat({ submission }: SubmissionRepoChatProps) {
   }, [streamingResponse, currentRequestId]);
 
   // Show processing state if indexing is still in progress (until AI Search sync is completed)
-  const isProcessing = !aiSearchSyncCompletedAt && processingState !== 'error';
+  const isProcessing =
+    processingState !== 'complete' && processingState !== 'error' && !aiSearchSyncCompletedAt;
 
   // Show error state if processing failed
   const hasProcessingError = processingState === 'error';
@@ -552,7 +553,7 @@ export function SubmissionRepoChat({ submission }: SubmissionRepoChatProps) {
     );
   }
 
-  if (!aiSearchSyncCompletedAt || !r2PathPrefix) {
+  if (!r2PathPrefix) {
     return (
       <Card>
         <CardHeader>
