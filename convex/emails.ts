@@ -2,7 +2,6 @@ import { Resend } from '@convex-dev/resend';
 import { v } from 'convex/values';
 import { components, internal } from './_generated/api';
 import { action, internalAction, internalMutation, query } from './_generated/server';
-import { authComponent } from './auth';
 
 /**
  * Email theme colors - centralized for easy maintenance
@@ -35,17 +34,11 @@ export const resend: Resend = new Resend(components.resend, {
 
 /**
  * Check if email service is configured (for UI validation)
- * Requires authentication
+ * Does NOT require authentication - this is a public query
  */
 export const checkEmailServiceConfigured = query({
   args: {},
-  handler: async (ctx) => {
-    // Require authentication
-    const authUser = await authComponent.getAuthUser(ctx);
-    if (!authUser) {
-      throw new Error('Authentication required');
-    }
-
+  handler: async () => {
     const resendApiKey = process.env.RESEND_API_KEY;
     return {
       isConfigured: !!resendApiKey,

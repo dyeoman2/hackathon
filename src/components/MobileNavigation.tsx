@@ -1,4 +1,4 @@
-import { Link, useLocation, useNavigate, useRouter } from '@tanstack/react-router';
+import { Link, useLocation } from '@tanstack/react-router';
 import { LogOut, type LucideIcon, Menu, Shield, Trophy, User } from 'lucide-react';
 import { useState } from 'react';
 import {
@@ -31,8 +31,6 @@ export function MobileNavigation() {
   } = useAuth({ fetchRole: authState.isAuthenticated });
   const session = { user: isAuthenticated ? user : null };
   const [open, setOpen] = useState(false);
-  const navigate = useNavigate();
-  const router = useRouter();
   const location = useLocation();
 
   const navItems: NavItem[] = [{ to: '/h', label: 'Hackathons', icon: Trophy }];

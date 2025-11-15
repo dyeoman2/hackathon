@@ -1,4 +1,4 @@
-import { Link, useLocation, useNavigate, useRouter } from '@tanstack/react-router';
+import { Link, useLocation } from '@tanstack/react-router';
 import { LogOut, Shield, User } from 'lucide-react';
 import { MobileNavigation } from '~/components/MobileNavigation';
 import { ThemeToggle } from '~/components/theme-toggle';
@@ -23,8 +23,6 @@ function AuthNavigation({ currentPath }: { currentPath: string }) {
   const { user, isAuthenticated, isPending, isAdmin } = useAuth({
     fetchRole: authState.isAuthenticated,
   });
-  const navigate = useNavigate();
-  const router = useRouter();
 
   const handleSignOut = async () => {
     try {
