@@ -128,6 +128,25 @@ export function SubmissionRepoChat({ submission }: SubmissionRepoChatProps) {
       },
     );
 
+    // Handle links wrapped in square brackets where the content is a list of Markdown links.
+    // Example: [ [link1](url1), [link2](url2) ] -> [link1](url1) [link2](url2)
+    transformed = transformed.replace(
+      /\[(\s*\[[^\]]+\]\([^)]+\)(?:\s*(?:,|\s)\s*\[[^\]]+\]\([^)]+\))*)\s*\](\s*[.:,])?/g,
+      (match, linksContent, trailingPunct) => {
+        const trimmed = linksContent.trim();
+        const linkPattern = /\[[^\]]+\]\([^)]+\)/g;
+        const allLinks = trimmed.match(linkPattern);
+        const withoutLinks = trimmed.replace(linkPattern, '').replace(/[,]/g, '').trim();
+
+        if (allLinks && allLinks.length > 0 && withoutLinks === '') {
+          const normalized = trimmed.replace(/,\s*/g, ' ').replace(/\s+/g, ' ').trim();
+          return normalized + (trailingPunct ? trailingPunct : '');
+        }
+
+        return match;
+      },
+    );
+
     // Also handle links that are already outside parentheses but have commas between them
     // Pattern: [link1](url1), [link2](url2), [link3](url3) -> [link1](url1) [link2](url2) [link3](url3)
     // This handles any number of links separated by commas
