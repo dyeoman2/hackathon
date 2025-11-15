@@ -4,7 +4,7 @@ import {
   normalizeAdapterFindManyResult,
 } from '../src/lib/server/better-auth/adapter-utils';
 import { assertUserId } from '../src/lib/shared/user-id';
-import { components, internal } from './_generated/api';
+import { components } from './_generated/api';
 import type { ActionCtx, MutationCtx, QueryCtx } from './_generated/server';
 import { authComponent } from './auth';
 import { guarded } from './authz/guardFactory';
@@ -404,45 +404,23 @@ export const updateBetterAuthUser = guarded.mutation(
 
 /**
  * Truncate application data (admin only)
- * Deletes all audit logs, preserves user data
+ * Currently no-op - preserved for future use
  */
-export const truncateData = guarded.mutation('user.write', {}, async (ctx, _args, _role) => {
-  // Delete all audit logs
-  const auditLogs = await ctx.db.query('auditLogs').collect();
-  let deletedCount = 0;
-  let failedCount = 0;
-
-  for (const log of auditLogs) {
-    try {
-      await ctx.db.delete(log._id);
-      deletedCount++;
-    } catch (error) {
-      failedCount++;
-      console.error(`Failed to delete audit log ${log._id}:`, error);
-    }
-  }
-
-  // Log the truncation in audit log (before we delete it, so it won't be persisted)
-  // Actually, we can't log it since we're deleting all logs
-  // So we'll just return success
-
+export const truncateData = guarded.mutation('user.write', {}, async (_ctx, _args, _role) => {
   return {
-    success: failedCount === 0,
-    message:
-      failedCount === 0
-        ? `All audit logs have been truncated successfully. User accounts and authentication data preserved.`
-        : `Partial truncation completed. ${deletedCount} audit logs deleted, ${failedCount} failed. User accounts and authentication data preserved.`,
-    truncatedTables: deletedCount > 0 ? 1 : 0,
-    failedTables: failedCount > 0 ? 1 : 0,
-    totalTables: 1,
-    failedTableNames: failedCount > 0 ? ['auditLogs'] : [],
-    invalidateAllCaches: true,
+    success: true,
+    message: 'No data to truncate.',
+    truncatedTables: 0,
+    failedTables: 0,
+    totalTables: 0,
+    failedTableNames: [],
+    invalidateAllCaches: false,
   };
 });
 
 /**
  * Delete user (admin only)
- * Deletes user from userProfiles and auditLogs
+ * Deletes user from userProfiles
  * Note: Better Auth user deletion should be handled via Better Auth HTTP API
  */
 export const deleteUser = guarded.mutation(
@@ -481,20 +459,6 @@ export const deleteUser = guarded.mutation(
     // Delete user profile
     if (targetProfile) {
       await ctx.db.delete(targetProfile._id);
-
-      await ctx.runMutation(internal.dashboardStats.adjustUserCounts, {
-        totalDelta: -1,
-      });
-    }
-
-    // Delete audit logs for this user
-    const auditLogs = await ctx.db
-      .query('auditLogs')
-      .withIndex('by_userId', (q) => q.eq('userId', args.userId))
-      .collect();
-
-    for (const log of auditLogs) {
-      await ctx.db.delete(log._id);
     }
 
     // Note: Better Auth user deletion should be handled via Better Auth HTTP API

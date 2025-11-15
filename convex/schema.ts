@@ -18,27 +18,6 @@ export default defineSchema({
     .index('by_userId', ['userId'])
     .index('by_role_createdAt', ['role', 'createdAt']),
 
-  auditLogs: defineTable({
-    id: v.string(),
-    userId: v.string(), // References Better Auth user.id
-    action: v.string(),
-    entityType: v.string(),
-    entityId: v.optional(v.string()),
-    metadata: v.optional(v.string()),
-    createdAt: v.number(),
-    ipAddress: v.optional(v.string()),
-    userAgent: v.optional(v.string()),
-  })
-    .index('by_userId', ['userId'])
-    .index('by_createdAt', ['createdAt']),
-
-  dashboardStats: defineTable({
-    key: v.string(),
-    totalUsers: v.number(),
-    activeUsers: v.number(),
-    updatedAt: v.number(),
-  }).index('by_key', ['key']),
-
   // Rate limiting table - managed by @convex-dev/rate-limiter
   rateLimit: defineTable({
     identifier: v.string(),
@@ -48,16 +27,6 @@ export default defineSchema({
   })
     .index('by_identifier_kind', ['identifier', 'kind'])
     .index('by_createdAt', ['createdAt']),
-
-  aiMessageUsage: defineTable({
-    userId: v.string(),
-    messagesUsed: v.number(),
-    pendingMessages: v.number(),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-    lastReservedAt: v.optional(v.number()),
-    lastCompletedAt: v.optional(v.number()),
-  }).index('by_userId', ['userId']),
 
   aiResponses: defineTable({
     userId: v.string(),
@@ -104,7 +73,6 @@ export default defineSchema({
       }),
     ),
     votingClosedAt: v.optional(v.number()),
-    rubric: v.optional(v.string()), // Temporary: will be removed after migration
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index('by_ownerUserId', ['ownerUserId']),
@@ -131,7 +99,6 @@ export default defineSchema({
     team: v.string(),
     repoUrl: v.string(),
     siteUrl: v.optional(v.string()),
-    status: v.optional(v.string()), // Legacy field - kept for backward compatibility
     source: v.optional(
       v.object({
         r2Key: v.optional(v.string()),

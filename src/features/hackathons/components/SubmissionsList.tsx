@@ -132,7 +132,8 @@ export function SubmissionsList({ hackathonId }: SubmissionsListProps) {
               hackathon?.role === 'owner' ||
               hackathon?.role === 'admin') &&
               ratingStats.total > 0 &&
-              ratingStats.rated > 0 && ratingStats.unrated > 0 && (
+              ratingStats.rated > 0 &&
+              ratingStats.unrated > 0 && (
                 <Button
                   variant={showOnlyUnrated ? 'secondary' : 'outline'}
                   size="sm"

@@ -4,7 +4,7 @@ import {
   normalizeAdapterFindManyResult,
 } from '../src/lib/server/better-auth/adapter-utils';
 import { assertUserId } from '../src/lib/shared/user-id';
-import { components, internal } from './_generated/api';
+import { components } from './_generated/api';
 import { internalQuery, mutation, query } from './_generated/server';
 import { authComponent } from './auth';
 import { guarded } from './authz/guardFactory';
@@ -109,10 +109,6 @@ export const setUserRole = guarded.mutation(
         role: args.role,
         createdAt: now,
         updatedAt: now,
-      });
-
-      await ctx.runMutation(internal.dashboardStats.adjustUserCounts, {
-        totalDelta: 1,
       });
     }
 

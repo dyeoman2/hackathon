@@ -9,14 +9,12 @@
  */
 
 import type * as admin from "../admin.js";
-import type * as ai from "../ai.js";
 import type * as aiResponses from "../aiResponses.js";
 import type * as auth from "../auth.js";
 import type * as authz_guardFactory from "../authz/guardFactory.js";
 import type * as autumn from "../autumn.js";
 import type * as cloudflareAi from "../cloudflareAi.js";
 import type * as dashboard from "../dashboard.js";
-import type * as dashboardStats from "../dashboardStats.js";
 import type * as emails from "../emails.js";
 import type * as firecrawl from "../firecrawl.js";
 import type * as hackathons from "../hackathons.js";
@@ -43,14 +41,12 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   admin: typeof admin;
-  ai: typeof ai;
   aiResponses: typeof aiResponses;
   auth: typeof auth;
   "authz/guardFactory": typeof authz_guardFactory;
   autumn: typeof autumn;
   cloudflareAi: typeof cloudflareAi;
   dashboard: typeof dashboard;
-  dashboardStats: typeof dashboardStats;
   emails: typeof emails;
   firecrawl: typeof firecrawl;
   hackathons: typeof hackathons;

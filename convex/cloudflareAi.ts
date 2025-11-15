@@ -7,7 +7,7 @@ import { v } from 'convex/values';
 import { createWorkersAI } from 'workers-ai-provider';
 import { z } from 'zod';
 import { assertUserId } from '../src/lib/shared/user-id';
-import { api, internal } from './_generated/api';
+import { internal } from './_generated/api';
 import type { Id } from './_generated/dataModel';
 import type { ActionCtx } from './_generated/server';
 import { authComponent } from './auth';
@@ -103,14 +103,6 @@ function getWorkersAIProvider() {
   return { llamaModel, falconModel };
 }
 
-interface AiUsageMetadata {
-  provider?: string;
-  model?: string;
-  totalTokens?: number;
-  inputTokens?: number;
-  outputTokens?: number;
-}
-
 type StructuredResult = {
   title: string;
   summary: string;
@@ -133,51 +125,6 @@ function isStructuredResult(value: unknown): value is StructuredResult {
     typeof candidate.category === 'string' &&
     typeof candidate.difficulty === 'string'
   );
-}
-
-function buildReservationError(reservation: {
-  requiresUpgrade?: boolean;
-  reason?: string;
-  errorMessage?: string;
-  freeLimit: number;
-  usage: { freeMessagesRemaining: number };
-}) {
-  if (reservation.requiresUpgrade && reservation.reason !== 'autumn_not_configured') {
-    return new Error(
-      `You have used all ${reservation.freeLimit} free messages. Upgrade your plan to continue.`,
-    );
-  }
-
-  if (reservation.reason === 'autumn_not_configured') {
-    return new Error(
-      'Autumn billing is not configured. Follow docs/AUTUMN_SETUP.md to enable paid AI access.',
-    );
-  }
-
-  if (reservation.reason === 'autumn_check_failed') {
-    const detail = reservation.errorMessage ? ` (${reservation.errorMessage})` : '';
-    return new Error(`Unable to verify your AI subscription${detail}. Please try again shortly.`);
-  }
-
-  return new Error('Unable to reserve an message. Please try again in a moment.');
-}
-
-function extractUsageMetadata(
-  usage: {
-    totalTokens?: number;
-    inputTokens?: number;
-    outputTokens?: number;
-  } | null,
-  provider?: string,
-  model?: string,
-): AiUsageMetadata {
-  return {
-    provider,
-    model,
-    totalTokens: usage?.totalTokens,
-    inputTokens: usage?.inputTokens,
-    outputTokens: usage?.outputTokens,
-  };
 }
 
 async function ensureAuthenticatedUser(ctx: ActionCtx) {
@@ -864,17 +811,6 @@ export const streamStructuredResponse = guarded.action(
   }> => {
     const { userId } = await ensureAuthenticatedUser(ctx);
 
-    const reservation = await ctx.runAction(api.ai.reserveAiMessage, {
-      metadata: {
-        provider: 'cloudflare-workers-ai-structured',
-        model: '@cf/meta/llama-3.1-8b-instruct',
-      },
-    });
-
-    if (!reservation.allowed) {
-      throw buildReservationError(reservation);
-    }
-
     const modelName = '@cf/meta/llama-3.1-8b-instruct';
 
     const { responseId } = (await ctx.runMutation(internal.aiResponses.createResponse, {
@@ -884,19 +820,6 @@ export const streamStructuredResponse = guarded.action(
       provider: 'cloudflare-workers-ai-structured',
       model: modelName,
     })) as { responseId: Id<'aiResponses'> };
-
-    let usageFinalized = false;
-    const releaseReservation = async () => {
-      if (usageFinalized) {
-        return;
-      }
-      usageFinalized = true;
-      try {
-        await ctx.runAction(api.ai.releaseAiMessage, {});
-      } catch (releaseError) {
-        console.error('[AI] Failed to release AI reservation', releaseError);
-      }
-    };
 
     const markError = async (message: string) => {
       await ctx.runMutation(internal.aiResponses.markError, {
@@ -999,38 +922,10 @@ export const streamStructuredResponse = guarded.action(
         parseError: parseError ?? undefined,
       });
 
-      try {
-        const completion = await ctx.runAction(api.ai.completeAiMessage, {
-          mode: reservation.mode,
-          metadata: extractUsageMetadata(
-            estimatedUsage,
-            'cloudflare-workers-ai-structured',
-            modelName,
-          ),
-        });
-        usageFinalized = true;
-        if (completion.trackError) {
-          console.warn('[AI] Autumn usage tracking failed', completion.trackError);
-        }
-      } catch (completionError) {
-        await releaseReservation();
-        const completionMessage =
-          completionError instanceof Error
-            ? completionError.message
-            : 'Failed to finalize AI usage.';
-        await markError(completionMessage);
-        throw completionError instanceof Error
-          ? completionError
-          : new Error('Failed to finalize AI usage.');
-      }
-
       return { responseId };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       await markError(message);
-      if (!usageFinalized) {
-        await releaseReservation();
-      }
       throw error;
     }
   },
@@ -1090,7 +985,7 @@ export const listAIGateways = guarded.action(
 export const testGatewayConnectivity = guarded.action(
   'profile.read',
   {},
-  async (ctx: ActionCtx, _args, _role) => {
+  async (_ctx: ActionCtx, _args, _role) => {
     if (!isAutumnConfigured()) {
       return {
         success: false,
@@ -1100,36 +995,11 @@ export const testGatewayConnectivity = guarded.action(
       };
     }
 
-    const reservation = await ctx.runAction(api.ai.reserveAiMessage, {
-      metadata: {
-        provider: 'cloudflare-gateway-connectivity-test',
-        model: '@cf/meta/llama-3.1-8b-instruct',
-      },
-    });
-
-    if (!reservation.allowed) {
-      throw buildReservationError(reservation);
-    }
-
-    let usageFinalized = false;
-    const releaseReservation = async () => {
-      if (usageFinalized) {
-        return;
-      }
-      usageFinalized = true;
-      try {
-        await ctx.runAction(api.ai.releaseAiMessage, {});
-      } catch (releaseError) {
-        console.error('[AI] Failed to release AI reservation', releaseError);
-      }
-    };
-
     const config = getCloudflareConfig();
 
     if (!config.gatewayId) {
       // Note: We don't log warnings here to avoid log spam. The error response contains
       // helpful messages that will be shown to users/developers via the UI or API responses.
-      await releaseReservation();
       return {
         success: false,
         error:
@@ -1156,46 +1026,20 @@ export const testGatewayConnectivity = guarded.action(
       // Try to create a model and make a simple request
       const testModel = testWorkersAI('@cf/meta/llama-3.1-8b-instruct');
 
-      try {
-        const result = await generateText({
-          model: testModel,
-          prompt: 'Hello',
-        });
+      const result = await generateText({
+        model: testModel,
+        prompt: 'Hello',
+      });
 
-        try {
-          const completion = await ctx.runAction(api.ai.completeAiMessage, {
-            mode: reservation.mode,
-            metadata: extractUsageMetadata(
-              result.usage ?? null,
-              'cloudflare-gateway-connectivity-test',
-              '@cf/meta/llama-3.1-8b-instruct',
-            ),
-          });
-          usageFinalized = true;
-          if (completion.trackError) {
-            console.warn('[AI] Autumn usage tracking failed', completion.trackError);
-          }
-        } catch (completionError) {
-          await releaseReservation();
-          throw completionError instanceof Error
-            ? completionError
-            : new Error('Failed to finalize AI usage.');
-        }
-
-        return {
-          success: true,
-          status: 200,
-          statusText: 'OK',
-          gatewayUrl: `https://gateway.ai.cloudflare.com/v1/${config.accountId}/${config.gatewayId}`,
-          response: result.text,
-        };
-      } catch (error) {
-        await releaseReservation();
-        throw error;
-      }
+      return {
+        success: true,
+        status: 200,
+        statusText: 'OK',
+        gatewayUrl: `https://gateway.ai.cloudflare.com/v1/${config.accountId}/${config.gatewayId}`,
+        response: result.text,
+      };
     } catch (error) {
       console.error('❌ Gateway connectivity test failed:', error);
-      await releaseReservation();
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',
@@ -1443,100 +1287,51 @@ export const queryAISearch = guarded.action(
     rewriteQuery: v.optional(v.boolean()),
     pathPrefix: v.optional(v.string()),
   },
-  async (ctx: ActionCtx, args, _role) => {
-    const reservation = await ctx.runAction(api.ai.reserveAiMessage, {
-      metadata: {
-        provider: 'cloudflare-ai-search',
-        model: args.model ?? '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
-      },
+  async (_ctx: ActionCtx, args, _role) => {
+    // Use server-side folder filtering if pathPrefix is provided
+    const result = await queryAISearchHelper({
+      query: args.query,
+      model: args.model,
+      maxNumResults: args.maxNumResults,
+      rewriteQuery: args.rewriteQuery,
+      pathPrefix: args.pathPrefix, // Pass pathPrefix for server-side filtering
     });
 
-    if (!reservation.allowed) {
-      throw buildReservationError(reservation);
-    }
+    // Extract the generated response and documents
+    const generatedResponse = result.response ?? result.result?.response;
+    const documents = result.data ?? result.result?.data ?? [];
 
-    let usageFinalized = false;
-    const releaseReservation = async () => {
-      if (usageFinalized) {
-        return;
-      }
-      usageFinalized = true;
-      try {
-        await ctx.runAction(api.ai.releaseAiMessage, {});
-      } catch (releaseError) {
-        console.error('[AI] Failed to release AI reservation', releaseError);
-      }
+    // Estimate usage (AI Search doesn't provide detailed token usage)
+    const estimatedUsage = {
+      inputTokens: estimateTokens(args.query),
+      outputTokens: estimateTokens(generatedResponse ?? ''),
+      totalTokens: estimateTokens(args.query) + estimateTokens(generatedResponse ?? ''),
     };
 
-    try {
-      // Use server-side folder filtering if pathPrefix is provided
-      const result = await queryAISearchHelper({
-        query: args.query,
-        model: args.model,
-        maxNumResults: args.maxNumResults,
-        rewriteQuery: args.rewriteQuery,
-        pathPrefix: args.pathPrefix, // Pass pathPrefix for server-side filtering
+    // Filter documents by path prefix if provided (client-side filtering)
+    // This ensures we only return documents from the specified submission
+    let filteredDocuments = documents as Array<{
+      filename?: string;
+      attributes?: {
+        path?: string;
+      };
+      text?: string;
+      score?: number;
+    }>;
+
+    if (args.pathPrefix) {
+      filteredDocuments = filteredDocuments.filter((doc) => {
+        const docPath = doc.attributes?.path || doc.filename || '';
+        return docPath.startsWith(args.pathPrefix as string);
       });
-
-      // Extract the generated response and documents
-      const generatedResponse = result.response ?? result.result?.response;
-      const documents = result.data ?? result.result?.data ?? [];
-
-      // Estimate usage (AI Search doesn't provide detailed token usage)
-      const estimatedUsage = {
-        inputTokens: estimateTokens(args.query),
-        outputTokens: estimateTokens(generatedResponse ?? ''),
-        totalTokens: estimateTokens(args.query) + estimateTokens(generatedResponse ?? ''),
-      };
-
-      try {
-        const completion = await ctx.runAction(api.ai.completeAiMessage, {
-          mode: reservation.mode,
-          metadata: extractUsageMetadata(
-            estimatedUsage,
-            'cloudflare-ai-search',
-            args.model ?? '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
-          ),
-        });
-        usageFinalized = true;
-        if (completion.trackError) {
-          console.warn('[AI] Autumn usage tracking failed', completion.trackError);
-        }
-      } catch (completionError) {
-        await releaseReservation();
-        throw completionError instanceof Error
-          ? completionError
-          : new Error('Failed to finalize AI usage.');
-      }
-
-      // Filter documents by path prefix if provided (client-side filtering)
-      // This ensures we only return documents from the specified submission
-      let filteredDocuments = documents as Array<{
-        filename?: string;
-        attributes?: {
-          path?: string;
-        };
-        text?: string;
-        score?: number;
-      }>;
-
-      if (args.pathPrefix) {
-        filteredDocuments = filteredDocuments.filter((doc) => {
-          const docPath = doc.attributes?.path || doc.filename || '';
-          return docPath.startsWith(args.pathPrefix as string);
-        });
-      }
-
-      return {
-        response: generatedResponse,
-        documents: filteredDocuments,
-        searchQuery: result.search_query,
-        usage: estimatedUsage,
-      };
-    } catch (error) {
-      await releaseReservation();
-      throw error;
     }
+
+    return {
+      response: generatedResponse,
+      documents: filteredDocuments,
+      searchQuery: result.search_query,
+      usage: estimatedUsage,
+    };
   },
 );
 
@@ -1731,7 +1526,7 @@ export const streamAISearchForRepoChat = guarded.action(
 export const testAISearchConnectivity = guarded.action(
   'profile.read',
   {},
-  async (ctx: ActionCtx, _args, _role) => {
+  async (_ctx: ActionCtx, _args, _role) => {
     if (!isAutumnConfigured()) {
       return {
         success: false,
@@ -1741,78 +1536,18 @@ export const testAISearchConnectivity = guarded.action(
       };
     }
 
-    const reservation = await ctx.runAction(api.ai.reserveAiMessage, {
-      metadata: {
-        provider: 'cloudflare-ai-search-connectivity-test',
-        model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
-      },
+    const config = getAISearchConfig();
+    const testResult = await queryAISearchHelper({
+      query: 'test query',
+      maxNumResults: 1,
     });
 
-    if (!reservation.allowed) {
-      throw buildReservationError(reservation);
-    }
-
-    let usageFinalized = false;
-    const releaseReservation = async () => {
-      if (usageFinalized) {
-        return;
-      }
-      usageFinalized = true;
-      try {
-        await ctx.runAction(api.ai.releaseAiMessage, {});
-      } catch (releaseError) {
-        console.error('[AI] Failed to release AI reservation', releaseError);
-      }
+    return {
+      success: true,
+      status: 200,
+      statusText: 'OK',
+      instanceUrl: `https://api.cloudflare.com/client/v4/accounts/${config.accountId}/autorag/rags/${config.instanceId}`,
+      response: testResult.response,
     };
-
-    try {
-      const config = getAISearchConfig();
-      const testResult = await queryAISearchHelper({
-        query: 'test query',
-        maxNumResults: 1,
-      });
-
-      try {
-        const estimatedUsage = {
-          inputTokens: estimateTokens('test query'),
-          outputTokens: estimateTokens(testResult.response ?? ''),
-          totalTokens: estimateTokens('test query') + estimateTokens(testResult.response ?? ''),
-        };
-        const completion = await ctx.runAction(api.ai.completeAiMessage, {
-          mode: reservation.mode,
-          metadata: extractUsageMetadata(
-            estimatedUsage,
-            'cloudflare-ai-search-connectivity-test',
-            '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
-          ),
-        });
-        usageFinalized = true;
-        if (completion.trackError) {
-          console.warn('[AI] Autumn usage tracking failed', completion.trackError);
-        }
-      } catch (completionError) {
-        await releaseReservation();
-        throw completionError instanceof Error
-          ? completionError
-          : new Error('Failed to finalize AI usage.');
-      }
-
-      await releaseReservation();
-      return {
-        success: true,
-        status: 200,
-        statusText: 'OK',
-        instanceUrl: `https://api.cloudflare.com/client/v4/accounts/${config.accountId}/autorag/rags/${config.instanceId}`,
-        response: testResult.response,
-      };
-    } catch (error) {
-      await releaseReservation();
-      console.error('❌ AI Search connectivity test failed:', error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
-        instanceUrl: null,
-      };
-    }
   },
 );
