@@ -117,7 +117,8 @@ function JudgeManagementComponent() {
     <div className="space-y-6">
       <div className="flex items-center gap-4 mb-2">
         <Button
-          variant="outline"
+          variant="ghost"
+          size="sm"
           onClick={() => {
             void router.navigate({
               to: '/app/h/$id',
