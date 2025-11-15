@@ -50,13 +50,13 @@ function InviteAcceptComponent() {
       const targetId = hackathonId ?? lastKnownHackathonIdRef.current;
       if (targetId) {
         await router.navigate({
-          to: '/app/h/$id',
+          to: '/h/$id',
           params: { id: targetId },
         });
         return;
       }
 
-      await router.navigate({ to: '/app/h' });
+      await router.navigate({ to: '/h' });
     },
     [router],
   );
@@ -72,7 +72,7 @@ function InviteAcceptComponent() {
         .then((result) => {
           // Redirect to hackathon workspace
           void router.navigate({
-            to: '/app/h/$id',
+            to: '/h/$id',
             params: { id: result.hackathonId },
           });
         })
@@ -110,7 +110,7 @@ function InviteAcceptComponent() {
         const result = await acceptInvite({ token: decodedToken });
         // Redirect to hackathon workspace
         await router.navigate({
-          to: '/app/h/$id',
+          to: '/h/$id',
           params: { id: result.hackathonId },
         });
       } catch (err) {
@@ -240,7 +240,7 @@ function InviteAcceptComponent() {
             <Button
               className="mt-4"
               onClick={() => {
-                void router.navigate({ to: '/app/h' });
+                void router.navigate({ to: '/h' });
               }}
             >
               Go to Hackathons

@@ -79,7 +79,7 @@ export function NewHackathonModal({ open, onClose }: NewHackathonModalProps) {
 
         // Redirect to the new hackathon workspace
         await router.navigate({
-          to: '/app/h/$id',
+          to: '/h/$id',
           params: { id: result.hackathonId },
         });
 

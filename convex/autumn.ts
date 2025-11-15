@@ -103,7 +103,11 @@ export const createCustomer = guarded.action(
 export const listProducts = guarded.action(
   'profile.read',
   {},
-  async (_ctx: ActionCtx, _args, _role) => {
+  async (_ctx: ActionCtx, _args, role) => {
+    // Handle unauthenticated users gracefully
+    if (role === 'anonymous') {
+      return getNotConfiguredError('listProducts', true);
+    }
     // Check the environment variable directly in the handler
     // This ensures we get the current value even if it was set after module load
     const secretKey = getAutumnSecretKey();

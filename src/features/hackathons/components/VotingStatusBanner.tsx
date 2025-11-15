@@ -56,7 +56,7 @@ export function VotingStatusBanner({ hackathonId, hackathonRole }: VotingStatusB
       try {
         await revealSync.startReveal();
         void router.navigate({
-          to: '/app/h/$id/reveal',
+          to: '/h/$id/reveal',
           params: { id: hackathonId },
           search: { autostart: false },
         });
@@ -161,7 +161,7 @@ export function VotingStatusBanner({ hackathonId, hackathonRole }: VotingStatusB
         await closeVoting({ hackathonId });
         // The closeVoting mutation already starts the reveal, so we just need to navigate
         void router.navigate({
-          to: '/app/h/$id/reveal',
+          to: '/h/$id/reveal',
           params: { id: hackathonId },
           search: { autostart: false },
         });
@@ -175,7 +175,7 @@ export function VotingStatusBanner({ hackathonId, hackathonRole }: VotingStatusB
       try {
         await revealSync.startReveal();
         void router.navigate({
-          to: '/app/h/$id/reveal',
+          to: '/h/$id/reveal',
           params: { id: hackathonId },
           search: { autostart: false },
         });

@@ -34,9 +34,7 @@ export function MobileNavigation() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const navItems: NavItem[] = isAuthenticated
-    ? [{ to: '/app/h', label: 'Hackathons', icon: Trophy }]
-    : [];
+  const navItems: NavItem[] = [{ to: '/h', label: 'Hackathons', icon: Trophy }];
 
   const handleLinkClick = () => {
     setOpen(false);

@@ -7,33 +7,59 @@ import { PageHeader } from '~/components/PageHeader';
 import { Button } from '~/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~/components/ui/card';
 import { Skeleton } from '~/components/ui/skeleton';
+import { useAuth } from '~/features/auth/hooks/useAuth';
 import { HackathonTimeBadge } from '~/features/hackathons/components/HackathonTimeBadge';
 import { NewHackathonModal } from '~/features/hackathons/components/NewHackathonModal';
 import { usePerformanceMonitoring } from '~/hooks/use-performance-monitoring';
 
-export const Route = createFileRoute('/app/h/')({
+export const Route = createFileRoute('/h/')({
   component: HackathonListComponent,
 });
 
 function HackathonListComponent() {
   usePerformanceMonitoring('HackathonList');
   const router = useRouter();
-  const hackathons = useQuery(api.hackathons.listHackathons, {});
+  const { isAuthenticated } = useAuth();
+
+  // Use different queries based on authentication status
+  const authenticatedHackathons = useQuery(
+    api.hackathons.listHackathons,
+    isAuthenticated ? {} : 'skip',
+  );
+  const publicHackathons = useQuery(
+    api.hackathons.listPublicHackathons,
+    !isAuthenticated ? {} : 'skip',
+  );
+
+  const hackathons = isAuthenticated ? authenticatedHackathons : publicHackathons;
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  // Auto-open modal if no hackathons
+  // Auto-open modal only for authenticated users with no hackathons
   useEffect(() => {
-    if (hackathons !== undefined && hackathons.length === 0) {
+    if (isAuthenticated && hackathons !== undefined && hackathons.length === 0) {
       setIsModalOpen(true);
     }
-  }, [hackathons]);
+  }, [hackathons, isAuthenticated]);
+
+  const handleCreateHackathon = () => {
+    if (isAuthenticated) {
+      setIsModalOpen(true);
+    } else {
+      router.navigate({
+        to: '/register',
+        search: { redirect: '/h' },
+      });
+    }
+  };
 
   if (hackathons === undefined) {
     return (
       <div className="space-y-6">
         <PageHeader
           title="Hackathons"
-          description="Manage your hackathon events"
+          description={
+            isAuthenticated ? 'Manage your hackathon events' : 'Discover and join hackathon events'
+          }
           actions={<Skeleton className="h-10 w-32" />}
         />
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -58,11 +84,13 @@ function HackathonListComponent() {
     <div className="space-y-6">
       <PageHeader
         title="Hackathons"
-        description="Manage your hackathon events"
+        description={
+          isAuthenticated ? 'Manage your hackathon events' : 'Discover and join hackathon events'
+        }
         actions={
-          <Button onClick={() => setIsModalOpen(true)}>
+          <Button onClick={handleCreateHackathon}>
             <Plus className="h-4 w-4" />
-            New Hackathon
+            {isAuthenticated ? 'New Hackathon' : 'Create Hackathon'}
           </Button>
         }
       />
@@ -71,11 +99,13 @@ function HackathonListComponent() {
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
             <p className="text-muted-foreground mb-4 text-center">
-              You don't have any hackathons yet. Create your first one to get started!
+              {isAuthenticated
+                ? "You don't have any hackathons yet. Create your first one to get started!"
+                : 'No hackathons available yet. Be the first to create one!'}
             </p>
-            <Button onClick={() => setIsModalOpen(true)}>
+            <Button onClick={handleCreateHackathon}>
               <Plus className="h-4 w-4" />
-              Create Hackathon
+              {isAuthenticated ? 'Create Hackathon' : 'Start Your Hackathon'}
             </Button>
           </CardContent>
         </Card>
@@ -87,7 +117,7 @@ function HackathonListComponent() {
               className="cursor-pointer transition-shadow hover:shadow-md"
               onClick={() => {
                 void router.navigate({
-                  to: '/app/h/$id',
+                  to: '/h/$id',
                   params: { id: hackathon._id },
                 });
               }}
@@ -113,7 +143,9 @@ function HackathonListComponent() {
         </div>
       )}
 
-      <NewHackathonModal open={isModalOpen} onClose={() => setIsModalOpen(false)} />
+      {isAuthenticated && (
+        <NewHackathonModal open={isModalOpen} onClose={() => setIsModalOpen(false)} />
+      )}
     </div>
   );
 }

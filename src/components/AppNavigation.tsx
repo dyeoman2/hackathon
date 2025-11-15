@@ -116,7 +116,6 @@ function AuthNavigation({ currentPath }: { currentPath: string }) {
  */
 export function AppNavigation() {
   const location = useLocation();
-  const { isAuthenticated } = useAuth();
 
   return (
     <nav className="bg-card shadow-sm border-b">
@@ -153,17 +152,15 @@ export function AppNavigation() {
             </Link>
 
             {/* Navigation Links */}
-            {isAuthenticated && (
-              <div className="flex items-center space-x-1">
-                <Link
-                  to="/app/h"
-                  preload="intent"
-                  className={cn(navigationMenuTriggerStyle(), 'no-underline')}
-                >
-                  Hackathons
-                </Link>
-              </div>
-            )}
+            <div className="flex items-center space-x-1">
+              <Link
+                to="/h"
+                preload="intent"
+                className={cn(navigationMenuTriggerStyle(), 'no-underline')}
+              >
+                Hackathons
+              </Link>
+            </div>
           </div>
 
           {/* Right side - Mobile menu on mobile, Auth nav on desktop */}

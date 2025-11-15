@@ -91,7 +91,7 @@ function ResetPasswordPage() {
 
         // Navigate to the app after showing success message
         setTimeout(() => {
-          router.navigate({ to: '/app/h' });
+          router.navigate({ to: '/h' });
         }, 2000);
       } catch (error: unknown) {
         if (
@@ -122,7 +122,7 @@ function ResetPasswordPage() {
   useEffect(() => {
     if (session?.user && success) {
       setTimeout(() => {
-        router.navigate({ to: '/app/h' });
+        router.navigate({ to: '/h' });
       }, 1000);
     }
   }, [session, success, router]);
@@ -133,7 +133,7 @@ function ResetPasswordPage() {
     }
 
     if (authState.isAuthenticated) {
-      throw redirect({ to: '/app/h' });
+      throw redirect({ to: '/h' });
     }
   }
 

@@ -310,7 +310,7 @@ export function NewSubmissionModal({
 
         // Navigate to the new submission detail page
         await router.navigate({
-          to: '/app/h/$id/submissions/$submissionId',
+          to: '/h/$id/submissions/$submissionId',
           params: { id: hackathonId, submissionId: result.submissionId },
         });
       } catch (error) {
@@ -337,7 +337,7 @@ export function NewSubmissionModal({
 
     try {
       setIsCheckoutLoading(true);
-      const successUrl = `${window.location.origin}/app/h/${hackathonId}?payment=success`;
+      const successUrl = `${window.location.origin}/h/${hackathonId}?payment=success`;
       const result = await checkoutAction({
         productId: packageToPurchase.productId,
         successUrl,

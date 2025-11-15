@@ -6,7 +6,7 @@ import { useEffect } from 'react';
 import { RevealStage } from '~/features/reveal/components/RevealStage';
 import { useRevealSync } from '~/features/reveal/hooks/useRevealSync';
 
-export const Route = createFileRoute('/app/h/$id/reveal')({
+export const Route = createFileRoute('/h/$id/reveal')({
   component: RevealPageComponent,
   validateSearch: (search: Record<string, unknown>) => {
     return {

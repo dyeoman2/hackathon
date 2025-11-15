@@ -320,7 +320,7 @@ function BackButton({ hackathonId }: BackButtonProps) {
 
   const handleBack = useCallback(() => {
     void navigate({
-      to: '/app/h/$id',
+      to: '/h/$id',
       params: { id: hackathonId },
     });
   }, [navigate, hackathonId]);

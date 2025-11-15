@@ -22,7 +22,7 @@ import { useToast } from '~/components/ui/toast';
 import { InviteJudgeModal } from '~/features/hackathons/components/InviteJudgeModal';
 import { usePerformanceMonitoring } from '~/hooks/use-performance-monitoring';
 
-export const Route = createFileRoute('/app/h/$id/judges')({
+export const Route = createFileRoute('/h/$id/judges')({
   component: JudgeManagementComponent,
 });
 
@@ -121,7 +121,7 @@ function JudgeManagementComponent() {
           size="sm"
           onClick={() => {
             void router.navigate({
-              to: '/app/h/$id',
+              to: '/h/$id',
               params: { id },
             });
           }}

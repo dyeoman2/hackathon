@@ -19,10 +19,11 @@ async function resolveRole(
     return 'public';
   }
 
-  // Get current user
-  const authUser = await authComponent.getAuthUser(ctx);
+  // Get current user - don't throw error if unauthenticated, just return anonymous role
+  const authUser = await authComponent.getAuthUser(ctx).catch(() => null);
   if (!authUser) {
-    throw new Error(`Authentication required for capability: ${cap}`);
+    // Return anonymous role for unauthenticated users instead of throwing
+    return 'anonymous';
   }
 
   const userId = assertUserId(authUser, 'User ID not found');

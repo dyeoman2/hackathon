@@ -33,7 +33,7 @@ export const Route = createFileRoute('/login')({
 });
 
 const REDIRECT_TARGETS = [
-  '/app/h',
+  '/h',
   '/app/profile',
   '/app/admin',
   '/app/admin/users',
@@ -42,7 +42,7 @@ const REDIRECT_TARGETS = [
 
 function resolveRedirectTarget(value?: string | null): string {
   if (!value) {
-    return '/app/h';
+    return '/h';
   }
 
   // Extract path from URL if full URL is provided
@@ -60,7 +60,7 @@ function resolveRedirectTarget(value?: string | null): string {
 
   // Prevent redirect loops to auth pages
   if (['/login', '/register', '/forgot-password', '/reset-password'].includes(path)) {
-    return '/app/h';
+    return '/h';
   }
 
   // Allow invite routes
@@ -70,7 +70,7 @@ function resolveRedirectTarget(value?: string | null): string {
 
   // Check other allowed routes
   const match = REDIRECT_TARGETS.find((route) => route === path || path.startsWith(`${route}/`));
-  return match ?? '/app/h';
+  return match ?? '/h';
 }
 
 function LoginPage() {
@@ -157,18 +157,18 @@ function LoginPage() {
               // Navigate directly to the invited hackathon if available
               if (result?.hackathonId) {
                 await navigate({
-                  to: '/app/h/$id',
+                  to: '/h/$id',
                   params: { id: result.hackathonId },
                 });
               } else {
-                await navigate({ to: '/app/h' });
+                await navigate({ to: '/h' });
               }
 
               void router.invalidate();
             } catch (inviteError) {
               console.error('Failed to accept invite after login:', inviteError);
               // Fallback to regular redirect if invite acceptance fails
-              await navigate({ to: '/app/h' });
+              await navigate({ to: '/h' });
               void router.invalidate();
             }
           } else {

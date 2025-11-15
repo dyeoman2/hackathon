@@ -44,34 +44,6 @@ const submissionsActionsInternalApi = internal as unknown as {
  *
  * This query provides basic submission information for public viewing.
  */
-export const getPublicSubmission = query({
-  args: {
-    submissionId: v.id('submissions'),
-  },
-  handler: async (ctx, args) => {
-    const submission = await ctx.db.get(args.submissionId);
-    if (!submission) {
-      return null;
-    }
-
-    // Return submission with public data (no ratings, no sensitive user data)
-    return {
-      _id: submission._id,
-      _creationTime: submission._creationTime,
-      hackathonId: submission.hackathonId,
-      userId: submission.userId,
-      title: submission.title,
-      team: submission.team,
-      repoUrl: submission.repoUrl,
-      siteUrl: submission.siteUrl,
-      source: submission.source,
-      screenshots: submission.screenshots,
-      createdAt: submission.createdAt,
-      updatedAt: submission.updatedAt,
-    };
-  },
-});
-
 /**
  * List public submissions by hackathon (no authentication required)
  *
@@ -89,7 +61,7 @@ export const listPublicSubmissions = query({
       .order('desc') // Newest first
       .collect();
 
-    // Return submissions without private data like ratings
+    // Return submissions without private data like ratings, but include source for summaries
     return submissions.map((submission) => ({
       _id: submission._id,
       title: submission.title,
@@ -97,6 +69,7 @@ export const listPublicSubmissions = query({
       repoUrl: submission.repoUrl,
       siteUrl: submission.siteUrl,
       screenshots: submission.screenshots,
+      source: submission.source, // Include source for AI summaries and processing state
       createdAt: submission.createdAt,
     }));
   },
@@ -120,7 +93,8 @@ export const listByHackathon = query({
     ratingFilter: v.optional(v.union(v.literal('all'), v.literal('rated'), v.literal('unrated'))),
   },
   handler: async (ctx, args) => {
-    const authUser = await authComponent.getAuthUser(ctx);
+    // Don't throw error if unauthenticated - just return empty array
+    const authUser = await authComponent.getAuthUser(ctx).catch(() => null);
     if (!authUser) {
       return [];
     }
@@ -209,7 +183,8 @@ export const getSubmission = query({
     submissionId: v.id('submissions'),
   },
   handler: async (ctx, args) => {
-    const authUser = await authComponent.getAuthUser(ctx);
+    // Don't throw error if unauthenticated - just return null
+    const authUser = await authComponent.getAuthUser(ctx).catch(() => null);
     if (!authUser) {
       return null;
     }

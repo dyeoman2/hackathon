@@ -75,7 +75,9 @@ export default defineSchema({
     votingClosedAt: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
-  }).index('by_ownerUserId', ['ownerUserId']),
+  })
+    .index('by_ownerUserId', ['ownerUserId'])
+    .index('by_createdAt', ['createdAt']),
 
   memberships: defineTable({
     hackathonId: v.id('hackathons'),

@@ -77,7 +77,7 @@ function ForgotPasswordPage() {
   }
 
   if (isAuthenticated) {
-    throw redirect({ to: '/app/h' });
+    throw redirect({ to: '/h' });
   }
 
   if (isSubmitted) {

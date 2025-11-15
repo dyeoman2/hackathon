@@ -15,6 +15,19 @@ import { NewSubmissionModal } from './NewSubmissionModal';
 
 interface SubmissionsListProps {
   hackathonId: Id<'hackathons'>;
+  hackathon?: {
+    _id: Id<'hackathons'>;
+    title: string;
+    description?: string;
+    dates?: {
+      start?: number;
+      submissionDeadline?: number;
+    };
+    createdAt: number;
+    updatedAt: number;
+  }; // Public or authenticated hackathon data
+  isAuthenticated: boolean;
+  userRole?: 'owner' | 'admin' | 'judge' | 'contestant';
   isNewSubmissionModalOpen?: boolean;
   onNewSubmissionModalOpen?: () => void;
   onNewSubmissionModalClose?: () => void;
@@ -22,6 +35,9 @@ interface SubmissionsListProps {
 
 export function SubmissionsList({
   hackathonId,
+  hackathon,
+  isAuthenticated,
+  userRole,
   isNewSubmissionModalOpen: externalModalOpen,
   onNewSubmissionModalOpen,
   onNewSubmissionModalClose,
@@ -29,23 +45,35 @@ export function SubmissionsList({
   const toast = useToast();
   const router = useRouter();
   const [showOnlyUnrated, setShowOnlyUnrated] = useState(false);
-  const hackathon = useQuery(api.hackathons.getHackathon, { hackathonId });
-  const allSubmissions = useQuery(api.submissions.listByHackathon, {
-    hackathonId,
-    ratingFilter: 'all',
-  });
+
+  // Use different queries based on authentication
+  const authenticatedSubmissions = useQuery(
+    api.submissions.listByHackathon,
+    isAuthenticated ? { hackathonId, ratingFilter: 'all' } : 'skip',
+  );
+  const publicSubmissions = useQuery(
+    api.submissions.listPublicSubmissions,
+    { hackathonId }, // Always fetch public data
+  );
+
+  const allSubmissions =
+    isAuthenticated && userRole && authenticatedSubmissions && authenticatedSubmissions.length > 0
+      ? authenticatedSubmissions
+      : publicSubmissions;
 
   // Check if user is a contestant
-  const isContestant = hackathon?.role === 'contestant';
+  const isContestant = isAuthenticated && userRole === 'contestant';
 
-  // Filter client-side for instant toggle without re-fetching
+  // Filter client-side for instant toggle without re-fetching (only for authenticated users)
   const submissions = useMemo(() => {
     if (!allSubmissions) return undefined;
-    if (!showOnlyUnrated) return allSubmissions;
+    if (!showOnlyUnrated || !isAuthenticated) return allSubmissions;
     return allSubmissions.filter(
-      (submission) => submission.myRating === null || submission.myRating === undefined,
+      (submission) =>
+        'myRating' in submission &&
+        (submission.myRating === null || submission.myRating === undefined),
     );
-  }, [allSubmissions, showOnlyUnrated]);
+  }, [allSubmissions, showOnlyUnrated, isAuthenticated]);
 
   const deleteSubmissionOptimistic = useOptimisticMutation(api.submissions.deleteSubmission, {
     onSuccess: () => {
@@ -72,7 +100,7 @@ export function SubmissionsList({
 
   const handleViewSubmission = (submissionId: Id<'submissions'>) => {
     void router.navigate({
-      to: '/app/h/$id/submissions/$submissionId',
+      to: '/h/$id/submissions/$submissionId',
       params: { id: hackathonId, submissionId },
     });
   };
@@ -83,12 +111,23 @@ export function SubmissionsList({
     [hackathon?.dates?.submissionDeadline],
   );
 
-  // Calculate rating statistics
+  // Determine if user can submit
+  const canSubmit =
+    isAuthenticated && userRole && ['owner', 'admin', 'judge', 'contestant'].includes(userRole);
+
+  // Determine if user can see rating filters (judges, owners, admins)
+  const canSeeRatingFilters =
+    isAuthenticated && ['owner', 'admin', 'judge'].includes(userRole || '');
+
+  // Calculate rating statistics (only for authenticated users)
   const ratingStats = useMemo(() => {
-    if (!allSubmissions) return { total: 0, rated: 0, unrated: 0 };
+    if (!isAuthenticated || !allSubmissions) return { total: 0, rated: 0, unrated: 0 };
 
     const rated = allSubmissions.filter(
-      (submission) => submission.myRating !== null && submission.myRating !== undefined,
+      (submission) =>
+        'myRating' in submission &&
+        submission.myRating !== null &&
+        submission.myRating !== undefined,
     ).length;
     const unrated = allSubmissions.length - rated;
 
@@ -97,7 +136,7 @@ export function SubmissionsList({
       rated,
       unrated,
     };
-  }, [allSubmissions]);
+  }, [allSubmissions, isAuthenticated]);
 
   const handleDelete = async () => {
     if (!submissionToDelete) return;
@@ -145,9 +184,7 @@ export function SubmissionsList({
         <div className="flex flex-col gap-2">
           <div className="flex items-center gap-3">
             <h2 className="text-2xl font-semibold">Submissions</h2>
-            {(hackathon?.role === 'judge' ||
-              hackathon?.role === 'owner' ||
-              hackathon?.role === 'admin') &&
+            {canSeeRatingFilters &&
               ratingStats.total > 0 &&
               ratingStats.rated > 0 &&
               ratingStats.unrated > 0 && (
@@ -179,11 +216,13 @@ export function SubmissionsList({
             }
           }}
           className="w-full sm:w-auto"
-          disabled={hasEnded}
+          disabled={!canSubmit || hasEnded}
           title={
-            hasEnded
-              ? 'Cannot add submissions to hackathons that are no longer accepting submissions'
-              : undefined
+            !isAuthenticated
+              ? 'Please sign in to submit to this hackathon'
+              : hasEnded
+                ? 'Cannot add submissions to hackathons that are no longer accepting submissions'
+                : undefined
           }
         >
           <Plus className="h-4 w-4" />
@@ -198,9 +237,11 @@ export function SubmissionsList({
               ? 'All submissions have been rated! 🎉'
               : hasEnded
                 ? 'This hackathon is no longer accepting submissions. No new submissions can be added.'
-                : 'No submissions yet.'}
+                : isAuthenticated
+                  ? 'No submissions yet. Be the first to submit!'
+                  : 'No submissions yet. Sign in to submit to this hackathon!'}
           </p>
-          {!showOnlyUnrated && externalModalOpen === undefined && (
+          {!showOnlyUnrated && externalModalOpen === undefined && canSubmit && (
             <Button
               onClick={() => {
                 // Fallback for internal modal state - should not be used in new implementation
@@ -256,8 +297,8 @@ export function SubmissionsList({
                   </>
                 )}
 
-                {/* Rating badge in top right - only show for non-contestants */}
-                {!isContestant && (
+                {/* Rating badge in top right - only show for authenticated non-contestants */}
+                {!isContestant && isAuthenticated && 'myRating' in submission && (
                   <div className="absolute top-2 right-2 z-10">
                     {submission.myRating !== null && submission.myRating !== undefined ? (
                       <Badge
@@ -343,7 +384,7 @@ export function SubmissionsList({
         open={isNewSubmissionModalOpen}
         onClose={handleModalClose}
         totalSubmissions={submissions.length}
-        userRole={(hackathon?.role as 'owner' | 'admin' | 'judge' | 'contestant') || 'judge'}
+        userRole={userRole || 'judge'}
       />
 
       {submissionToDelete && (

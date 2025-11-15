@@ -103,7 +103,7 @@ export function PresenterControls({
   const handleBackToHackathon = () => {
     markManuallyExpanded();
     void navigate({
-      to: '/app/h/$id',
+      to: '/h/$id',
       params: { id: hackathonId },
     });
   };

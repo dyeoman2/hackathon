@@ -645,7 +645,7 @@ export function PodiumPhase({
                 {/* Info */}
                 <div className="flex-1 min-w-0">
                   <a
-                    href={`/app/h/${hackathonId}/submissions/${submission._id}`}
+                    href={`/h/${hackathonId}/submissions/${submission._id}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="block"
@@ -945,7 +945,7 @@ function PodiumSlot({
           {revealed ? (
             <div className="space-y-1.5 animate-slide-up">
               <a
-                href={`/app/h/${hackathonId}/submissions/${submission._id}`}
+                href={`/h/${hackathonId}/submissions/${submission._id}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={(e) => e.stopPropagation()}

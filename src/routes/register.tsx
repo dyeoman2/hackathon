@@ -41,7 +41,7 @@ export const Route = createFileRoute('/register')({
 
 function resolveRedirectTarget(value?: string | null): string {
   if (!value) {
-    return '/app/h';
+    return '/h';
   }
 
   const [path] = value.split('?');
@@ -52,12 +52,12 @@ function resolveRedirectTarget(value?: string | null): string {
   }
 
   // Allow hackathon routes (for contestant registration)
-  if (path.startsWith('/app/h/')) {
+  if (path.startsWith('/h/')) {
     return value; // Preserve query params like ?newSubmission=true
   }
 
   // Default to hackathons
-  return '/app/h';
+  return '/h';
 }
 
 function RegisterPage() {
@@ -181,11 +181,11 @@ function RegisterPage() {
                   void (async () => {
                     if (inviteResult?.hackathonId) {
                       await navigate({
-                        to: '/app/h/$id',
+                        to: '/h/$id',
                         params: { id: inviteResult.hackathonId },
                       });
                     } else {
-                      await navigate({ to: '/app/h' });
+                      await navigate({ to: '/h' });
                     }
                     void router.invalidate();
                   })();
@@ -196,12 +196,12 @@ function RegisterPage() {
                 hasHandledAuthRedirectRef.current = true;
                 setTimeout(() => {
                   void (async () => {
-                    await navigate({ to: '/app/h' });
+                    await navigate({ to: '/h' });
                     void router.invalidate();
                   })();
                 }, 2000);
               }
-            } else if (redirectTarget.startsWith('/app/h/')) {
+            } else if (redirectTarget.startsWith('/h/')) {
               // Handle hackathon redirects - create contestant membership
               try {
                 const hackathonId = extractHackathonIdFromPath(redirectTarget);
@@ -229,7 +229,7 @@ function RegisterPage() {
                 hasHandledAuthRedirectRef.current = true;
                 setTimeout(() => {
                   void (async () => {
-                    await navigate({ to: '/app/h' });
+                    await navigate({ to: '/h' });
                     void router.invalidate();
                   })();
                 }, 2000);

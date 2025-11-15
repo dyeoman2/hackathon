@@ -33,7 +33,7 @@ export const Route = createFileRoute('/login')({
 function LoginPage() {
   const { isAuthenticated, isPending } = useAuth();
   if (isPending) return <AuthSkeleton />;
-  if (isAuthenticated) throw redirect({ to: '/app/h' });
+  if (isAuthenticated) throw redirect({ to: '/h' });
   // ...
 }
 ```
@@ -57,7 +57,7 @@ function AppLayout() {
   const navigate = useNavigate();
   const { isAuthenticated, isPending } = useAuth();
   const redirectRef = useRef(false);
-  const redirectTarget = location.href ?? '/app/h';
+  const redirectTarget = location.href ?? '/h';
 
   useEffect(() => {
     if (isPending) return;
@@ -626,19 +626,19 @@ The RBAC system is designed to minimize database queries while maintaining secur
 
 ### 8.1 Route Redirect Example
 
-- `/app/` redirects to `/app/h` (hackathons list). Routes fetch via Convex `useQuery` and handle the `undefined` (pending) state.
+- `/app/` redirects to `/h` (hackathons list). Routes fetch via Convex `useQuery` and handle the `undefined` (pending) state.
 
 ```tsx
 // src/routes/app/index.tsx
 export const Route = createFileRoute('/app/')({
   beforeLoad: () => {
-    throw redirect({ to: '/app/h', replace: true });
+    throw redirect({ to: '/h', replace: true });
   },
 });
 
 // Example: Hackathons list route
-// src/routes/app/h/index.tsx
-export const Route = createFileRoute('/app/h/')({
+// src/routes/h/index.tsx
+export const Route = createFileRoute('/h/')({
   component: HackathonListComponent,
 });
 

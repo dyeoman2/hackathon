@@ -146,6 +146,32 @@ export const listHackathons = query({
 });
 
 /**
+ * List all public hackathons (no authentication required)
+ *
+ * This allows anyone to discover and browse available hackathons
+ */
+export const listPublicHackathons = query({
+  args: {},
+  handler: async (ctx) => {
+    const hackathons = await ctx.db
+      .query('hackathons')
+      .withIndex('by_createdAt', (q) => q)
+      .order('desc') // Newest first
+      .collect();
+
+    // Return only public fields
+    return hackathons.map((hackathon) => ({
+      _id: hackathon._id,
+      title: hackathon.title,
+      description: hackathon.description,
+      dates: hackathon.dates,
+      createdAt: hackathon.createdAt,
+      updatedAt: hackathon.updatedAt,
+    }));
+  },
+});
+
+/**
  * Get public hackathon data (no authentication required)
  *
  * This query provides basic hackathon information for public viewing,
@@ -190,7 +216,8 @@ export const getHackathon = query({
     hackathonId: v.id('hackathons'),
   },
   handler: async (ctx, args) => {
-    const authUser = await authComponent.getAuthUser(ctx);
+    // Don't throw error if unauthenticated - just return null
+    const authUser = await authComponent.getAuthUser(ctx).catch(() => null);
     if (!authUser) {
       return null;
     }

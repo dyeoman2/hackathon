@@ -20,7 +20,7 @@ function AppLayout() {
   const { isAuthenticated, isPending } = useAuth();
   const redirectRef = useRef(false);
   const redirectTimerRef = useRef<number | null>(null);
-  const redirectTarget = location.pathname ?? '/app/h';
+  const redirectTarget = location.pathname ?? '/h';
 
   useEffect(() => {
     if (isPending) {
@@ -42,26 +42,13 @@ function AppLayout() {
 
           redirectRef.current = true;
 
-          // Check if this is a hackathon route - redirect to public route instead of login
-          const hackathonRouteMatch = location.pathname.match(/^\/app\/h\/([^/]+)$/);
-          if (hackathonRouteMatch) {
-            const hackathonId = hackathonRouteMatch[1];
-            void navigate({
-              to: '/h/$id',
-              params: { id: hackathonId },
-              replace: true,
-            }).catch(() => {
-              redirectRef.current = false;
-            });
-          } else {
-            void navigate({
-              to: '/login',
-              search: { redirect: redirectTarget },
-              replace: true,
-            }).catch(() => {
-              redirectRef.current = false;
-            });
-          }
+          void navigate({
+            to: '/login',
+            search: { redirect: redirectTarget },
+            replace: true,
+          }).catch(() => {
+            redirectRef.current = false;
+          });
         }, 400);
       }
     } else {
@@ -72,7 +59,7 @@ function AppLayout() {
 
       redirectRef.current = false;
     }
-  }, [isAuthenticated, isPending, navigate, redirectTarget, location.pathname]);
+  }, [isAuthenticated, isPending, navigate, redirectTarget]);
 
   useEffect(() => {
     return () => {
