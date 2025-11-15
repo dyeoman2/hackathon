@@ -37,7 +37,7 @@ export function CountdownPhase({ submissions, timeRemaining, isPresenter }: Coun
           <div
             className="text-8xl font-bold text-white transition-all duration-300 animate-pulse"
             style={{
-              textShadow: '0 0 40px rgba(168, 85, 247, 0.4)',
+              textShadow: '0 0 40px oklch(var(--primary) / 0.4)',
             }}
           >
             {secondsRemaining}
@@ -95,8 +95,8 @@ export function CountdownPhase({ submissions, timeRemaining, isPresenter }: Coun
 
       {/* Presenter Note */}
       {isPresenter && (
-        <div className="fixed bottom-4 right-4 bg-purple-900/80 backdrop-blur-sm border border-purple-700 rounded-lg p-3">
-          <p className="text-xs text-purple-200">
+        <div className="fixed bottom-4 right-4 bg-primary/20 backdrop-blur-sm border border-primary/40 rounded-lg p-3">
+          <p className="text-xs text-primary/90">
             Presenter view • Auto-advancing to tally in {secondsRemaining}s
           </p>
         </div>

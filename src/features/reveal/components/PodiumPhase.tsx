@@ -377,18 +377,18 @@ export function PodiumPhase({
         {phase === 'podiumReady' && (
           <>
             <h1 className="text-5xl md:text-6xl font-extrabold text-white tracking-tight drop-shadow-[0_4px_12px_rgba(0,0,0,0.5)] animate-fade-in">
-              <span className="bg-linear-to-r from-purple-200 via-pink-200 to-purple-200 bg-clip-text text-transparent animate-gradient-shift">
+              <span className="bg-linear-to-r from-primary/80 via-primary/60 to-primary/80 bg-clip-text text-transparent animate-gradient-shift">
                 Are you ready for the results?
               </span>
             </h1>
-            <p className="text-xl md:text-2xl text-purple-200 font-medium animate-fade-in-delay">
+            <p className="text-xl md:text-2xl text-primary/80 font-medium animate-fade-in-delay">
               The moment of truth awaits...
             </p>
           </>
         )}
         {phase === 'reveal3rd' && !otherSubmissionsRevealed && (
           <>
-            <p className="text-lg md:text-xl font-semibold text-purple-300 uppercase tracking-wide animate-fade-in">
+            <p className="text-lg md:text-xl font-semibold text-primary/90 uppercase tracking-wide animate-fade-in">
               Congrats
             </p>
             <h1 className="text-5xl md:text-6xl font-extrabold text-white tracking-tight drop-shadow-[0_4px_12px_rgba(0,0,0,0.5)] animate-fade-in leading-[1.2]">
@@ -407,7 +407,7 @@ export function PodiumPhase({
         )}
         {phase === 'reveal2nd' && !otherSubmissionsRevealed && (
           <>
-            <p className="text-lg md:text-xl font-semibold text-purple-300 uppercase tracking-wide animate-fade-in">
+            <p className="text-lg md:text-xl font-semibold text-primary/90 uppercase tracking-wide animate-fade-in">
               Congrats
             </p>
             <h1 className="text-5xl md:text-6xl font-extrabold text-white tracking-tight drop-shadow-[0_4px_12px_rgba(0,0,0,0.5)] animate-fade-in leading-[1.2]">
@@ -426,7 +426,7 @@ export function PodiumPhase({
         )}
         {phase === 'reveal1st' && !otherSubmissionsRevealed && (
           <>
-            <p className="text-lg md:text-xl font-semibold text-purple-300 uppercase tracking-wide animate-fade-in">
+            <p className="text-lg md:text-xl font-semibold text-primary/90 uppercase tracking-wide animate-fade-in">
               Congrats
             </p>
             <h1 className="text-5xl md:text-6xl font-extrabold text-white tracking-tight drop-shadow-[0_4px_12px_rgba(0,0,0,0.5)] animate-fade-in leading-[1.2]">
@@ -444,13 +444,13 @@ export function PodiumPhase({
         )}
         {otherSubmissionsRevealed && (
           <>
-            <p className="text-lg md:text-xl font-semibold text-purple-300 uppercase tracking-wide animate-fade-in">
+            <p className="text-lg md:text-xl font-semibold text-primary/90 uppercase tracking-wide animate-fade-in">
               Congratulations
             </p>
             <h1 className="text-5xl md:text-6xl font-extrabold text-white tracking-tight drop-shadow-[0_4px_12px_rgba(0,0,0,0.5)] animate-fade-in leading-[1.2]">
               <span className="inline-flex items-center gap-3">
                 <span className="text-6xl">🎉</span>
-                <span className="bg-linear-to-r from-purple-200 via-pink-200 to-purple-200 bg-clip-text text-transparent animate-gradient-shift">
+                <span className="bg-linear-to-r from-primary/80 via-primary/60 to-primary/80 bg-clip-text text-transparent animate-gradient-shift">
                   Everyone!
                 </span>
                 <span className="text-6xl">🎉</span>
@@ -585,7 +585,7 @@ export function PodiumPhase({
         <div
           className={`w-full max-w-5xl space-y-4 z-10 rounded-2xl p-6 md:p-8 transition-all duration-700 ${
             isRevealed(1) && !otherSubmissionsRevealed && showFieldReveal
-              ? 'border-2 border-purple-400 shadow-[0_0_40px_rgba(168,85,247,0.4)] animate-focus-glow bg-linear-to-br from-purple-950/30 to-slate-950/50'
+              ? 'border-2 border-primary/60 shadow-[0_0_40px_oklch(var(--primary)/0.4)] animate-focus-glow bg-linear-to-br from-primary/10 to-slate-950/50'
               : 'bg-slate-950/30'
           }`}
         >
@@ -602,7 +602,7 @@ export function PodiumPhase({
             {isRevealed(1) && !otherSubmissionsRevealed && showFieldReveal && (
               <button
                 type="button"
-                className="text-xs font-bold tracking-[0.3em] uppercase text-white border-2 border-purple-400/80 rounded-full px-6 py-2 bg-linear-to-r from-purple-600/90 to-pink-600/90 shadow-[0_0_20px_rgba(168,85,247,0.6)] hover:from-purple-500 hover:to-pink-500 hover:shadow-[0_0_30px_rgba(168,85,247,0.8)] transition-all duration-300 transform hover:scale-105 active:scale-95"
+                className="text-xs font-bold tracking-[0.3em] uppercase text-white border-2 border-primary/80 rounded-full px-6 py-2 bg-linear-to-r from-primary/90 to-primary/70 shadow-[0_0_20px_oklch(var(--primary)/0.6)] hover:from-primary/80 hover:to-primary/60 hover:shadow-[0_0_30px_oklch(var(--primary)/0.8)] transition-all duration-300 transform hover:scale-105 active:scale-95"
                 onClick={handleRevealField}
               >
                 Tap to Reveal
@@ -619,14 +619,14 @@ export function PodiumPhase({
             {remaining.map((submission, index) => (
               <div
                 key={submission._id}
-                className="bg-linear-to-r from-slate-900/90 to-slate-800/90 backdrop-blur-sm border border-slate-700/50 rounded-xl p-4 flex items-center gap-4 hover:border-purple-500/60 hover:shadow-[0_0_20px_rgba(168,85,247,0.2)] transition-all duration-300"
+                className="bg-linear-to-r from-slate-900/90 to-slate-800/90 backdrop-blur-sm border border-slate-700/50 rounded-xl p-4 flex items-center gap-4 hover:border-primary/60 hover:shadow-[0_0_20px_oklch(var(--primary)/0.2)] transition-all duration-300"
                 style={{
                   animationDelay: `${index * 50}ms`,
                 }}
               >
                 {/* Rank */}
                 <div className="shrink-0">
-                  <div className="w-14 h-14 rounded-full bg-linear-to-br from-purple-600 via-pink-600 to-purple-700 flex items-center justify-center shadow-lg ring-2 ring-purple-500/30">
+                  <div className="w-14 h-14 rounded-full bg-linear-to-br from-primary/80 via-primary/70 to-primary/90 flex items-center justify-center shadow-lg ring-2 ring-primary/30">
                     <span className="text-lg font-extrabold text-white">#{submission.rank}</span>
                   </div>
                 </div>
@@ -650,7 +650,7 @@ export function PodiumPhase({
                     rel="noopener noreferrer"
                     className="block"
                   >
-                    <h3 className="text-lg font-bold text-white truncate hover:text-purple-300 transition-colors cursor-pointer">
+                    <h3 className="text-lg font-bold text-white truncate hover:text-primary/90 transition-colors cursor-pointer">
                       {submission.title}
                     </h3>
                   </a>
@@ -727,13 +727,13 @@ export function PodiumPhase({
         }
         @keyframes focus-glow {
           0% {
-            box-shadow: 0 0 10px rgba(168, 85, 247, 0.15);
+            box-shadow: 0 0 10px oklch(0.6606 0.1124 197.05 / 0.15);
           }
           50% {
-            box-shadow: 0 0 35px rgba(168, 85, 247, 0.5);
+            box-shadow: 0 0 35px oklch(0.6606 0.1124 197.05 / 0.5);
           }
           100% {
-            box-shadow: 0 0 10px rgba(168, 85, 247, 0.15);
+            box-shadow: 0 0 10px oklch(0.6606 0.1124 197.05 / 0.15);
           }
         }
         .animate-focus-glow {
@@ -869,9 +869,9 @@ function PodiumSlot({
   const screenshot = submission.screenshots?.[0]?.url;
   const interactionEnabled = canReveal && isPresenter;
   const borderState = revealed
-    ? 'border-purple-500 shadow-[0_0_40px_rgba(168,85,247,0.6),0_8px_32px_rgba(0,0,0,0.4)] ring-4 ring-purple-500/30'
+    ? 'border-primary shadow-[0_0_40px_oklch(var(--primary)/0.6),0_8px_32px_rgba(0,0,0,0.4)] ring-4 ring-primary/30'
     : isNext
-      ? 'border-purple-400 shadow-[0_0_35px_rgba(147,51,234,0.45)] animate-focus-glow ring-2 ring-purple-400/20'
+      ? 'border-primary/60 shadow-[0_0_35px_oklch(var(--primary)/0.45)] animate-focus-glow ring-2 ring-primary/20'
       : 'border-slate-700/50 shadow-lg shadow-black/20';
   const cardBase =
     'w-full flex flex-col bg-linear-to-b from-slate-900/95 to-slate-950/95 backdrop-blur-md border-2 rounded-xl overflow-hidden transition-all duration-700 ease-out';
@@ -889,7 +889,7 @@ function PodiumSlot({
       <CardComponent
         className={`${cardBase} ${borderState} ${
           interactionEnabled
-            ? 'cursor-pointer hover:border-purple-400'
+            ? 'cursor-pointer hover:border-primary/60'
             : 'cursor-default opacity-95'
         }`}
         {...cardProps}
@@ -912,7 +912,7 @@ function PodiumSlot({
             <div
               className={`w-full h-full flex items-center justify-center transition-all duration-500 ${
                 revealed
-                  ? 'bg-linear-to-br from-purple-900/20 to-slate-900/80'
+                  ? 'bg-linear-to-br from-primary/20 to-slate-900/80'
                   : 'backdrop-blur-xl bg-slate-800/90'
               }`}
             >
@@ -920,17 +920,17 @@ function PodiumSlot({
             </div>
           )}
           {isNext && !revealed && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-linear-to-b from-purple-900/30 via-purple-900/10 to-transparent pointer-events-none">
-              <span className="text-xs font-bold text-purple-100 tracking-[0.4em] uppercase drop-shadow-lg">
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-linear-to-b from-primary/30 via-primary/10 to-transparent pointer-events-none">
+              <span className="text-xs font-bold text-primary/90 tracking-[0.4em] uppercase drop-shadow-lg">
                 NEXT
               </span>
               <span className="text-2xl font-extrabold text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.8)]">
                 {getOrdinalLabel(rank)} Place
               </span>
               <div
-                className={`text-xs font-bold tracking-[0.3em] uppercase text-white border-2 border-purple-400/80 rounded-full px-6 py-2.5 bg-linear-to-r from-purple-600/90 to-pink-600/90 shadow-[0_0_20px_rgba(168,85,247,0.6),inset_0_1px_0_rgba(255,255,255,0.2)] transition-all duration-300 ${
+                className={`text-xs font-bold tracking-[0.3em] uppercase text-white border-2 border-primary/80 rounded-full px-6 py-2.5 bg-linear-to-r from-primary/90 to-primary/70 shadow-[0_0_20px_oklch(var(--primary)/0.6),inset_0_1px_0_rgba(255,255,255,0.2)] transition-all duration-300 ${
                   interactionEnabled
-                    ? 'hover:from-purple-500 hover:to-pink-500 hover:shadow-[0_0_30px_rgba(168,85,247,0.8)] transform hover:scale-105 active:scale-95'
+                    ? 'hover:from-primary/80 hover:to-primary/60 hover:shadow-[0_0_30px_oklch(var(--primary)/0.8)] transform hover:scale-105 active:scale-95'
                     : 'opacity-50'
                 }`}
               >
@@ -951,7 +951,7 @@ function PodiumSlot({
                 onClick={(e) => e.stopPropagation()}
                 className="block"
               >
-                <h3 className="text-xl font-extrabold text-white leading-[1.3] drop-shadow-sm hover:text-purple-300 transition-colors cursor-pointer">
+                <h3 className="text-xl font-extrabold text-white leading-[1.3] drop-shadow-sm hover:text-primary/90 transition-colors cursor-pointer">
                   {submission.title}
                 </h3>
               </a>

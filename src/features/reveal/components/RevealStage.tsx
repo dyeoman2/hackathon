@@ -157,7 +157,7 @@ export function RevealStage({
     content = (
       <div className="flex min-h-screen items-center justify-center">
         <div className="space-y-4 text-center">
-          <div className="w-8 h-8 border-4 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto" />
+          <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
           <p className="text-slate-300">Loading reveal...</p>
         </div>
       </div>
@@ -256,8 +256,16 @@ export function RevealStage({
   return (
     <div
       ref={stageRef}
-      className="relative min-h-screen bg-linear-to-br from-slate-950 via-purple-950 to-slate-950"
+      className="relative min-h-screen bg-linear-to-br from-slate-950 via-primary/60 via-slate-950 to-primary/30"
     >
+      {/* Radial gradient overlay for more vibrancy */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          background:
+            'radial-gradient(circle at 0% 0%, oklch(var(--primary) / 0.4) 0%, transparent 60%)',
+        }}
+      />
       {content}
       {/* Only render buttons when not in idle phase */}
       {!isIdlePhase && (
@@ -323,7 +331,7 @@ function BackButton({ hackathonId }: BackButtonProps) {
         variant="outline"
         size="sm"
         onClick={handleBack}
-        className="border-purple-400/70 bg-slate-800/50 text-purple-100 hover:bg-purple-500/20 hover:border-purple-400 hover:text-white font-medium"
+        className="border-primary/70 bg-slate-800/50 text-primary/90 hover:bg-primary/20 hover:border-primary/60 hover:text-white font-medium"
       >
         <ArrowLeft className="h-3 w-3 mr-1.5" />
         Back
@@ -343,7 +351,7 @@ function FullscreenToggle({ isFullscreen, onToggle }: FullscreenToggleProps) {
       variant="outline"
       size="sm"
       onClick={onToggle}
-      className="border-purple-400/70 bg-slate-800/50 text-purple-100 hover:bg-purple-500/20 hover:border-purple-400 hover:text-white font-medium"
+      className="border-primary/70 bg-slate-800/50 text-primary/90 hover:bg-primary/20 hover:border-primary/60 hover:text-white font-medium"
     >
       {isFullscreen ? (
         <>

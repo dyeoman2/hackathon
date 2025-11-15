@@ -136,21 +136,21 @@ export function PresenterControls({
       <button
         type="button"
         onClick={handleExpand}
-        className="fixed bottom-6 right-6 w-14 h-14 bg-slate-900/95 backdrop-blur-sm border-2 border-purple-500/50 rounded-full z-50 shadow-2xl shadow-purple-500/20 flex items-center justify-center hover:bg-slate-800/95 transition-all duration-200 group"
+        className="fixed bottom-6 right-6 w-14 h-14 bg-slate-900/95 backdrop-blur-sm border-2 border-primary/50 rounded-full z-50 shadow-2xl shadow-primary/20 flex items-center justify-center hover:bg-slate-800/95 transition-all duration-200 group"
         aria-label="Show presenter controls"
       >
-        <div className="w-2 h-2 bg-purple-500 rounded-full animate-pulse" />
-        <div className="absolute inset-0 rounded-full bg-purple-500/10 opacity-0 group-hover:opacity-100 transition-opacity" />
+        <div className="w-2 h-2 bg-primary rounded-full animate-pulse" />
+        <div className="absolute inset-0 rounded-full bg-primary/10 opacity-0 group-hover:opacity-100 transition-opacity" />
       </button>
     );
   }
 
   return (
-    <div className="fixed bottom-6 right-6 bg-slate-900/95 backdrop-blur-sm border-2 border-purple-500/50 rounded-lg p-4 space-y-3 z-50 shadow-2xl shadow-purple-500/20 min-w-[200px]">
+    <div className="fixed bottom-6 right-6 bg-slate-900/95 backdrop-blur-sm border-2 border-primary/50 rounded-lg p-4 space-y-3 z-50 shadow-2xl shadow-primary/20 min-w-[200px]">
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
-          <div className="w-2 h-2 bg-purple-500 rounded-full animate-pulse" />
-          <p className="text-xs font-semibold text-purple-300 uppercase tracking-wide">
+          <div className="w-2 h-2 bg-primary rounded-full animate-pulse" />
+          <p className="text-xs font-semibold text-primary/90 uppercase tracking-wide">
             Presenter Controls
           </p>
         </div>
@@ -174,7 +174,7 @@ export function PresenterControls({
         <Button
           onClick={handleBackToHackathon}
           variant="outline"
-          className="flex-1 border-purple-400/70 bg-slate-800/50 text-purple-100 hover:bg-purple-500/20 hover:border-purple-400 hover:text-white font-medium"
+          className="flex-1 border-primary/70 bg-slate-800/50 text-primary/90 hover:bg-primary/20 hover:border-primary/60 hover:text-white font-medium"
           size="sm"
         >
           <ArrowLeft className="h-3 w-3 mr-1.5" />
@@ -183,7 +183,7 @@ export function PresenterControls({
         <Button
           onClick={handleToggleFullscreen}
           variant="outline"
-          className="flex-1 border-purple-400/70 bg-slate-800/50 text-purple-100 hover:bg-purple-500/20 hover:border-purple-400 hover:text-white font-medium"
+          className="flex-1 border-primary/70 bg-slate-800/50 text-primary/90 hover:bg-primary/20 hover:border-primary/60 hover:text-white font-medium"
           size="sm"
         >
           {isFullscreen ? (
@@ -208,7 +208,7 @@ export function PresenterControls({
           variant="outline"
           className={`w-full ${
             canGoBack
-              ? 'border-purple-700/60 text-purple-400 hover:bg-purple-700/20 hover:border-purple-600'
+              ? 'border-primary/60 text-primary/80 hover:bg-primary/20 hover:border-primary/70'
               : 'border-slate-600/30 text-slate-500 cursor-not-allowed opacity-50'
           }`}
           size="sm"
@@ -222,7 +222,7 @@ export function PresenterControls({
         <Button
           onClick={handleAdvance}
           disabled={isAdvancing}
-          className="w-full bg-purple-600 hover:bg-purple-700"
+          className="w-full bg-primary hover:bg-primary/90"
           size="sm"
         >
           {isAdvancing ? 'Advancing...' : 'Next'}

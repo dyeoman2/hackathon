@@ -52,14 +52,14 @@ function RevealPageComponent() {
   // Loading state - check for undefined (still loading)
   if (hackathon === undefined || revealState === undefined || submissions === undefined) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-purple-950 to-slate-950" />
+      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-primary/60 via-slate-950 to-primary/30" />
     );
   }
 
   // Access denied
   if (hackathon === null || revealState === null || submissions === null) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-950 via-purple-950 to-slate-950">
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-950 via-primary/60 via-slate-950 to-primary/30">
         <div className="max-w-md space-y-4 text-center">
           <h1 className="text-3xl font-bold text-white">Access Denied</h1>
           <p className="text-slate-300">You don't have permission to view this reveal sequence.</p>
@@ -77,12 +77,12 @@ function RevealPageComponent() {
   // Show nothing if in idle phase and preview mode (while auto-starting) or while starting
   if ((revealState.phase === 'idle' && isPreviewMode) || revealSync.isStarting) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-purple-950 to-slate-950" />
+      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-primary/60 via-slate-950 to-primary/30" />
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-purple-950 to-slate-950">
+    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-primary/60 via-slate-950 to-primary/30">
       <RevealStage
         hackathonId={hackathonId}
         revealState={revealState}

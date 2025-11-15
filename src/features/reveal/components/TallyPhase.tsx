@@ -166,11 +166,11 @@ export function TallyPhase({
         <div className="flex flex-col items-center gap-8 z-20 mb-8">
           <div className="text-center space-y-4 animate-fade-in">
             <h1 className="text-5xl md:text-6xl font-extrabold text-white tracking-tight drop-shadow-[0_4px_12px_rgba(0,0,0,0.5)]">
-              <span className="bg-linear-to-r from-purple-200 via-pink-200 to-purple-200 bg-clip-text text-transparent animate-gradient-shift">
+              <span className="bg-linear-to-r from-primary/80 via-primary/60 to-primary/80 bg-clip-text text-transparent animate-gradient-shift">
                 The Moment of Truth
               </span>
             </h1>
-            <p className="text-xl md:text-2xl text-purple-200 font-medium">
+            <p className="text-xl md:text-2xl text-primary/80 font-medium">
               Ready to see who came out on top?
             </p>
             <p className="text-lg text-slate-300 font-light">
@@ -184,7 +184,7 @@ export function TallyPhase({
                 onClick={onToggleFullscreen}
                 variant="outline"
                 size="lg"
-                className="border-purple-400/70 bg-slate-800/50 text-purple-100 hover:bg-purple-500/20 hover:border-purple-400 hover:text-white font-medium px-8 py-6 text-lg"
+                className="border-primary/70 bg-slate-800/50 text-primary/90 hover:bg-primary/20 hover:border-primary/60 hover:text-white font-medium px-8 py-6 text-lg"
               >
                 <Maximize className="h-5 w-5 mr-2" />
                 Enter Fullscreen
@@ -193,7 +193,7 @@ export function TallyPhase({
             <Button
               onClick={onStartTallying}
               size="lg"
-              className="bg-purple-600 hover:bg-purple-700 text-white px-8 py-6 text-lg font-semibold shadow-lg shadow-purple-500/50 border-2 border-purple-400/50"
+              className="bg-primary hover:bg-primary/90 text-white px-8 py-6 text-lg font-semibold shadow-lg shadow-primary/50 border-2 border-primary/50"
             >
               Tally the Votes
             </Button>
@@ -213,7 +213,7 @@ export function TallyPhase({
           <div className="w-full max-w-md z-10">
             <div className="h-2 bg-slate-800 rounded-full overflow-hidden">
               <div
-                className="h-full bg-linear-to-r from-purple-500 to-pink-500 transition-all duration-300"
+                className="h-full bg-linear-to-r from-primary to-primary/80 transition-all duration-300"
                 style={{ width: `${progress * 100}%` }}
               />
             </div>
@@ -258,7 +258,7 @@ export function TallyPhase({
 
                   {/* Loading spinner for score */}
                   <div className="flex items-center gap-2 shrink-0">
-                    <div className="w-4 h-4 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
+                    <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
                     <span className="text-slate-500 text-sm">Tallying...</span>
                   </div>
                 </div>
