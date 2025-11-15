@@ -111,7 +111,7 @@ export function SubmissionsList({
     [hackathon?.dates?.submissionDeadline],
   );
 
-  // Determine if user can submit
+  // Determine if user can submit (only if they're a member of the hackathon)
   const canSubmit =
     isAuthenticated && userRole && ['owner', 'admin', 'judge', 'contestant'].includes(userRole);
 
@@ -209,25 +209,20 @@ export function SubmissionsList({
               )}
           </div>
         </div>
-        <Button
-          onClick={() => {
-            if (onNewSubmissionModalOpen) {
-              onNewSubmissionModalOpen();
-            }
-          }}
-          className="w-full sm:w-auto"
-          disabled={!canSubmit || hasEnded}
-          title={
-            !isAuthenticated
-              ? 'Please sign in to submit to this hackathon'
-              : hasEnded
-                ? 'Cannot add submissions to hackathons that are no longer accepting submissions'
-                : undefined
-          }
-        >
-          <Plus className="h-4 w-4" />
-          New Submission
-        </Button>
+        {canSubmit && !hasEnded && (
+          <Button
+            onClick={() => {
+              if (onNewSubmissionModalOpen) {
+                onNewSubmissionModalOpen();
+              }
+            }}
+            className="w-full sm:w-auto"
+            title="Create a new submission for this hackathon"
+          >
+            <Plus className="h-4 w-4" />
+            New Submission
+          </Button>
+        )}
       </div>
 
       {submissions.length === 0 ? (
@@ -241,17 +236,11 @@ export function SubmissionsList({
                   ? 'No submissions yet. Be the first to submit!'
                   : 'No submissions yet. Sign in to submit to this hackathon!'}
           </p>
-          {!showOnlyUnrated && externalModalOpen === undefined && canSubmit && (
+          {!showOnlyUnrated && externalModalOpen === undefined && canSubmit && !hasEnded && (
             <Button
               onClick={() => {
                 // Fallback for internal modal state - should not be used in new implementation
               }}
-              disabled={hasEnded}
-              title={
-                hasEnded
-                  ? 'Cannot add submissions to hackathons that are no longer accepting submissions'
-                  : undefined
-              }
             >
               <Plus className="h-4 w-4" />
               Add Submission

@@ -68,13 +68,12 @@ export function MarketingHome() {
           </p>
         </div>
 
-        <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-5">
-          <div className="text-center space-y-4">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-blue-500/10 mx-auto">
+        <div className="grid gap-8 lg:grid-cols-5">
+          <div className="flex gap-4 lg:flex-col lg:text-center lg:items-center lg:space-y-4 lg:gap-0">
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-blue-500/10 lg:mx-auto flex-shrink-0">
               <Settings className="h-8 w-8 text-blue-600" />
             </div>
-            <div className="space-y-2">
-              <div className="text-sm font-semibold text-blue-600">1</div>
+            <div className="space-y-2 lg:text-center">
               <h3 className="text-lg font-semibold text-foreground">Setup & Invite</h3>
               <p className="text-sm text-muted-foreground">
                 Configure your hackathon details and invite judges to get started
@@ -82,12 +81,11 @@ export function MarketingHome() {
             </div>
           </div>
 
-          <div className="text-center space-y-4">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-green-500/10 mx-auto">
+          <div className="flex gap-4 lg:flex-col lg:text-center lg:items-center lg:space-y-4 lg:gap-0">
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-green-500/10 lg:mx-auto flex-shrink-0">
               <Upload className="h-8 w-8 text-green-600" />
             </div>
-            <div className="space-y-2">
-              <div className="text-sm font-semibold text-green-600">2</div>
+            <div className="space-y-2 lg:text-center">
               <h3 className="text-lg font-semibold text-foreground">Collect Submissions</h3>
               <p className="text-sm text-muted-foreground">
                 Participants submit their projects with GitHub links
@@ -95,12 +93,11 @@ export function MarketingHome() {
             </div>
           </div>
 
-          <div className="text-center space-y-4">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-orange-500/10 mx-auto">
+          <div className="flex gap-4 lg:flex-col lg:text-center lg:items-center lg:space-y-4 lg:gap-0">
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-orange-500/10 lg:mx-auto flex-shrink-0">
               <Bot className="h-8 w-8 text-orange-600" />
             </div>
-            <div className="space-y-2">
-              <div className="text-sm font-semibold text-orange-600">3</div>
+            <div className="space-y-2 lg:text-center">
               <h3 className="text-lg font-semibold text-foreground">AI Processes</h3>
               <p className="text-sm text-muted-foreground">
                 Submissions auto-analyzed with summaries, screenshots & repo chat
@@ -108,12 +105,11 @@ export function MarketingHome() {
             </div>
           </div>
 
-          <div className="text-center space-y-4">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-purple-500/10 mx-auto">
+          <div className="flex gap-4 lg:flex-col lg:text-center lg:items-center lg:space-y-4 lg:gap-0">
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-purple-500/10 lg:mx-auto flex-shrink-0">
               <Vote className="h-8 w-8 text-purple-600" />
             </div>
-            <div className="space-y-2">
-              <div className="text-sm font-semibold text-purple-600">4</div>
+            <div className="space-y-2 lg:text-center">
               <h3 className="text-lg font-semibold text-foreground">Voting</h3>
               <p className="text-sm text-muted-foreground">
                 Judges score projects and community voting adds engagement
@@ -121,12 +117,11 @@ export function MarketingHome() {
             </div>
           </div>
 
-          <div className="text-center space-y-4">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-pink-500/10 mx-auto">
+          <div className="flex gap-4 lg:flex-col lg:text-center lg:items-center lg:space-y-4 lg:gap-0">
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-pink-500/10 lg:mx-auto flex-shrink-0">
               <Sparkles className="h-8 w-8 text-pink-600" />
             </div>
-            <div className="space-y-2">
-              <div className="text-sm font-semibold text-pink-600">5</div>
+            <div className="space-y-2 lg:text-center">
               <h3 className="text-lg font-semibold text-foreground">Celebrate</h3>
               <p className="text-sm text-muted-foreground">
                 Live judging, leaderboards, and winner reveals

@@ -4,8 +4,8 @@ import {
   normalizeAdapterFindManyResult,
 } from '../src/lib/server/better-auth/adapter-utils';
 import { assertUserId } from '../src/lib/shared/user-id';
-import { components } from './_generated/api';
-import { internalQuery, mutation, query } from './_generated/server';
+import { api, components } from './_generated/api';
+import { action, internalQuery, mutation, query } from './_generated/server';
 import { authComponent } from './auth';
 import { guarded } from './authz/guardFactory';
 
@@ -56,61 +56,94 @@ export const getUserCount = query({
 });
 
 /**
- * Create or update a user profile with role
- * This stores app-specific user data separate from Better Auth's user table
+ * Create a new user profile with default "user" role
+ * Used during user registration - no special permissions needed
  */
-export const setUserRole = guarded.mutation(
-  'user.bootstrap', // Public capability but with strict bootstrap logic
-  {
+export const createUserProfile = mutation({
+  args: {
     userId: v.string(), // Better Auth user ID
-    role: v.union(v.literal('user'), v.literal('admin')), // Enforced enum
-    allowBootstrap: v.optional(v.boolean()), // Special flag for first user signup
   },
-  async (ctx, args, role) => {
-    // Role validation is now handled by the Convex schema enum
-
-    // Check if this is a bootstrap operation (first user creation)
-    // Allow bootstrap without admin authentication for initial setup
-    if (!args.allowBootstrap) {
-      // For non-bootstrap operations, ensure caller has admin role
-      if (role !== 'admin') {
-        throw new Error('Admin privileges required for role management');
-      }
-    } else {
-      // BOOTSTRAP: Allow only when no other user profiles exist (idempotent for the same user)
-      const existingProfiles = await ctx.db.query('userProfiles').collect();
-      const nonBootstrapProfile = existingProfiles.find(
-        (profile) => profile.userId !== args.userId,
-      );
-
-      if (nonBootstrapProfile) {
-        throw new Error('Bootstrap not allowed - another user profile already exists');
-      }
-    }
-
-    // Check if profile already exists
+  handler: async (ctx, args) => {
+    // Check if profile already exists (idempotent)
     const existingProfile = await ctx.db
       .query('userProfiles')
       .withIndex('by_userId', (q) => q.eq('userId', args.userId))
       .first();
 
+    if (existingProfile) {
+      // Profile already exists, nothing to do
+      return { success: true, existed: true };
+    }
+
     const now = Date.now();
 
-    if (existingProfile) {
-      // Update existing profile
-      await ctx.db.patch(existingProfile._id, {
-        role: args.role,
-        updatedAt: now,
-      });
-    } else {
-      // Create new profile
-      await ctx.db.insert('userProfiles', {
+    // Create new profile with default "user" role
+    await ctx.db.insert('userProfiles', {
+      userId: args.userId,
+      role: 'user',
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    return { success: true, existed: false };
+  },
+});
+
+/**
+ * Ensure at least one admin exists by promoting the first user if needed
+ * This runs after user profile creation during registration
+ */
+export const ensureFirstAdmin = action({
+  args: {
+    userId: v.string(), // The user who just registered
+  },
+  handler: async (ctx, args) => {
+    // Check if any admin users exist
+    const existingAdmins = await ctx.runQuery(api.users.getAdminCount, {});
+
+    if (existingAdmins.count === 0) {
+      // No admins exist, promote this user to admin
+      await ctx.runMutation(api.users.setUserRole, {
         userId: args.userId,
-        role: args.role,
-        createdAt: now,
-        updatedAt: now,
+        role: 'admin',
+        allowBootstrap: true,
       });
+      return { promoted: true };
     }
+
+    return { promoted: false };
+  },
+});
+
+/**
+ * Set user role (admin-only operation)
+ * Used by admins to promote/demote existing users
+ */
+export const setUserRole = guarded.mutation(
+  'user.write', // Admin-only capability
+  {
+    userId: v.string(), // Better Auth user ID
+    role: v.union(v.literal('user'), v.literal('admin')), // Enforced enum
+  },
+  async (ctx, args) => {
+    // This function now requires admin privileges and only updates existing profiles
+
+    // Check if profile exists
+    const existingProfile = await ctx.db
+      .query('userProfiles')
+      .withIndex('by_userId', (q) => q.eq('userId', args.userId))
+      .first();
+
+    if (!existingProfile) {
+      throw new Error('User profile not found');
+    }
+
+    // Update the role
+    const now = Date.now();
+    await ctx.db.patch(existingProfile._id, {
+      role: args.role,
+      updatedAt: now,
+    });
 
     return { success: true };
   },
@@ -208,6 +241,18 @@ export const getUserProfile = internalQuery({
  * and render appropriate UI (login prompt, loading state, etc.) rather than relying
  * on error boundaries.
  */
+export const getAdminCount = query({
+  args: {},
+  handler: async (ctx) => {
+    const adminProfiles = await ctx.db
+      .query('userProfiles')
+      .filter((q) => q.eq(q.field('role'), 'admin'))
+      .collect();
+
+    return { count: adminProfiles.length };
+  },
+});
+
 export const getCurrentUserProfile = query({
   args: {},
   handler: async (ctx) => {

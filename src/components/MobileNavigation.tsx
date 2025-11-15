@@ -1,5 +1,5 @@
 import { Link, useLocation } from '@tanstack/react-router';
-import { LogOut, type LucideIcon, Menu, Shield, Trophy, User } from 'lucide-react';
+import { LogOut, type LucideIcon, Menu, Shield, User } from 'lucide-react';
 import { useState } from 'react';
 import {
   Sheet,
@@ -33,7 +33,7 @@ export function MobileNavigation() {
   const [open, setOpen] = useState(false);
   const location = useLocation();
 
-  const navItems: NavItem[] = [{ to: '/h', label: 'Hackathons', icon: Trophy }];
+  const navItems: NavItem[] = [{ to: '/h', label: 'Hackathons' }];
 
   const handleLinkClick = () => {
     setOpen(false);

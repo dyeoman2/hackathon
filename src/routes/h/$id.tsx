@@ -23,7 +23,10 @@ import { usePerformanceMonitoring } from '~/hooks/use-performance-monitoring';
 
 const hackathonSearchSchema = z.object({
   payment: z.enum(['success', 'cancelled', 'failed']).optional(),
-  newSubmission: z.literal('true').optional(),
+  newSubmission: z
+    .union([z.string(), z.boolean()])
+    .transform((val) => String(val))
+    .optional(),
 });
 
 export const Route = createFileRoute('/h/$id')({
@@ -54,7 +57,9 @@ function HackathonPageComponent() {
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isInviteJudgeModalOpen, setIsInviteJudgeModalOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isLeaveDialogOpen, setIsLeaveDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isLeaving, setIsLeaving] = useState(false);
   const [isNewSubmissionModalOpen, setIsNewSubmissionModalOpen] = useState(
     newSubmission === 'true',
   );
@@ -63,6 +68,8 @@ function HackathonPageComponent() {
 
   const deleteHackathon = useMutation(api.hackathons.deleteHackathon);
   const seedHackathonSubmissions = useAction(api.submissions.seedHackathonSubmissions);
+  const joinHackathon = useMutation(api.hackathons.joinHackathon);
+  const leaveHackathon = useMutation(api.hackathons.leaveHackathon);
   const { isAdmin: isSiteAdmin } = useAuth();
 
   // Check if we're on a nested route (like /judges) - must be called before early returns
@@ -89,6 +96,24 @@ function HackathonPageComponent() {
       (authenticatedHackathon?.role === 'owner' || authenticatedHackathon?.role === 'admin'),
     [isAuthenticated, authenticatedHackathon?.role],
   );
+
+  // Check if hackathon is open (submission deadline hasn't passed)
+  const isHackathonOpen = useMemo(() => {
+    if (!hackathon?.dates?.submissionDeadline) {
+      return true; // No deadline means always open
+    }
+    return new Date(hackathon.dates.submissionDeadline).getTime() > Date.now();
+  }, [hackathon?.dates?.submissionDeadline]);
+
+  // Check if authenticated user is already a member
+  const isUserMember = useMemo(() => {
+    return isAuthenticated && authenticatedHackathon !== null;
+  }, [isAuthenticated, authenticatedHackathon]);
+
+  // Show join button if authenticated, not a member, and hackathon is open
+  const canJoin = useMemo(() => {
+    return isAuthenticated && !isUserMember && isHackathonOpen;
+  }, [isAuthenticated, isUserMember, isHackathonOpen]);
 
   const handleSeedSubmissions = async () => {
     if (!hackathon) return;
@@ -160,18 +185,59 @@ function HackathonPageComponent() {
     }
   }, [payment, router, id, toast]);
 
-  // Handle newSubmission query param - clear it after opening modal
+  // Handle newSubmission query param - join hackathon and open modal
   useEffect(() => {
-    if (newSubmission && !newSubmissionHandledRef.current) {
+    // Only run if we have the necessary state loaded
+    if (hackathon === undefined) return; // Still loading hackathon
+    if (newSubmission === 'true' && !newSubmissionHandledRef.current) {
       newSubmissionHandledRef.current = true;
-      // Clear the query param after the modal opens
-      void router.navigate({
-        to: '/h/$id',
-        params: { id },
-        replace: true,
-      });
+
+      const handleNewSubmissionFlow = async () => {
+        try {
+          // If user is authenticated but not a member, join them first
+          if (isAuthenticated && !isUserMember && canJoin) {
+            await joinHackathon({
+              hackathonId: id as Id<'hackathons'>,
+            });
+            toast.showToast('Successfully joined the hackathon!', 'success');
+            // Refresh the page to show the updated membership status
+            await router.invalidate();
+
+            // Wait a bit for the membership to propagate to Convex queries
+            await new Promise((resolve) => setTimeout(resolve, 500));
+          }
+
+          // Open the new submission modal
+          setIsNewSubmissionModalOpen(true);
+        } catch (error) {
+          console.error('Failed to join hackathon:', error);
+          toast.showToast(
+            error instanceof Error ? error.message : 'Failed to join hackathon',
+            'error',
+          );
+        } finally {
+          // Clear the query param after processing
+          void router.navigate({
+            to: '/h/$id',
+            params: { id },
+            replace: true,
+          });
+        }
+      };
+
+      void handleNewSubmissionFlow();
     }
-  }, [newSubmission, router, id]);
+  }, [
+    newSubmission,
+    hackathon,
+    router,
+    id,
+    isAuthenticated,
+    isUserMember,
+    canJoin,
+    joinHackathon,
+    toast,
+  ]);
 
   const handleDelete = async () => {
     setIsDeleting(true);
@@ -188,6 +254,50 @@ function HackathonPageComponent() {
     } finally {
       setIsDeleting(false);
       setIsDeleteDialogOpen(false);
+    }
+  };
+
+  const handleJoinHackathon = async () => {
+    try {
+      await joinHackathon({
+        hackathonId: id as Id<'hackathons'>,
+      });
+      toast.showToast('Successfully joined the hackathon!', 'success');
+      // Refresh the page to show the updated membership status
+      await router.invalidate();
+
+      // Wait for the membership to propagate to Convex queries
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      // Open the new submission modal
+      setIsNewSubmissionModalOpen(true);
+    } catch (error) {
+      console.error('Failed to join hackathon:', error);
+      toast.showToast(error instanceof Error ? error.message : 'Failed to join hackathon', 'error');
+    }
+  };
+
+  const handleLeaveHackathon = async () => {
+    setIsLeaving(true);
+    try {
+      const result = await leaveHackathon({
+        hackathonId: id as Id<'hackathons'>,
+      });
+      toast.showToast(
+        `Successfully left the hackathon. ${result.submissionsDeleted} submission(s) removed.`,
+        'success',
+      );
+      // Navigate to the hackathons list page
+      void router.navigate({ to: '/h' });
+    } catch (error) {
+      console.error('Failed to leave hackathon:', error);
+      toast.showToast(
+        error instanceof Error ? error.message : 'Failed to leave hackathon',
+        'error',
+      );
+    } finally {
+      setIsLeaving(false);
+      setIsLeaveDialogOpen(false);
     }
   };
 
@@ -217,11 +327,12 @@ function HackathonPageComponent() {
             actions={
               <div className="flex items-center gap-2">
                 {canEdit && <ShareButton hackathonId={id} />}
-                {canEdit && (
+                {isUserMember && (
                   <HackathonActionsMenu
-                    canEdit={true}
+                    canEdit={canEdit}
                     canManageJudges={canManageJudges}
                     canDelete={canDelete}
+                    canLeave={true}
                     isSiteAdmin={isSiteAdmin}
                     onEdit={() => setIsSettingsModalOpen(true)}
                     onManageJudges={() => {
@@ -231,35 +342,24 @@ function HackathonPageComponent() {
                       });
                     }}
                     onInviteJudge={() => setIsInviteJudgeModalOpen(true)}
+                    onLeave={() => setIsLeaveDialogOpen(true)}
                     onDelete={() => setIsDeleteDialogOpen(true)}
                     onSeedSubmissions={handleSeedSubmissions}
                   />
                 )}
                 {!isAuthenticated && (
-                  <div className="flex items-center gap-2">
-                    <Button
-                      onClick={() =>
-                        router.navigate({
-                          to: '/register',
-                          search: { redirect: `/h/${id}?newSubmission=true` },
-                        })
-                      }
-                    >
-                      Join & Submit
-                    </Button>
-                    <Button
-                      variant="outline"
-                      onClick={() =>
-                        router.navigate({
-                          to: '/register',
-                          search: { redirect: '/h' },
-                        })
-                      }
-                    >
-                      Create Hackathon
-                    </Button>
-                  </div>
+                  <Button
+                    onClick={() =>
+                      router.navigate({
+                        to: '/register',
+                        search: { redirect: `/h/${id}?newSubmission=true` },
+                      })
+                    }
+                  >
+                    Join Hackathon
+                  </Button>
                 )}
+                {canJoin && <Button onClick={handleJoinHackathon}>Join Hackathon</Button>}
               </div>
             }
           />
@@ -306,6 +406,17 @@ function HackathonPageComponent() {
         deleteText="Delete Hackathon"
         isDeleting={isDeleting}
         onConfirm={handleDelete}
+        variant="danger"
+      />
+
+      <DeleteConfirmationDialog
+        open={isLeaveDialogOpen}
+        onClose={() => setIsLeaveDialogOpen(false)}
+        title="Leave Hackathon"
+        description={`Are you sure you want to leave "${hackathon?.title}"? This will permanently remove all your submissions and cannot be undone.`}
+        deleteText="Leave Hackathon"
+        isDeleting={isLeaving}
+        onConfirm={handleLeaveHackathon}
         variant="danger"
       />
     </div>

@@ -366,10 +366,45 @@ export const createSubmission = action({
     siteUrl: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const { userId, role, hackathonOwnerUserId, freeSubmissionsRemaining } = await ctx.runQuery(
-      submissionsInternalApi.submissions.getSubmissionCreationContext,
-      { hackathonId: args.hackathonId },
-    );
+    // Get current user
+    const authUser = await authComponent.getAuthUser(ctx);
+    if (!authUser) {
+      throw new Error('Authentication required');
+    }
+    const userId = assertUserId(authUser, 'User ID not found');
+
+    // Check membership using internal query
+    const membership = await ctx.runQuery(internal.hackathons.getMembershipInternal, {
+      hackathonId: args.hackathonId,
+      userId,
+    });
+
+    if (!membership || membership.status !== 'active' || !['owner', 'admin', 'judge', 'contestant'].includes(membership.role)) {
+      throw new Error('Access denied');
+    }
+
+    const role = membership.role;
+
+    // Get hackathon using internal query
+    const hackathon = await ctx.runQuery(internal.hackathons.getHackathonInternal, {
+      hackathonId: args.hackathonId,
+    });
+
+    if (!hackathon) {
+      throw new Error('Hackathon not found');
+    }
+
+    if (hackathon.dates?.submissionDeadline && Date.now() > hackathon.dates.submissionDeadline) {
+      throw new Error('Cannot create submissions for hackathons that have ended');
+    }
+
+    // Get submission creation context using internal query
+    const context = await ctx.runQuery(submissionsInternalApi.submissions.getSubmissionCreationContext, {
+      hackathonId: args.hackathonId,
+    });
+
+    const hackathonOwnerUserId = hackathon.ownerUserId;
+    const freeSubmissionsRemaining = context.freeSubmissionsRemaining;
 
     // Allow contestants to create submissions
     // Note: Hackathon deadline check is already done in getSubmissionCreationContext for all roles
@@ -516,16 +551,33 @@ export const checkOwnerCredits = action({
     hackathonId: v.id('hackathons'),
   },
   handler: async (ctx, args) => {
-    // Verify user has access to this hackathon and get owner info
-    const { role, hackathonOwnerUserId } = await ctx.runQuery(
-      submissionsInternalApi.submissions.getSubmissionCreationContext,
-      { hackathonId: args.hackathonId },
-    );
-
-    // Only judges and contestants need to check owner credits
-    if (role !== 'judge' && role !== 'contestant') {
-      throw new Error('Only judges and contestants can check owner credits');
+    // Get current user
+    const authUser = await authComponent.getAuthUser(ctx);
+    if (!authUser) {
+      throw new Error('Authentication required');
     }
+    const userId = assertUserId(authUser, 'User ID not found');
+
+    // Check if user has access to this hackathon
+    const membership = await ctx.runQuery(internal.hackathons.getMembershipInternal, {
+      hackathonId: args.hackathonId,
+      userId,
+    });
+
+    if (!membership || membership.status !== 'active' || !['judge', 'contestant'].includes(membership.role)) {
+      throw new Error('Access denied');
+    }
+
+    // Get hackathon to get owner info
+    const hackathon = await ctx.runQuery(internal.hackathons.getHackathonInternal, {
+      hackathonId: args.hackathonId,
+    });
+
+    if (!hackathon) {
+      throw new Error('Hackathon not found');
+    }
+
+    const hackathonOwnerUserId = hackathon.ownerUserId;
 
     if (!isAutumnConfigured()) {
       return {
@@ -588,6 +640,13 @@ export const retrySubmissionProcessing = action({
     submissionId: v.id('submissions'),
   },
   handler: async (ctx, args) => {
+    // Get current user
+    const authUser = await authComponent.getAuthUser(ctx);
+    if (!authUser) {
+      throw new Error('Authentication required');
+    }
+    const userId = assertUserId(authUser, 'User ID not found');
+
     // Get submission and verify access through the internal query
     const submission = await ctx.runQuery(internal.submissions.getSubmissionInternal, {
       submissionId: args.submissionId,
@@ -597,13 +656,17 @@ export const retrySubmissionProcessing = action({
     }
 
     // Check membership - any active member can retry processing
-    const { role } = await ctx.runQuery(
-      submissionsInternalApi.submissions.getSubmissionCreationContext,
-      { hackathonId: submission.hackathonId },
-    );
+    const membership = await ctx.runQuery(internal.hackathons.getMembershipInternal, {
+      hackathonId: submission.hackathonId,
+      userId,
+    });
+
+    if (!membership || membership.status !== 'active') {
+      throw new Error('Access denied');
+    }
 
     // Only owners, admins, and judges can retry processing
-    if (!['owner', 'admin', 'judge'].includes(role)) {
+    if (!['owner', 'admin', 'judge'].includes(membership.role)) {
       throw new Error('Insufficient permissions to retry processing');
     }
 
@@ -655,15 +718,29 @@ export const refreshSubmissionIndexingStatus = action({
     submissionId: v.id('submissions'),
   },
   handler: async (ctx, args) => {
-    const submission = await ctx.runQuery(
-      submissionsInternalApi.submissions.getSubmissionWithAccessInternal,
-      {
-        submissionId: args.submissionId,
-      },
-    );
+    const authUser = await authComponent.getAuthUser(ctx);
+    if (!authUser) {
+      throw new Error('Authentication required');
+    }
 
+    const userId = assertUserId(authUser, 'User ID not found');
+
+    // Get submission using internal query
+    const submission = await ctx.runQuery(submissionsInternalApi.submissions.getSubmissionInternal, {
+      submissionId: args.submissionId,
+    });
     if (!submission) {
-      throw new Error('Submission not found or access denied');
+      throw new Error('Submission not found');
+    }
+
+    // Check membership using internal query
+    const membership = await ctx.runQuery(internal.hackathons.getMembershipInternal, {
+      hackathonId: submission.hackathonId,
+      userId,
+    });
+
+    if (!membership || membership.status !== 'active') {
+      throw new Error('Access denied');
     }
 
     const source = submission.source;
@@ -694,14 +771,49 @@ export const refreshSubmissionIndexingStatus = action({
       uploadedAt: source?.uploadedAt ?? null,
     });
     try {
-      await ctx.runAction(
-        submissionsActionsInternalApi.submissionsActions.aiSummary.checkCloudflareIndexing,
+      // Simplified manual refresh - check Cloudflare AI Search status once
+      // Use the submission already retrieved above
+      if (!submission?.source?.r2Key) {
+        throw new Error('Submission repository files not uploaded yet');
+      }
+
+      // Get AI Search configuration
+      const aiSearchInstanceId = process.env.CLOUDFLARE_AI_SEARCH_INSTANCE_ID;
+      const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
+      const apiToken = process.env.CLOUDFLARE_API_TOKEN;
+
+      if (!aiSearchInstanceId || !accountId || !apiToken) {
+        throw new Error('Cloudflare AI Search not configured');
+      }
+
+      // Check if files are indexed in Cloudflare AI Search
+      const response = await fetch(
+        `https://api.cloudflare.com/client/v4/accounts/${accountId}/vectorize/indexes/${aiSearchInstanceId}/query`,
         {
-          submissionId: args.submissionId,
-          attempt: 0,
-          forceRegenerate: false,
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${apiToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            query: 'test query to check if index is ready',
+            topK: 1,
+            returnValues: false,
+            returnMetadata: false,
+          }),
         },
       );
+
+      const isIndexed = response.ok;
+
+      if (isIndexed && submission.source?.processingState !== 'complete') {
+        // Mark as complete and record sync completion time
+        await ctx.runMutation(internal.submissions.updateSubmissionSourceInternal, {
+          submissionId: args.submissionId,
+          processingState: 'complete',
+          aiSearchSyncCompletedAt: Date.now(),
+        });
+      }
     } catch (error) {
       console.warn(
         'Failed to refresh submission indexing status:',

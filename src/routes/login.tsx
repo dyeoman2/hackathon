@@ -65,12 +65,12 @@ function resolveRedirectTarget(value?: string | null): string {
 
   // Allow invite routes
   if (path.startsWith('/invite/')) {
-    return path;
+    return value; // Return full URL for invites
   }
 
   // Check other allowed routes
   const match = REDIRECT_TARGETS.find((route) => route === path || path.startsWith(`${route}/`));
-  return match ?? '/h';
+  return match ? value : '/h'; // Return full URL if allowed, otherwise default to /h
 }
 
 function LoginPage() {
@@ -128,6 +128,7 @@ function LoginPage() {
           {
             onSuccess: () => undefined,
             onError: () => undefined,
+            redirectTo: false, // Prevent Better Auth from redirecting
           },
         );
 
@@ -143,9 +144,9 @@ function LoginPage() {
         }
 
         if (data) {
-          hasHandledAuthRedirectRef.current = true;
           // Handle invite redirects specially - accept invite and redirect to hackathon
           if (redirectTarget.startsWith('/invite/')) {
+            hasHandledAuthRedirectRef.current = true;
             try {
               // Extract token from invite URL
               const token = redirectTarget.replace('/invite/', '');
@@ -229,7 +230,12 @@ function LoginPage() {
     }
 
     hasHandledAuthRedirectRef.current = true;
-    void navigate({ to: redirectTarget, replace: true });
+
+    // Redirect directly to the target
+    void navigate({
+      to: redirectTarget,
+      replace: true
+    });
   }, [isAuthenticated, isPending, navigate, redirectTarget]);
 
   if (isPending) {
@@ -367,11 +373,12 @@ function LoginPage() {
             <div>
               <Link
                 to="/register"
-                search={
-                  currentEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(currentEmail)
+                search={{
+                  ...(currentEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(currentEmail)
                     ? { email: currentEmail }
-                    : {}
-                }
+                    : {}),
+                  ...(redirectParam ? { redirect: redirectParam } : {}),
+                }}
                 className="font-medium  hover:text-muted-foreground"
               >
                 Don't have an account? Sign up

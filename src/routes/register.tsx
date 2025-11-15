@@ -160,7 +160,10 @@ function RegisterPage() {
             setSuccessMessage(`${result.message} Please sign in to continue.`);
             // Navigate to login after showing message
             setTimeout(() => {
-              navigate({ to: '/login' });
+              navigate({
+                to: '/login',
+                search: redirectParam ? { redirect: redirectParam } : {},
+              });
             }, 2000);
             return;
           }
@@ -249,7 +252,10 @@ function RegisterPage() {
         } catch (_signInError) {
           // Navigate to login after showing message
           setTimeout(() => {
-            navigate({ to: '/login' });
+            navigate({
+              to: '/login',
+              search: redirectParam ? { redirect: redirectParam } : {},
+            });
           }, 2000);
         }
       } catch (error: unknown) {
@@ -476,11 +482,12 @@ function RegisterPage() {
             <div className="text-center">
               <Link
                 to="/login"
-                search={
-                  currentEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(currentEmail)
+                search={{
+                  ...(currentEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(currentEmail)
                     ? { email: currentEmail }
-                    : {}
-                }
+                    : {}),
+                  ...(redirectParam ? { redirect: redirectParam } : {}),
+                }}
                 className="font-medium hover:text-muted-foreground"
               >
                 Already have an account? Sign in

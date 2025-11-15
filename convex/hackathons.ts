@@ -289,6 +289,62 @@ export const createContestantMembership = mutation({
 });
 
 /**
+ * Join a hackathon as a contestant (for authenticated users)
+ * Checks if the hackathon is still open before allowing join
+ */
+export const joinHackathon = mutation({
+  args: {
+    hackathonId: v.id('hackathons'),
+  },
+  handler: async (ctx, args) => {
+    // Get current user
+    const authUser = await authComponent.getAuthUser(ctx);
+    if (!authUser) {
+      throw new Error('Authentication required');
+    }
+
+    const userId = assertUserId(authUser, 'User ID not found');
+
+    // Verify the hackathon exists
+    const hackathon = await ctx.db.get(args.hackathonId);
+    if (!hackathon) {
+      throw new Error('Hackathon not found');
+    }
+
+    // Check if hackathon is still open (submission deadline hasn't passed)
+    if (hackathon.dates?.submissionDeadline) {
+      const now = Date.now();
+      if (hackathon.dates.submissionDeadline <= now) {
+        throw new Error('This hackathon is closed for new participants');
+      }
+    }
+
+    // Check if membership already exists
+    const existingMembership = await ctx.db
+      .query('memberships')
+      .withIndex('by_hackathonId', (q) => q.eq('hackathonId', args.hackathonId))
+      .filter((q) => q.eq(q.field('userId'), userId))
+      .first();
+
+    if (existingMembership) {
+      // Already a member, just return
+      return { success: true };
+    }
+
+    // Create contestant membership
+    await ctx.db.insert('memberships', {
+      hackathonId: args.hackathonId,
+      userId,
+      role: 'contestant',
+      status: 'active',
+      createdAt: Date.now(),
+    });
+
+    return { success: true };
+  },
+});
+
+/**
  * Get all memberships for a hackathon (owner/admin only)
  * Includes user emails for active memberships
  */
@@ -1146,6 +1202,70 @@ export const reopenVoting = mutation({
     });
 
     return { success: true };
+  },
+});
+
+/**
+ * Leave hackathon (any active member)
+ * Removes all user submissions and membership from the hackathon
+ */
+export const leaveHackathon = mutation({
+  args: {
+    hackathonId: v.id('hackathons'),
+  },
+  handler: async (ctx, args) => {
+    // Get current user and verify membership
+    const { userId, membership } = await requireHackathonRole(ctx, args.hackathonId, [
+      'owner',
+      'admin',
+      'judge',
+      'contestant',
+    ]);
+
+    // Cannot leave if you're the only owner
+    if (membership.role === 'owner') {
+      // Check if there are other owners
+      const otherOwners = await ctx.db
+        .query('memberships')
+        .withIndex('by_hackathonId', (q) => q.eq('hackathonId', args.hackathonId))
+        .filter((q) => q.eq(q.field('role'), 'owner'))
+        .filter((q) => q.neq(q.field('userId'), userId))
+        .collect();
+
+      if (otherOwners.length === 0) {
+        throw new Error('Cannot leave hackathon as the only owner. Transfer ownership first or delete the hackathon.');
+      }
+    }
+
+    // Find all submissions by this user in this hackathon
+    const userSubmissions = await ctx.db
+      .query('submissions')
+      .withIndex('by_hackathonId', (q) => q.eq('hackathonId', args.hackathonId))
+      .filter((q) => q.eq(q.field('userId'), userId))
+      .collect();
+
+    // Delete all user submissions (this will also clean up R2 files via scheduler)
+    for (const submission of userSubmissions) {
+      // Delete R2 files if they exist (fire and forget - don't block deletion if R2 deletion fails)
+      const r2PathPrefix = submission.source?.r2Key;
+      if (r2PathPrefix) {
+        // Schedule R2 deletion to run immediately after mutation completes
+        await ctx.scheduler.runAfter(
+          0,
+          internal.submissionsActions.r2Cleanup.deleteSubmissionR2FilesAction,
+          {
+            r2PathPrefix,
+          },
+        );
+      }
+
+      await ctx.db.delete(submission._id);
+    }
+
+    // Delete the membership
+    await ctx.db.delete(membership._id);
+
+    return { success: true, submissionsDeleted: userSubmissions.length };
   },
 });
 

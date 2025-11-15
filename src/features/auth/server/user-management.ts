@@ -5,7 +5,6 @@ import { createServerFn } from '@tanstack/react-start';
 import { getCookie, getRequest } from '@tanstack/react-start/server';
 import { z } from 'zod';
 import { handleServerError } from '~/lib/server/error-utils.server';
-import { USER_ROLES } from '../types';
 
 // Zod schemas for user management
 const signUpWithFirstAdminSchema = z.object({
@@ -136,24 +135,24 @@ export const signUpWithFirstAdminServerFn = createServerFn({ method: 'POST' })
       // Better Auth manages user auth data in betterAuth.user table
       // We store app-specific data (like role) in app.userProfiles table
       if (signUpResult?.user?.id) {
-        const roleToSet = isFirstUser ? USER_ROLES.ADMIN : USER_ROLES.USER;
-
         // Small delay to ensure Better Auth user is committed to Convex database
         await new Promise((resolve) => setTimeout(resolve, 100));
 
         try {
-          // Store role in userProfiles table (app-specific data)
-          // Use allowBootstrap flag for first admin user creation
-          await fetchMutation(api.users.setUserRole, {
+          // Step 1: Create user profile with default "user" role
+          await fetchMutation(api.users.createUserProfile, {
             userId: signUpResult.user.id,
-            role: roleToSet,
-            allowBootstrap: isFirstUser, // Allow bootstrap for first admin
           });
-        } catch (roleError) {
-          // Log but don't fail signup if role update fails
-          // Role can be set manually later if needed
-          console.warn('[Signup] Failed to set user role after creation:', roleError);
-          // Continue with signup success - role update is non-critical
+
+          // Step 2: Ensure at least one admin exists (promotes first user if needed)
+          await fetchAction(api.users.ensureFirstAdmin, {
+            userId: signUpResult.user.id,
+          });
+        } catch (profileError) {
+          // Log but don't fail signup if profile creation fails
+          // Profile can be created manually later if needed
+          console.warn('[Signup] Failed to create user profile:', profileError);
+          // Continue with signup success - profile creation is non-critical
         }
       }
 

@@ -75,10 +75,10 @@ export const checkCloudflareIndexing = internalAction({
   handler: async (ctx, args) => {
     try {
       // Sync jobs can take up to 10 minutes, so we need enough attempts to cover that
-      // With exponential backoff (3s to 10s), ~100 attempts covers ~15 minutes
-      const maxAttempts = 100; // Maximum 100 attempts (~15 minutes total)
-      // Exponential backoff: start with 3 seconds, increase gradually
-      const pollIntervalMs = Math.min(3000 + args.attempt * 500, 10000); // 3s to 10s max
+      // With exponential backoff (15s to 30s), ~100 attempts covers ~25 minutes
+      const maxAttempts = 100; // Maximum 100 attempts (~25 minutes total)
+      // Exponential backoff: start with 15 seconds, increase gradually (AI search takes 45+ seconds minimum)
+      const pollIntervalMs = Math.min(15000 + args.attempt * 1000, 30000); // 15s to 30s max
 
       // Get submission
       const submission = await ctx.runQuery(
@@ -168,11 +168,11 @@ export const checkCloudflareIndexing = internalAction({
         });
 
         // After upload, wait longer for files to be indexed by Cloudflare AI Search
-        // AI Search indexing can take 10-30 seconds after R2 upload
+        // AI Search indexing can take 45+ seconds minimum
         if (args.attempt === 0) {
           // First attempt after upload, wait longer before checking indexing
           await ctx.scheduler.runAfter(
-            15000, // Wait 15 seconds for files to be indexed
+            45000, // Wait 45 seconds for files to be indexed
             (
               internal.submissionsActions.aiSummary as unknown as {
                 checkCloudflareIndexing: CheckCloudflareIndexingRef;
@@ -217,14 +217,14 @@ export const checkCloudflareIndexing = internalAction({
         `[AI Search] Files uploaded ${Math.round(timeSinceUpload / 1000)}s ago, path prefix: ${r2PathPrefix}`,
       );
 
-      // If files were just uploaded (less than 20 seconds ago), wait longer
-      // Cloudflare AI Search indexing can take 20-60 seconds after R2 upload
-      if (timeSinceUpload > 0 && timeSinceUpload < 20000 && args.attempt < 5) {
+      // If files were just uploaded (less than 60 seconds ago), wait longer
+      // Cloudflare AI Search indexing can take 45+ seconds after R2 upload
+      if (timeSinceUpload > 0 && timeSinceUpload < 60000 && args.attempt < 5) {
         console.log(
           `[AI Search] Files uploaded recently (${Math.round(timeSinceUpload / 1000)}s ago), waiting longer before checking indexing...`,
         );
         await ctx.scheduler.runAfter(
-          Math.max(20000 - timeSinceUpload, 5000), // Wait until at least 20s have passed
+          Math.max(60000 - timeSinceUpload, 15000), // Wait until at least 60s have passed
           (
             internal.submissionsActions.aiSummary as unknown as {
               checkCloudflareIndexing: CheckCloudflareIndexingRef;
@@ -332,10 +332,10 @@ export const checkCloudflareIndexing = internalAction({
         } else {
           // Job not found (null) or status unknown - check if enough time has passed
           // Cloudflare may clean up completed jobs after some time
-          // Timeout matches scheduler runtime (~15 minutes total with backoff)
+          // Timeout matches scheduler runtime (~25 minutes total with backoff)
           const syncStartedAt = submission.source?.aiSearchSyncStartedAt || 0;
           const timeSinceSyncStart = Date.now() - syncStartedAt;
-          const MIN_TIME_FOR_JOB_COMPLETION = 15 * 60 * 1000; // 15 minutes (matches scheduler runtime)
+          const MIN_TIME_FOR_JOB_COMPLETION = 25 * 60 * 1000; // 25 minutes (matches scheduler runtime)
 
           if (syncStartedAt > 0 && timeSinceSyncStart > MIN_TIME_FOR_JOB_COMPLETION) {
             // Job was started but is now not found - likely completed and cleaned up
@@ -375,10 +375,10 @@ export const checkCloudflareIndexing = internalAction({
       // - Job status check failed
       // - Job completed but we want to verify documents are actually indexed
       if (!indexed && !waitForJobCompletion) {
-        // If enough time has passed since upload (15+ minutes), assume indexing is complete
+        // If enough time has passed since upload (20+ minutes), assume indexing is complete
         // Timeout matches scheduler runtime to handle long-running Cloudflare sync jobs
         // This handles cases where AI Search is indexed but our query detection isn't working
-        const MIN_TIME_FOR_INDEXING = 15 * 60 * 1000; // 15 minutes (matches scheduler runtime)
+        const MIN_TIME_FOR_INDEXING = 20 * 60 * 1000; // 20 minutes (matches scheduler runtime)
         if (timeSinceUpload > MIN_TIME_FOR_INDEXING && args.attempt >= 10) {
           console.log(
             `[AI Search] ✅ Files uploaded ${Math.round(timeSinceUpload / 1000)}s ago (${Math.round(timeSinceUpload / 60000)} minutes, attempt ${args.attempt}). Assuming indexing is complete and proceeding.`,
