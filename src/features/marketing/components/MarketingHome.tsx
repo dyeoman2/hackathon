@@ -23,15 +23,15 @@ export function MarketingHome() {
     <div className="flex flex-col gap-16 py-16">
       <section className="text-center space-y-6">
         <span className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-sm font-medium text-primary">
-          Find Events & Host Hackathons
+          Hackathons made easy
         </span>
         <h1 className="text-4xl font-semibold tracking-tight text-foreground sm:text-5xl lg:text-6xl">
-          Find your next hackathon or launch your own
+          Launch or find a Hackathon
         </h1>
         <p className="mx-auto max-w-2xl text-lg text-muted-foreground">
-          Discover exciting hackathons to join, or create your own competition with AI-powered
-          insights, automatic screenshot capture, interactive code analysis, and spectacular winner
-          reveals that make every hackathon unforgettable.
+          Create your own hackathon with AI-powered submission insights, automatic screenshot
+          capture, interactive code analysis, and spectacular winner reveals. Or discover exciting
+          hackathons to join and showcase your skills.
         </p>
         <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
           <Button asChild size="lg">
@@ -70,7 +70,7 @@ export function MarketingHome() {
 
         <div className="grid gap-8 lg:grid-cols-5">
           <div className="flex gap-4 lg:flex-col lg:text-center lg:items-center lg:space-y-4 lg:gap-0">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-blue-500/10 lg:mx-auto flex-shrink-0">
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-blue-500/10 lg:mx-auto shrink-0">
               <Settings className="h-8 w-8 text-blue-600" />
             </div>
             <div className="space-y-2 lg:text-center">
@@ -82,7 +82,7 @@ export function MarketingHome() {
           </div>
 
           <div className="flex gap-4 lg:flex-col lg:text-center lg:items-center lg:space-y-4 lg:gap-0">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-green-500/10 lg:mx-auto flex-shrink-0">
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-green-500/10 lg:mx-auto shrink-0">
               <Upload className="h-8 w-8 text-green-600" />
             </div>
             <div className="space-y-2 lg:text-center">
@@ -94,7 +94,7 @@ export function MarketingHome() {
           </div>
 
           <div className="flex gap-4 lg:flex-col lg:text-center lg:items-center lg:space-y-4 lg:gap-0">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-orange-500/10 lg:mx-auto flex-shrink-0">
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-orange-500/10 lg:mx-auto shrink-0">
               <Bot className="h-8 w-8 text-orange-600" />
             </div>
             <div className="space-y-2 lg:text-center">
@@ -106,19 +106,19 @@ export function MarketingHome() {
           </div>
 
           <div className="flex gap-4 lg:flex-col lg:text-center lg:items-center lg:space-y-4 lg:gap-0">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-purple-500/10 lg:mx-auto flex-shrink-0">
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-purple-500/10 lg:mx-auto shrink-0">
               <Vote className="h-8 w-8 text-purple-600" />
             </div>
             <div className="space-y-2 lg:text-center">
               <h3 className="text-lg font-semibold text-foreground">Voting</h3>
               <p className="text-sm text-muted-foreground">
-                Judges score projects and community voting adds engagement
+                Judges score projects to determine winners
               </p>
             </div>
           </div>
 
           <div className="flex gap-4 lg:flex-col lg:text-center lg:items-center lg:space-y-4 lg:gap-0">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-pink-500/10 lg:mx-auto flex-shrink-0">
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-pink-500/10 lg:mx-auto shrink-0">
               <Sparkles className="h-8 w-8 text-pink-600" />
             </div>
             <div className="space-y-2 lg:text-center">
@@ -151,7 +151,6 @@ export function MarketingHome() {
           </h2>
           <p className="text-base text-muted-foreground">
             Browse public hackathons, submit your projects, and compete with developers worldwide.
-            No account required to explore events.
           </p>
         </div>
 
@@ -160,7 +159,7 @@ export function MarketingHome() {
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-500/10">
               <Search className="h-6 w-6 text-blue-600" />
             </div>
-            <h3 className="text-xl font-semibold text-foreground">Browse Events</h3>
+            <h3 className="text-xl font-semibold text-foreground">Browse</h3>
             <p className="text-muted-foreground">
               Explore hackathons by category, deadline, or popularity. Find the perfect challenge
               for your skills and interests.
@@ -171,7 +170,7 @@ export function MarketingHome() {
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-purple-500/10">
               <Users className="h-6 w-6 text-purple-600" />
             </div>
-            <h3 className="text-xl font-semibold text-foreground">Join Communities</h3>
+            <h3 className="text-xl font-semibold text-foreground">Join</h3>
             <p className="text-muted-foreground">
               Connect with organizers and fellow participants. Get insights into judging criteria
               and submission requirements before you start.
@@ -182,7 +181,7 @@ export function MarketingHome() {
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-500/10">
               <Trophy className="h-6 w-6 text-green-600" />
             </div>
-            <h3 className="text-xl font-semibold text-foreground">Showcase Your Work</h3>
+            <h3 className="text-xl font-semibold text-foreground">Showcase</h3>
             <p className="text-muted-foreground">
               Submit your projects with automatic processing, screenshots, and AI-generated
               summaries that highlight your best work to judges.
@@ -295,10 +294,11 @@ export function MarketingHome() {
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
               <Vote className="h-6 w-6 text-primary" />
             </div>
-            <h3 className="text-xl font-semibold text-foreground">Community Voting</h3>
+            <h3 className="text-xl font-semibold text-foreground">Expert Judging</h3>
             <p className="text-muted-foreground">
-              Enable public voting alongside judge scoring. Participants and attendees can vote for
-              their favorite projects, creating engagement and additional recognition categories.
+              Invite expert judges to score projects with detailed ratings. Judges get AI-powered
+              insights and project summaries to make informed decisions during intense judging
+              sessions.
             </p>
           </div>
 
