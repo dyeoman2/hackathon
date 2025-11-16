@@ -24,7 +24,10 @@ function HackathonListComponent() {
   // Always show all public hackathons to everyone
   const allPublicHackathons = useQuery(api.hackathons.listPublicHackathons, {});
   // Get user's hackathons (with role information) when authenticated
-  const userHackathons = useQuery(api.hackathons.listHackathons, {});
+  const userHackathons = useQuery(
+    api.hackathons.listHackathons,
+    isAuthenticated ? {} : 'skip',
+  );
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   // Auto-open modal only for authenticated users when there are no hackathons at all

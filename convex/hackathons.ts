@@ -110,7 +110,8 @@ export async function requireHackathonRole(
 export const listHackathons = query({
   args: {},
   handler: async (ctx) => {
-    const authUser = await authComponent.getAuthUser(ctx);
+    // Don't throw error if unauthenticated - just return empty array
+    const authUser = await authComponent.getAuthUser(ctx).catch(() => null);
     if (!authUser) {
       return [];
     }

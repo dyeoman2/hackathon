@@ -26,7 +26,7 @@ export function MarketingHome() {
           Hackathons made easy
         </span>
         <h1 className="text-4xl font-semibold tracking-tight text-foreground sm:text-5xl lg:text-6xl">
-          Launch or find a Hackathon
+          Launch or discover a Hackathon
         </h1>
         <p className="mx-auto max-w-2xl text-lg text-muted-foreground">
           Create your own hackathon with AI-powered submission insights, automatic screenshot
