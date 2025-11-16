@@ -329,65 +329,6 @@ export function MarketingHome() {
         </div>
 
         <div className="grid gap-8 md:grid-cols-2 max-w-6xl mx-auto">
-          {/* Self-Hosted Option */}
-          <div className="relative rounded-2xl border border-border bg-background p-8 shadow-lg">
-            <div className="text-center space-y-6">
-              <div>
-                <h3 className="text-2xl font-semibold text-foreground mb-2">Self-Hosted</h3>
-                <p className="text-muted-foreground">
-                  Deploy on your own infrastructure with full control
-                </p>
-              </div>
-
-              <div className="space-y-4">
-                <div className="flex items-center justify-center">
-                  <div className="text-center">
-                    <div className="text-4xl font-bold text-foreground">$0</div>
-                    <div className="text-sm text-muted-foreground">forever free</div>
-                  </div>
-                </div>
-
-                <div className="bg-muted/50 rounded-lg p-4 text-sm text-muted-foreground">
-                  <strong>Completely free:</strong> Host it yourself with no usage fees or
-                  restrictions.
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <h4 className="text-lg font-semibold text-foreground">Perfect for:</h4>
-                <ul className="space-y-3 text-left">
-                  <li className="flex items-center gap-3">
-                    <div className="h-1.5 w-1.5 rounded-full bg-green-500"></div>
-                    Organizations with dev teams
-                  </li>
-                  <li className="flex items-center gap-3">
-                    <div className="h-1.5 w-1.5 rounded-full bg-green-500"></div>
-                    Custom deployments and integrations
-                  </li>
-                  <li className="flex items-center gap-3">
-                    <div className="h-1.5 w-1.5 rounded-full bg-green-500"></div>
-                    Data sovereignty requirements
-                  </li>
-                  <li className="flex items-center gap-3">
-                    <div className="h-1.5 w-1.5 rounded-full bg-green-500"></div>
-                    Community and open source events
-                  </li>
-                </ul>
-              </div>
-
-              <Button asChild variant="outline" size="lg">
-                <a
-                  href="https://github.com/dyeoman2/hackathon"
-                  className="inline-flex items-center gap-2"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  <SiGithub className="h-4 w-4" />
-                  Get the Code
-                </a>
-              </Button>
-            </div>
-          </div>
           {/* Hosted Option */}
           <div className="relative rounded-2xl border-2 border-primary bg-primary/5 p-8 shadow-lg">
             <div className="absolute -top-3 left-1/2 -translate-x-1/2">
@@ -395,16 +336,11 @@ export function MarketingHome() {
                 Recommended
               </span>
             </div>
-            <div className="absolute -top-3 right-4">
-              <span className="rounded-full bg-green-500 px-3 py-1 text-xs font-medium text-white">
-                No Credit Card Required
-              </span>
-            </div>
             <div className="text-center space-y-6">
               <div>
                 <h3 className="text-2xl font-semibold text-foreground mb-2">Pay as you go</h3>
                 <p className="text-muted-foreground">
-                  We manage everything - just focus on your hackathon
+                  We manage everything - just focus on your hackathon. No credit card required.
                 </p>
               </div>
 
@@ -420,32 +356,6 @@ export function MarketingHome() {
                     <div className="text-sm text-muted-foreground">per additional submission</div>
                   </div>
                 </div>
-
-                <div className="bg-primary/10 border border-primary/20 rounded-lg p-4 text-sm">
-                  <strong>Includes:</strong> Hosting, maintenance, backups, and premium support
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <h4 className="text-lg font-semibold text-foreground">Perfect for:</h4>
-                <ul className="space-y-3 text-left">
-                  <li className="flex items-center gap-3">
-                    <div className="h-1.5 w-1.5 rounded-full bg-green-500"></div>
-                    Organizations without dev resources
-                  </li>
-                  <li className="flex items-center gap-3">
-                    <div className="h-1.5 w-1.5 rounded-full bg-green-500"></div>
-                    Quick setup for one-off events
-                  </li>
-                  <li className="flex items-center gap-3">
-                    <div className="h-1.5 w-1.5 rounded-full bg-green-500"></div>
-                    Enterprise compliance requirements
-                  </li>
-                  <li className="flex items-center gap-3">
-                    <div className="h-1.5 w-1.5 rounded-full bg-green-500"></div>
-                    24/7 monitoring and support
-                  </li>
-                </ul>
               </div>
 
               <Button asChild className="w-full" size="lg">
@@ -453,6 +363,38 @@ export function MarketingHome() {
                   Start your Hackathon
                   <ArrowRight className="h-4 w-4" />
                 </Link>
+              </Button>
+            </div>
+          </div>
+          {/* Self-Hosted Option */}
+          <div className="relative rounded-2xl border border-border bg-background p-8 shadow-lg">
+            <div className="text-center space-y-6">
+              <div>
+                <h3 className="text-2xl font-semibold text-foreground mb-2">Self-Hosted</h3>
+                <p className="text-muted-foreground">
+                  Clone the repository and deploy on your own infrastructure with full control.
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                <div className="flex items-center justify-center">
+                  <div className="text-center">
+                    <div className="text-4xl font-bold text-foreground">$0</div>
+                    <div className="text-sm text-muted-foreground">forever free</div>
+                  </div>
+                </div>
+              </div>
+
+              <Button asChild variant="outline" size="lg" className="w-full">
+                <a
+                  href="https://github.com/dyeoman2/hackathon"
+                  className="inline-flex items-center gap-2"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <SiGithub className="h-4 w-4" />
+                  Get the Code
+                </a>
               </Button>
             </div>
           </div>
