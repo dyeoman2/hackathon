@@ -10,8 +10,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~/com
 import { DeleteConfirmationDialog } from '~/components/ui/delete-confirmation-dialog';
 import { Skeleton } from '~/components/ui/skeleton';
 import { useToast } from '~/components/ui/toast';
-import { useAuth } from '~/features/auth/hooks/useAuth';
 import { useOptimisticMutation } from '~/features/admin/hooks/useOptimisticUpdates';
+import { useAuth } from '~/features/auth/hooks/useAuth';
 import { NewSubmissionModal } from './NewSubmissionModal';
 
 interface SubmissionCardProps {
@@ -21,7 +21,12 @@ interface SubmissionCardProps {
   onView: (submissionId: Id<'submissions'>) => void;
 }
 
-function SubmissionCard({ submission, isContestant, isAuthenticated, onView }: SubmissionCardProps) {
+function SubmissionCard({
+  submission,
+  isContestant,
+  isAuthenticated,
+  onView,
+}: SubmissionCardProps) {
   // Get homepage screenshot (first screenshot is sorted to be homepage)
   const homepageScreenshot = submission.screenshots?.[0];
 
@@ -207,8 +212,12 @@ export function SubmissionsList({
       return { mySubmissions: [], otherSubmissions: submissions || [] };
     }
 
-    const mySubs = submissions.filter(submission => 'userId' in submission && submission.userId === user.id);
-    const otherSubs = submissions.filter(submission => 'userId' in submission && submission.userId !== user.id);
+    const mySubs = submissions.filter(
+      (submission) => 'userId' in submission && submission.userId === user.id,
+    );
+    const otherSubs = submissions.filter(
+      (submission) => 'userId' in submission && submission.userId !== user.id,
+    );
 
     return { mySubmissions: mySubs, otherSubmissions: otherSubs };
   }, [submissions, isAuthenticated, user, authenticatedSubmissions]);

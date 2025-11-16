@@ -97,6 +97,15 @@ function HackathonPageComponent() {
     [isAuthenticated, authenticatedHackathon?.role],
   );
 
+  // Owners cannot leave their own hackathon
+  const canLeave = useMemo(
+    () =>
+      isAuthenticated &&
+      authenticatedHackathon?.role !== 'owner' &&
+      authenticatedHackathon?.role !== undefined,
+    [isAuthenticated, authenticatedHackathon?.role],
+  );
+
   // Check if hackathon is open (submission deadline hasn't passed)
   const isHackathonOpen = useMemo(() => {
     if (!hackathon?.dates?.submissionDeadline) {
@@ -332,7 +341,7 @@ function HackathonPageComponent() {
                     canEdit={canEdit}
                     canManageJudges={canManageJudges}
                     canDelete={canDelete}
-                    canLeave={true}
+                    canLeave={canLeave}
                     isSiteAdmin={isSiteAdmin}
                     onEdit={() => setIsSettingsModalOpen(true)}
                     onManageJudges={() => {

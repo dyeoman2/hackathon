@@ -1207,7 +1207,7 @@ export const reopenVoting = mutation({
 });
 
 /**
- * Leave hackathon (any active member)
+ * Leave hackathon (any active member except owners)
  * Removes all user submissions and membership from the hackathon
  */
 export const leaveHackathon = mutation({
@@ -1223,21 +1223,9 @@ export const leaveHackathon = mutation({
       'contestant',
     ]);
 
-    // Cannot leave if you're the only owner
+    // Owners cannot leave their own hackathon
     if (membership.role === 'owner') {
-      // Check if there are other owners
-      const otherOwners = await ctx.db
-        .query('memberships')
-        .withIndex('by_hackathonId', (q) => q.eq('hackathonId', args.hackathonId))
-        .filter((q) => q.eq(q.field('role'), 'owner'))
-        .filter((q) => q.neq(q.field('userId'), userId))
-        .collect();
-
-      if (otherOwners.length === 0) {
-        throw new Error(
-          'Cannot leave hackathon as the only owner. Transfer ownership first or delete the hackathon.',
-        );
-      }
+      throw new Error('Hackathon owners cannot leave their own hackathon.');
     }
 
     // Find all submissions by this user in this hackathon
