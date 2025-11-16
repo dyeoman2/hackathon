@@ -133,14 +133,18 @@ function SubmissionDetailComponent() {
     [authenticatedHackathon?.role],
   );
 
-  // Calculate navigation indices (only available for authenticated users)
+  // Calculate navigation indices (works for both authenticated and unauthenticated users)
   const { currentIndex, previousSubmissionId, nextSubmissionId } = useMemo(() => {
-    if (!isAuthenticated || !submissions || !submission) {
+    if (!submissions || !submission) {
       return { currentIndex: -1, previousSubmissionId: null, nextSubmissionId: null };
     }
 
     const sortedSubmissions = [...submissions].sort((a, b) => a.createdAt - b.createdAt);
     const index = sortedSubmissions.findIndex((s) => s._id === submissionId);
+
+    if (index === -1) {
+      return { currentIndex: -1, previousSubmissionId: null, nextSubmissionId: null };
+    }
 
     return {
       currentIndex: index,
@@ -148,7 +152,7 @@ function SubmissionDetailComponent() {
       nextSubmissionId:
         index < sortedSubmissions.length - 1 ? sortedSubmissions[index + 1]._id : null,
     };
-  }, [submissions, submission, submissionId, isAuthenticated]);
+  }, [submissions, submission, submissionId]);
 
   const handleBack = useCallback(() => {
     runWithRatingFlush(() =>

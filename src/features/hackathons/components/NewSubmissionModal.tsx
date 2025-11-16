@@ -162,6 +162,7 @@ export function NewSubmissionModal({
     }
 
     let cancelled = false;
+    let timeoutId: NodeJS.Timeout;
 
     async function checkCredits() {
       setCreditStatus('checking');
@@ -201,8 +202,16 @@ export function NewSubmissionModal({
 
     void checkCredits();
 
+    // Add timeout to prevent hanging on mobile/network issues
+    timeoutId = setTimeout(() => {
+      if (!cancelled) {
+        setCreditStatus('error');
+      }
+    }, 10000); // 10 second timeout
+
     return () => {
       cancelled = true;
+      clearTimeout(timeoutId);
     };
   }, [open, freeSubmissionsRemaining, checkCreditsAction, userRole]);
 
@@ -221,6 +230,7 @@ export function NewSubmissionModal({
     }
 
     let cancelled = false;
+    let timeoutId: NodeJS.Timeout;
 
     async function checkOwnerCredits() {
       setOwnerCreditStatus('checking');
@@ -260,8 +270,16 @@ export function NewSubmissionModal({
 
     void checkOwnerCredits();
 
+    // Add timeout to prevent hanging on mobile/network issues
+    timeoutId = setTimeout(() => {
+      if (!cancelled) {
+        setOwnerCreditStatus('error');
+      }
+    }, 10000); // 10 second timeout
+
     return () => {
       cancelled = true;
+      clearTimeout(timeoutId);
     };
   }, [open, freeSubmissionsRemaining, checkOwnerCreditsAction, userRole, hackathonId]);
 
@@ -513,15 +531,17 @@ export function NewSubmissionModal({
             <Button type="button" variant="outline" onClick={onClose} disabled={isSubmitting}>
               Cancel
             </Button>
-            <form.Subscribe selector={(state) => [state.canSubmit, state.isSubmitting]}>
-              {([canSubmit, isFormSubmitting]) => (
+            <form.Subscribe
+              selector={(state) => [state.canSubmit, state.isSubmitting, state.isTouched]}
+            >
+              {([canSubmit, isFormSubmitting, isTouched]) => (
                 <Button
                   type="submit"
                   disabled={
                     checkingPaidCredits ||
                     checkingOwnerCredits ||
                     submissionLocked ||
-                    !canSubmit ||
+                    (isTouched && !canSubmit) ||
                     isSubmitting ||
                     isFormSubmitting
                   }

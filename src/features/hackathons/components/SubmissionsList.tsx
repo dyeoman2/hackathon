@@ -10,8 +10,132 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~/com
 import { DeleteConfirmationDialog } from '~/components/ui/delete-confirmation-dialog';
 import { Skeleton } from '~/components/ui/skeleton';
 import { useToast } from '~/components/ui/toast';
+import { useAuth } from '~/features/auth/hooks/useAuth';
 import { useOptimisticMutation } from '~/features/admin/hooks/useOptimisticUpdates';
 import { NewSubmissionModal } from './NewSubmissionModal';
+
+interface SubmissionCardProps {
+  submission: any; // Using any for now since the submission type is complex
+  isContestant: boolean;
+  isAuthenticated: boolean;
+  onView: (submissionId: Id<'submissions'>) => void;
+}
+
+function SubmissionCard({ submission, isContestant, isAuthenticated, onView }: SubmissionCardProps) {
+  // Get homepage screenshot (first screenshot is sorted to be homepage)
+  const homepageScreenshot = submission.screenshots?.[0];
+
+  return (
+    <Card
+      className="relative cursor-pointer transition-shadow hover:shadow-md overflow-hidden group aspect-video"
+      onClick={() => onView(submission._id)}
+    >
+      {/* Screenshot background - full card */}
+      {homepageScreenshot ? (
+        <>
+          <img
+            src={homepageScreenshot.url}
+            alt={submission.title}
+            className="absolute inset-0 w-full h-full object-cover object-top transition-transform duration-300 group-hover:scale-105"
+          />
+          <div className="absolute inset-0 bg-linear-to-t from-black/80 via-black/40 to-transparent" />
+        </>
+      ) : (
+        <>
+          <div className="absolute inset-0 bg-linear-to-br from-muted via-muted/80 to-muted/60">
+            {/* Placeholder pattern */}
+            <div className="absolute inset-0 opacity-10">
+              <div
+                className="absolute inset-0"
+                style={{
+                  backgroundImage: `repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(0,0,0,0.1) 10px, rgba(0,0,0,0.1) 20px)`,
+                }}
+              />
+            </div>
+          </div>
+          <div className="absolute inset-0 bg-linear-to-t from-black/80 via-black/40 to-transparent" />
+        </>
+      )}
+
+      {/* Rating badge in top right - only show for authenticated non-contestants */}
+      {!isContestant && isAuthenticated && 'myRating' in submission && (
+        <div className="absolute top-2 right-2 z-10">
+          {submission.myRating !== null && submission.myRating !== undefined ? (
+            <Badge
+              variant="default"
+              className="backdrop-blur-sm bg-primary/90 text-primary-foreground shadow-lg"
+            >
+              {submission.myRating.toFixed(1)}
+            </Badge>
+          ) : (
+            <Badge
+              variant="warning"
+              className="bg-orange-500/90 dark:bg-orange-500/90 text-white shadow-lg border-0"
+            >
+              Unrated
+            </Badge>
+          )}
+        </div>
+      )}
+
+      {/* Title and team at bottom */}
+      <div className="absolute bottom-0 left-0 right-0 p-4 z-10">
+        <div className="flex items-end justify-between gap-2">
+          <div className="flex-1 min-w-0">
+            <CardTitle
+              className={`mb-1 line-clamp-2 ${homepageScreenshot ? 'text-white' : 'text-foreground'}`}
+            >
+              {submission.title}
+            </CardTitle>
+            <CardDescription
+              className={homepageScreenshot ? 'text-white/80' : 'text-muted-foreground'}
+            >
+              {submission.team}
+            </CardDescription>
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
+            {submission.repoUrl && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  window.open(submission.repoUrl, '_blank', 'noopener,noreferrer');
+                }}
+                className={`h-8 w-8 p-0 backdrop-blur-sm ${
+                  homepageScreenshot
+                    ? 'text-white hover:bg-white/20 bg-black/30'
+                    : 'text-muted-foreground hover:bg-background/20 bg-background/50'
+                }`}
+                title="View on GitHub"
+              >
+                <Github className="h-4 w-4" />
+              </Button>
+            )}
+            {submission.siteUrl && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  window.open(submission.siteUrl, '_blank', 'noopener,noreferrer');
+                }}
+                className={`h-8 w-8 p-0 backdrop-blur-sm ${
+                  homepageScreenshot
+                    ? 'text-white hover:bg-white/20 bg-black/30'
+                    : 'text-muted-foreground hover:bg-background/20 bg-background/50'
+                }`}
+                title="View live site"
+              >
+                <ExternalLink className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
+    </Card>
+  );
+}
 
 interface SubmissionsListProps {
   hackathonId: Id<'hackathons'>;
@@ -44,6 +168,7 @@ export function SubmissionsList({
 }: SubmissionsListProps) {
   const toast = useToast();
   const router = useRouter();
+  const { user } = useAuth();
   const [showOnlyUnrated, setShowOnlyUnrated] = useState(false);
 
   // Use different queries based on authentication
@@ -74,6 +199,22 @@ export function SubmissionsList({
         (submission.myRating === null || submission.myRating === undefined),
     );
   }, [allSubmissions, showOnlyUnrated, isAuthenticated]);
+
+  // Split submissions into user's submissions and others when authenticated
+  // Only split when we have authenticated data (which includes userId)
+  const { mySubmissions, otherSubmissions } = useMemo(() => {
+    if (!submissions || !isAuthenticated || !user || !authenticatedSubmissions) {
+      return { mySubmissions: [], otherSubmissions: submissions || [] };
+    }
+
+    const mySubs = submissions.filter(submission => 'userId' in submission && submission.userId === user.id);
+    const otherSubs = submissions.filter(submission => 'userId' in submission && submission.userId !== user.id);
+
+    return { mySubmissions: mySubs, otherSubmissions: otherSubs };
+  }, [submissions, isAuthenticated, user, authenticatedSubmissions]);
+
+  // Check if user has submissions to determine layout
+  const hasMySubmissions = mySubmissions.length > 0;
 
   const deleteSubmissionOptimistic = useOptimisticMutation(api.submissions.deleteSubmission, {
     onSuccess: () => {
@@ -120,6 +261,7 @@ export function SubmissionsList({
     isAuthenticated && ['owner', 'admin', 'judge'].includes(userRole || '');
 
   // Calculate rating statistics (only for authenticated users)
+  // Always use allSubmissions (unfiltered) so button shows correct counts regardless of current filter
   const ratingStats = useMemo(() => {
     if (!isAuthenticated || !allSubmissions) return { total: 0, rated: 0, unrated: 0 };
 
@@ -247,124 +389,55 @@ export function SubmissionsList({
             </Button>
           )}
         </div>
+      ) : hasMySubmissions ? (
+        // Split view: My Submissions and Other Submissions
+        <div className="space-y-8">
+          {/* My Submissions Section */}
+          <div className="space-y-4">
+            <h3 className="text-xl font-semibold">My Submissions</h3>
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {mySubmissions.map((submission) => (
+                <SubmissionCard
+                  key={submission._id}
+                  submission={submission}
+                  isContestant={isContestant}
+                  isAuthenticated={isAuthenticated}
+                  onView={handleViewSubmission}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* Other Submissions Section */}
+          {otherSubmissions.length > 0 && (
+            <div className="space-y-4">
+              <h3 className="text-xl font-semibold">Other Submissions</h3>
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {otherSubmissions.map((submission) => (
+                  <SubmissionCard
+                    key={submission._id}
+                    submission={submission}
+                    isContestant={isContestant}
+                    isAuthenticated={isAuthenticated}
+                    onView={handleViewSubmission}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       ) : (
+        // Single view: All Submissions
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {submissions.map((submission) => {
-            // Get homepage screenshot (first screenshot is sorted to be homepage)
-            const homepageScreenshot = submission.screenshots?.[0];
-
-            return (
-              <Card
-                key={submission._id}
-                className="relative cursor-pointer transition-shadow hover:shadow-md overflow-hidden group aspect-[16/9]"
-                onClick={() => handleViewSubmission(submission._id)}
-              >
-                {/* Screenshot background - full card */}
-                {homepageScreenshot ? (
-                  <>
-                    <img
-                      src={homepageScreenshot.url}
-                      alt={submission.title}
-                      className="absolute inset-0 w-full h-full object-cover object-top transition-transform duration-300 group-hover:scale-105"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent" />
-                  </>
-                ) : (
-                  <>
-                    <div className="absolute inset-0 bg-gradient-to-br from-muted via-muted/80 to-muted/60">
-                      {/* Placeholder pattern */}
-                      <div className="absolute inset-0 opacity-10">
-                        <div
-                          className="absolute inset-0"
-                          style={{
-                            backgroundImage: `repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(0,0,0,0.1) 10px, rgba(0,0,0,0.1) 20px)`,
-                          }}
-                        />
-                      </div>
-                    </div>
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent" />
-                  </>
-                )}
-
-                {/* Rating badge in top right - only show for authenticated non-contestants */}
-                {!isContestant && isAuthenticated && 'myRating' in submission && (
-                  <div className="absolute top-2 right-2 z-10">
-                    {submission.myRating !== null && submission.myRating !== undefined ? (
-                      <Badge
-                        variant="default"
-                        className="backdrop-blur-sm bg-primary/90 text-primary-foreground shadow-lg"
-                      >
-                        {submission.myRating.toFixed(1)}
-                      </Badge>
-                    ) : (
-                      <Badge
-                        variant="warning"
-                        className="bg-orange-500/90 dark:bg-orange-500/90 text-white shadow-lg border-0"
-                      >
-                        Unrated
-                      </Badge>
-                    )}
-                  </div>
-                )}
-
-                {/* Title and team at bottom */}
-                <div className="absolute bottom-0 left-0 right-0 p-4 z-10">
-                  <div className="flex items-end justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      <CardTitle
-                        className={`mb-1 line-clamp-2 ${homepageScreenshot ? 'text-white' : 'text-foreground'}`}
-                      >
-                        {submission.title}
-                      </CardTitle>
-                      <CardDescription
-                        className={homepageScreenshot ? 'text-white/80' : 'text-muted-foreground'}
-                      >
-                        {submission.team}
-                      </CardDescription>
-                    </div>
-                    <div className="flex items-center gap-1 flex-shrink-0">
-                      {submission.repoUrl && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            window.open(submission.repoUrl, '_blank', 'noopener,noreferrer');
-                          }}
-                          className={`h-8 w-8 p-0 backdrop-blur-sm ${
-                            homepageScreenshot
-                              ? 'text-white hover:bg-white/20 bg-black/30'
-                              : 'text-muted-foreground hover:bg-background/20 bg-background/50'
-                          }`}
-                          title="View on GitHub"
-                        >
-                          <Github className="h-4 w-4" />
-                        </Button>
-                      )}
-                      {submission.siteUrl && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            window.open(submission.siteUrl, '_blank', 'noopener,noreferrer');
-                          }}
-                          className={`h-8 w-8 p-0 backdrop-blur-sm ${
-                            homepageScreenshot
-                              ? 'text-white hover:bg-white/20 bg-black/30'
-                              : 'text-muted-foreground hover:bg-background/20 bg-background/50'
-                          }`}
-                          title="View live site"
-                        >
-                          <ExternalLink className="h-4 w-4" />
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </Card>
-            );
-          })}
+          {submissions.map((submission) => (
+            <SubmissionCard
+              key={submission._id}
+              submission={submission}
+              isContestant={isContestant}
+              isAuthenticated={isAuthenticated}
+              onView={handleViewSubmission}
+            />
+          ))}
         </div>
       )}
 
