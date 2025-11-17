@@ -240,9 +240,11 @@ export const captureScreenshot = guarded.action(
       }
 
       if (pages.length === 0) {
-        throw new Error(
+        // No pages could be scraped, return success: false
+        console.warn(
           'No pages were successfully scraped. All URLs may have failed to return screenshots.',
         );
+        return { success: false, reason: 'No pages could be scraped' };
       }
 
       // Get R2 credentials (throws if not configured)
@@ -406,33 +408,51 @@ export const captureScreenshot = guarded.action(
           };
         }
 
-        // Trigger summary generation if README is also ready
+        // Trigger summary generation if README is also ready, or if there's no repo URL (screenshot-only summary)
         // Summary generation requires:
-        // - If siteUrl exists: both README and screenshots
+        // - If siteUrl exists: both README and screenshots (for repos with GitHub URLs)
         // - If no siteUrl: only README (handled by README fetch)
+        // - If no repo URL: screenshots only (for projects without GitHub repos)
         const hasReadme = !!submission.source?.readme;
+        const hasRepoUrl = !!submission.repoUrl?.trim();
         const hasSummary = !!submission.source?.aiSummary;
 
-        if (!hasSummary && hasReadme) {
-          console.log(
-            `[Screenshot] Screenshots ready, README ready - triggering summary generation for submission ${args.submissionId}`,
-          );
-          await ctx.scheduler.runAfter(
-            0,
-            (
-              internal.submissionsActions.aiSummary as unknown as {
-                generateSummary: GenerateSummaryRef;
-              }
-            ).generateSummary,
-            {
-              submissionId: args.submissionId,
-              forceRegenerate: false,
-            },
-          );
-        } else if (!hasSummary && !hasReadme) {
-          console.log(
-            `[Screenshot] Screenshots ready but waiting for README before generating summary for submission ${args.submissionId}`,
-          );
+        if (!hasSummary) {
+          if (hasReadme) {
+            // Traditional flow: README + screenshots
+            console.log(
+              `[Screenshot] Screenshots ready, README ready - triggering summary generation for submission ${args.submissionId}`,
+            );
+            await ctx.scheduler.runAfter(
+              0,
+              (
+                internal.submissionsActions.aiSummary as unknown as {
+                  generateSummary: GenerateSummaryRef;
+                }
+              ).generateSummary,
+              {
+                submissionId: args.submissionId,
+                forceRegenerate: false,
+              },
+            );
+          } else if (!hasRepoUrl) {
+            // Screenshot-only flow: no GitHub repo, generate summary from screenshots only
+            console.log(
+              `[Screenshot] Screenshots ready, no repo URL - triggering screenshot-only summary generation for submission ${args.submissionId}`,
+            );
+            await ctx.scheduler.runAfter(
+              0,
+              internal.submissionsActions.aiSummary.generateScreenshotOnlySummary,
+              {
+                submissionId: args.submissionId,
+              },
+            );
+          } else {
+            // Waiting for README: traditional repo flow where README fetch is still in progress
+            console.log(
+              `[Screenshot] Screenshots ready but waiting for README before generating summary for submission ${args.submissionId}`,
+            );
+          }
         }
       } catch (error) {
         // Log but don't fail - summary generation is optional
@@ -680,9 +700,11 @@ export const captureScreenshotInternal = internalAction({
       }
 
       if (pages.length === 0) {
-        throw new Error(
+        // No pages could be scraped, return success: false
+        console.warn(
           'No pages were successfully scraped. All URLs may have failed to return screenshots.',
         );
+        return { success: false, reason: 'No pages could be scraped' };
       }
 
       // Get R2 credentials (throws if not configured)
@@ -892,33 +914,51 @@ export const captureScreenshotInternal = internalAction({
           };
         }
 
-        // Trigger summary generation if README is also ready
+        // Trigger summary generation if README is also ready, or if there's no repo URL (screenshot-only summary)
         // Summary generation requires:
-        // - If siteUrl exists: both README and screenshots
+        // - If siteUrl exists: both README and screenshots (for repos with GitHub URLs)
         // - If no siteUrl: only README (handled by README fetch)
+        // - If no repo URL: screenshots only (for projects without GitHub repos)
         const hasReadme = !!submission.source?.readme;
+        const hasRepoUrl = !!submission.repoUrl?.trim();
         const hasSummary = !!submission.source?.aiSummary;
 
-        if (!hasSummary && hasReadme) {
-          console.log(
-            `[Screenshot] Screenshots ready, README ready - triggering summary generation for submission ${args.submissionId}`,
-          );
-          await ctx.scheduler.runAfter(
-            0,
-            (
-              internal.submissionsActions.aiSummary as unknown as {
-                generateSummary: GenerateSummaryRef;
-              }
-            ).generateSummary,
-            {
-              submissionId: args.submissionId,
-              forceRegenerate: false,
-            },
-          );
-        } else if (!hasSummary && !hasReadme) {
-          console.log(
-            `[Screenshot] Screenshots ready but waiting for README before generating summary for submission ${args.submissionId}`,
-          );
+        if (!hasSummary) {
+          if (hasReadme) {
+            // Traditional flow: README + screenshots
+            console.log(
+              `[Screenshot] Screenshots ready, README ready - triggering summary generation for submission ${args.submissionId}`,
+            );
+            await ctx.scheduler.runAfter(
+              0,
+              (
+                internal.submissionsActions.aiSummary as unknown as {
+                  generateSummary: GenerateSummaryRef;
+                }
+              ).generateSummary,
+              {
+                submissionId: args.submissionId,
+                forceRegenerate: false,
+              },
+            );
+          } else if (!hasRepoUrl) {
+            // Screenshot-only flow: no GitHub repo, generate summary from screenshots only
+            console.log(
+              `[Screenshot] Screenshots ready, no repo URL - triggering screenshot-only summary generation for submission ${args.submissionId}`,
+            );
+            await ctx.scheduler.runAfter(
+              0,
+              internal.submissionsActions.aiSummary.generateScreenshotOnlySummary,
+              {
+                submissionId: args.submissionId,
+              },
+            );
+          } else {
+            // Waiting for README: traditional repo flow where README fetch is still in progress
+            console.log(
+              `[Screenshot] Screenshots ready but waiting for README before generating summary for submission ${args.submissionId}`,
+            );
+          }
         }
       } catch (error) {
         // Log but don't fail - summary generation is optional

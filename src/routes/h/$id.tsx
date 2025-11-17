@@ -1,7 +1,7 @@
 import { api } from '@convex/_generated/api';
 import type { Id } from '@convex/_generated/dataModel';
 import { createFileRoute, Outlet, useLocation, useRouter } from '@tanstack/react-router';
-import { useAction, useMutation, useQuery } from 'convex/react';
+import { useAction, useConvex, useMutation, useQuery } from 'convex/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { z } from 'zod';
 import { NotFound } from '~/components/NotFound';
@@ -40,9 +40,10 @@ function HackathonPageComponent() {
   const router = useRouter();
   const location = useLocation();
   const toast = useToast();
+  const convex = useConvex();
   const { id } = Route.useParams();
   const { payment, newSubmission } = Route.useSearch();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
 
   // Use different queries based on authentication
   const authenticatedHackathon = useQuery(
@@ -68,6 +69,7 @@ function HackathonPageComponent() {
 
   const deleteHackathon = useMutation(api.hackathons.deleteHackathon);
   const seedHackathonSubmissions = useAction(api.submissions.seedHackathonSubmissions);
+  const vibeAppsProjects = useQuery(api.vibeApps.getAllVibeAppsProjects);
   const joinHackathon = useMutation(api.hackathons.joinHackathon);
   const leaveHackathon = useMutation(api.hackathons.leaveHackathon);
   const { isAdmin: isSiteAdmin } = useAuth();
@@ -128,29 +130,58 @@ function HackathonPageComponent() {
     if (!hackathon) return;
 
     try {
-      // Parse the YAML data from Untitled-1.yaml
-      const submissionsData = [
-        {
-          repoUrl: 'https://github.com/brenelz/live-olympic-hockey-draft',
-          siteUrl: 'https://live-olympic-hockey-draft.netlify.app/',
-          team: 'Brenelz',
-          title: 'Live Olympic Hockey Draft',
-        },
-        {
-          repoUrl: 'https://github.com/somayaj/stockit',
-          siteUrl: 'https://stockit-1762128572.netlify.app/',
-          team: 'Somayaj',
-          title: 'Stockit',
-        },
-        {
-          repoUrl: 'https://github.com/JealousGx/EventFlow',
-          siteUrl: 'https://eventflow.foundersignal.app/',
-          team: 'JealousGx',
-          title: 'EventFlow',
-        },
-      ];
+      // Fetch vibe apps projects and transform to submission format
+      if (!vibeAppsProjects) {
+        toast.showToast('Loading vibe apps data...', 'info');
+        return;
+      }
 
-      toast.showToast('Creating submissions with 10-second delays between each...', 'info');
+      if (vibeAppsProjects.length === 0) {
+        toast.showToast('No vibe apps projects found to seed', 'error');
+        return;
+      }
+
+      // Check if user is authenticated and has an ID
+      if (!user?.id) {
+        toast.showToast('You must be logged in to seed submissions', 'error');
+        return;
+      }
+
+      // Fetch existing submissions to avoid duplicates
+      const existingSubmissions = await convex.query(api.submissions.listByHackathon, {
+        hackathonId: id as Id<'hackathons'>,
+        ratingFilter: 'all',
+      });
+
+      // Create a set of existing repo URLs for quick lookup
+      const existingRepoUrls = new Set(
+        existingSubmissions.map((sub) => sub.repoUrl).filter(Boolean),
+      );
+
+      // Transform vibe apps data to submission format, filter out existing ones, and limit to 3
+      const submissionsData = vibeAppsProjects
+        .filter((project) => project.isActive) // Only include active projects
+        .filter((project) => !project.githubUrl || !existingRepoUrls.has(project.githubUrl)) // Exclude projects that already have submissions (only check if they have a GitHub URL)
+        .slice(0, 3) // Limit to 3 submissions
+        .map((project) => ({
+          repoUrl: project.githubUrl || '', // Use empty string if no GitHub URL
+          siteUrl: project.websiteUrl || undefined,
+          team: project.creator || project.name.replace(/\s+/g, ''), // Use creator as team name, fallback to project name
+          title: project.name,
+        }));
+
+      if (submissionsData.length === 0) {
+        toast.showToast(
+          'No new active vibe apps projects found to seed (all may already exist)',
+          'error',
+        );
+        return;
+      }
+
+      toast.showToast(
+        `Creating ${submissionsData.length} submissions from vibe apps data with 20-second delays between each...`,
+        'info',
+      );
 
       const result = await seedHackathonSubmissions({
         hackathonId: id as Id<'hackathons'>,

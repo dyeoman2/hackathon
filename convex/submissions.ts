@@ -291,7 +291,7 @@ export const createSubmissionInternal = internalMutation({
   },
   handler: async (ctx, args) => {
     // Check membership - any active member can create submissions
-    const { hackathon } = await requireHackathonRole(ctx, args.hackathonId, [
+    const { hackathon, role } = await requireHackathonRole(ctx, args.hackathonId, [
       'owner',
       'admin',
       'judge',
@@ -303,16 +303,22 @@ export const createSubmissionInternal = internalMutation({
       throw new Error('Cannot create submissions for hackathons that have ended');
     }
 
-    const existingSubmissions = await ctx.db
-      .query('submissions')
-      .withIndex('by_hackathonId', (q) => q.eq('hackathonId', args.hackathonId))
-      .collect();
-    const totalSubmissions = existingSubmissions.length;
-    const freeSubmissionsRemaining = Math.max(FREE_SUBMISSION_LIMIT - totalSubmissions, 0);
-    const requiresPaidCredits = freeSubmissionsRemaining <= 0;
+    // Check if user has admin privileges (owner/admin) - they can bypass credit limits
+    const hasAdminPrivileges = role === 'owner' || role === 'admin';
 
-    if (requiresPaidCredits && !args.usingPaidCredit) {
-      throw new Error('No free submissions remaining for this hackathon.');
+    if (!hasAdminPrivileges) {
+      // Only apply credit checks for non-admin users
+      const existingSubmissions = await ctx.db
+        .query('submissions')
+        .withIndex('by_hackathonId', (q) => q.eq('hackathonId', args.hackathonId))
+        .collect();
+      const totalSubmissions = existingSubmissions.length;
+      const freeSubmissionsRemaining = Math.max(FREE_SUBMISSION_LIMIT - totalSubmissions, 0);
+      const requiresPaidCredits = freeSubmissionsRemaining <= 0;
+
+      if (requiresPaidCredits && !args.usingPaidCredit) {
+        throw new Error('No free submissions remaining for this hackathon.');
+      }
     }
 
     const now = Date.now();
@@ -1220,6 +1226,7 @@ export const updateSubmissionSourceInternal = internalMutation({
         v.literal('error'),
       ),
     ),
+    processingError: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const submission = await ctx.db.get(args.submissionId);
@@ -1251,6 +1258,7 @@ export const updateSubmissionSourceInternal = internalMutation({
       readmeFilename: args.readmeFilename ?? submission.source?.readmeFilename,
       readmeFetchedAt: args.readmeFetchedAt ?? submission.source?.readmeFetchedAt,
       processingState: args.processingState ?? submission.source?.processingState,
+      processingError: args.processingError ?? submission.source?.processingError,
     };
 
     await ctx.db.patch(args.submissionId, {
@@ -1545,7 +1553,7 @@ export const getUserRating = query({
 
 /**
  * Seed hackathon with submissions (admin only)
- * Creates multiple submissions from provided data with 10-second delays between each
+ * Creates multiple submissions from provided data with 20-second delays between each
  */
 export const seedHackathonSubmissions = guarded.action(
   'user.write',
@@ -1561,6 +1569,13 @@ export const seedHackathonSubmissions = guarded.action(
     ),
   },
   async (ctx, args, _role) => {
+    // Get current user
+    const authUser = await authComponent.getAuthUser(ctx);
+    if (!authUser) {
+      throw new Error('Authentication required');
+    }
+    const userId = assertUserId(authUser, 'User ID not found');
+
     // For actions, we need to check access via query since actions don't have direct db access
     const hackathon = await ctx.runQuery(internal.hackathons.getHackathonInternal, {
       hackathonId: args.hackathonId,
@@ -1584,6 +1599,7 @@ export const seedHackathonSubmissions = guarded.action(
           submissionsInternalApi.submissions.createSubmissionInternal,
           {
             hackathonId: args.hackathonId,
+            userId,
             title: submissionData.title,
             team: submissionData.team,
             repoUrl: submissionData.repoUrl,
@@ -1603,9 +1619,9 @@ export const seedHackathonSubmissions = guarded.action(
           `Created submission ${i + 1}/${args.submissions.length}: ${submissionData.title}`,
         );
 
-        // Wait 10 seconds before creating the next submission (except for the last one)
+        // Wait 20 seconds before creating the next submission (except for the last one)
         if (i < args.submissions.length - 1) {
-          await new Promise((resolve) => setTimeout(resolve, 10000));
+          await new Promise((resolve) => setTimeout(resolve, 20000));
         }
       } catch (error) {
         console.error(`Failed to create submission ${i + 1}: ${submissionData.title}`, error);

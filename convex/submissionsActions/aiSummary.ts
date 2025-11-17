@@ -11,6 +11,7 @@ import { checkAISearchJobStatus, downloadAndUploadRepoHelper } from './repoProce
 import type {
   CheckCloudflareIndexingRef,
   ContinueCloudflareIndexingRef,
+  GenerateSummaryRef,
   GetSubmissionInternalRef,
   UpdateSubmissionAIInternalRef,
   UpdateSubmissionSourceInternalRef,
@@ -1444,6 +1445,63 @@ export const generateSummary = internalAction({
 });
 
 /**
+ * Generate summary using only screenshots (for submissions without repo URLs)
+ */
+export const generateScreenshotOnlySummary = internalAction({
+  args: {
+    submissionId: v.id('submissions'),
+  },
+  handler: async (ctx, args) => {
+    try {
+      const submission = await ctx.runQuery(
+        (internal.submissions as unknown as { getSubmissionInternal: GetSubmissionInternalRef })
+          .getSubmissionInternal,
+        {
+          submissionId: args.submissionId,
+        },
+      );
+
+      if (!submission) {
+        console.warn(`[Screenshot Summary] Submission ${args.submissionId} not found`);
+        return;
+      }
+
+      const hasSiteUrl = !!submission.siteUrl?.trim();
+      const hasScreenshots = (submission.screenshots?.length ?? 0) > 0;
+      const hasSummary = !!submission.source?.aiSummary;
+
+      // Only generate if we have siteUrl, screenshots, and no existing summary
+      if (hasSiteUrl && hasScreenshots && !hasSummary) {
+        console.log(
+          `[Screenshot Summary] Generating summary from screenshots only for submission ${args.submissionId}`,
+        );
+        await ctx.scheduler.runAfter(
+          0,
+          (
+            internal.submissionsActions.aiSummary as unknown as {
+              generateSummary: GenerateSummaryRef;
+            }
+          ).generateSummary,
+          {
+            submissionId: args.submissionId,
+            forceRegenerate: false,
+          },
+        );
+      } else {
+        console.log(
+          `[Screenshot Summary] Skipping screenshot-only summary for submission ${args.submissionId}: siteUrl=${hasSiteUrl}, screenshots=${hasScreenshots}, hasSummary=${hasSummary}`,
+        );
+      }
+    } catch (error) {
+      console.error(
+        `[Screenshot Summary] Failed to generate screenshot-only summary for submission ${args.submissionId}:`,
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+  },
+});
+
+/**
  * Helper function to generate repo summary (download/upload if needed, then schedule indexing check)
  * Extracted so it can be called from both generateRepoSummary and processSubmission
  */
@@ -1462,6 +1520,21 @@ async function generateRepoSummaryHelper(
 
   if (!submission) {
     throw new Error('Submission not found');
+  }
+
+  // If there's no repo URL, generate screenshot-only summary instead
+  if (!submission.repoUrl?.trim()) {
+    console.log(
+      `[Repo Summary] No repo URL for submission ${args.submissionId}, generating screenshot-only summary`,
+    );
+    await ctx.scheduler.runAfter(
+      0,
+      internal.submissionsActions.aiSummary.generateScreenshotOnlySummary,
+      {
+        submissionId: args.submissionId,
+      },
+    );
+    return { scheduled: true };
   }
 
   // If repo hasn't been uploaded, do it now using the helper function

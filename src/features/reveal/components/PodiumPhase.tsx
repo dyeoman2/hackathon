@@ -659,15 +659,17 @@ export function PodiumPhase({
 
                 {/* Action Icons and Score */}
                 <div className="flex items-center gap-2 shrink-0">
-                  <a
-                    href={submission.repoUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="p-1.5 rounded-md bg-slate-800/50 hover:bg-slate-700/70 text-slate-300 hover:text-white transition-colors"
-                    aria-label="View GitHub repository"
-                  >
-                    <SiGithub className="h-4 w-4" />
-                  </a>
+                  {submission.repoUrl && (
+                    <a
+                      href={submission.repoUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="p-1.5 rounded-md bg-slate-800/50 hover:bg-slate-700/70 text-slate-300 hover:text-white transition-colors"
+                      aria-label="View GitHub repository"
+                    >
+                      <SiGithub className="h-4 w-4" />
+                    </a>
+                  )}
                   {submission.siteUrl && (
                     <a
                       href={submission.siteUrl}
@@ -960,16 +962,18 @@ function PodiumSlot({
               </p>
               {/* Action Icons */}
               <div className="flex items-center gap-2 pt-1">
-                <a
-                  href={submission.repoUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={(e) => e.stopPropagation()}
-                  className="p-1.5 rounded-md bg-slate-800/50 hover:bg-slate-700/70 text-slate-300 hover:text-white transition-colors"
-                  aria-label="View GitHub repository"
-                >
-                  <SiGithub className="h-4 w-4" />
-                </a>
+                {submission.repoUrl && (
+                  <a
+                    href={submission.repoUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="p-1.5 rounded-md bg-slate-800/50 hover:bg-slate-700/70 text-slate-300 hover:text-white transition-colors"
+                    aria-label="View GitHub repository"
+                  >
+                    <SiGithub className="h-4 w-4" />
+                  </a>
+                )}
                 {submission.siteUrl && (
                   <a
                     href={submission.siteUrl}

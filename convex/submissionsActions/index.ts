@@ -4,6 +4,7 @@ export {
   checkCloudflareIndexing,
   diagnoseAISearchPaths,
   generateRepoSummary,
+  generateScreenshotOnlySummary,
   generateSummaryPublic,
 } from './aiSummary';
 export {

@@ -36,6 +36,7 @@ export type GetSubmissionInternalRef = FunctionReference<
         | 'generating'
         | 'complete'
         | 'error';
+      processingError?: string;
     };
     ai?: {
       summary?: string;

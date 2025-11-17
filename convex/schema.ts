@@ -28,6 +28,22 @@ export default defineSchema({
     .index('by_identifier_kind', ['identifier', 'kind'])
     .index('by_createdAt', ['createdAt']),
 
+  // VibeApps projects table - stores scraped project data
+  vibeAppsProjects: defineTable({
+    name: v.string(),
+    creator: v.optional(v.string()),
+    vibeappsUrl: v.string(), // Unique identifier for the project
+    githubUrl: v.optional(v.string()),
+    websiteUrl: v.optional(v.string()),
+    isActive: v.boolean(), // Whether this project should be included in seeding
+    lastScrapedAt: v.number(), // Timestamp when this project was last scraped
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_vibeappsUrl', ['vibeappsUrl'])
+    .index('by_lastScrapedAt', ['lastScrapedAt'])
+    .index('by_isActive', ['isActive']),
+
   aiResponses: defineTable({
     userId: v.string(),
     requestKey: v.string(),
@@ -136,6 +152,7 @@ export default defineSchema({
             v.literal('error'),
           ),
         ),
+        processingError: v.optional(v.string()),
       }),
     ),
     ai: v.optional(

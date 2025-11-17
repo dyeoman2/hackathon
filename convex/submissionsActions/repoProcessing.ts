@@ -227,8 +227,28 @@ export async function downloadAndUploadRepoHelper(
     throw new Error('Submission not found');
   }
 
-  if (!submission.repoUrl) {
-    throw new Error('Repository URL not provided');
+  if (!submission.repoUrl || submission.repoUrl.trim() === '') {
+    console.log(
+      `[Repo Download] No repository URL provided for submission ${args.submissionId}, marking as complete`,
+    );
+    // Set processing state to complete since there's no repo to download
+    await ctx.runMutation(
+      (
+        internal.submissions as unknown as {
+          updateSubmissionSourceInternal: UpdateSubmissionSourceInternalRef;
+        }
+      ).updateSubmissionSourceInternal,
+      {
+        submissionId: args.submissionId,
+        processingState: 'complete',
+      },
+    );
+    // Return empty result
+    return {
+      r2PathPrefix: '',
+      uploadedAt: Date.now(),
+      fileCount: 0,
+    };
   }
 
   // Set processing state to downloading
@@ -646,7 +666,9 @@ export async function downloadAndUploadRepoHelper(
         {
           submissionId: args.submissionId,
           processingState: 'error',
-        },
+          processingError: error instanceof Error ? error.message : String(error),
+          // biome-ignore lint/suspicious/noExplicitAny: Temporary workaround until Convex types are updated
+        } as any, // TODO: Remove when Convex types include processingError field
       );
     } catch (updateError) {
       console.error(

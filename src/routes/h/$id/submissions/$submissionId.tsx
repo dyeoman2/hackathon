@@ -321,11 +321,13 @@ function SubmissionDetailComponent() {
         titleActions={
           <>
             <div className="hidden sm:flex items-center gap-2 flex-wrap">
-              <Button variant="ghost" size="sm" asChild className="touch-manipulation">
-                <a href={submission.repoUrl} target="_blank" rel="noopener noreferrer">
-                  <SiGithub className="h-4 w-4" />
-                </a>
-              </Button>
+              {submission.repoUrl && (
+                <Button variant="ghost" size="sm" asChild className="touch-manipulation">
+                  <a href={submission.repoUrl} target="_blank" rel="noopener noreferrer">
+                    <SiGithub className="h-4 w-4" />
+                  </a>
+                </Button>
+              )}
               {submission.siteUrl && (
                 <Button variant="ghost" size="sm" asChild className="touch-manipulation">
                   <a href={submission.siteUrl} target="_blank" rel="noopener noreferrer">
@@ -354,11 +356,13 @@ function SubmissionDetailComponent() {
         actions={
           <div className="flex items-center justify-between gap-2 w-full sm:w-auto sm:justify-end">
             <div className="flex items-center gap-2 sm:hidden">
-              <Button variant="ghost" size="sm" asChild className="touch-manipulation">
-                <a href={submission.repoUrl} target="_blank" rel="noopener noreferrer">
-                  <SiGithub className="h-4 w-4" />
-                </a>
-              </Button>
+              {submission.repoUrl && (
+                <Button variant="ghost" size="sm" asChild className="touch-manipulation">
+                  <a href={submission.repoUrl} target="_blank" rel="noopener noreferrer">
+                    <SiGithub className="h-4 w-4" />
+                  </a>
+                </Button>
+              )}
               {submission.siteUrl && (
                 <Button variant="ghost" size="sm" asChild className="touch-manipulation">
                   <a href={submission.siteUrl} target="_blank" rel="noopener noreferrer">

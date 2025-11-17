@@ -1,5 +1,5 @@
 import { api } from '@convex/_generated/api';
-import type { Id } from '@convex/_generated/dataModel';
+import type { Doc, Id } from '@convex/_generated/dataModel';
 import { useRouter } from '@tanstack/react-router';
 import { useQuery } from 'convex/react';
 import { ExternalLink, Eye, EyeOff, Github, Plus } from 'lucide-react';
@@ -14,8 +14,34 @@ import { useOptimisticMutation } from '~/features/admin/hooks/useOptimisticUpdat
 import { useAuth } from '~/features/auth/hooks/useAuth';
 import { NewSubmissionModal } from './NewSubmissionModal';
 
+type PublicSubmission = {
+  _id: Id<'submissions'>;
+  title: string;
+  team: string;
+  repoUrl: string;
+  siteUrl: string | undefined;
+  screenshots:
+    | {
+        r2Key: string;
+        url: string;
+        capturedAt: number;
+        pageUrl?: string;
+        pageName?: string;
+      }[]
+    | undefined;
+  source: Doc<'submissions'>['source'];
+  createdAt: number;
+};
+
+type SubmissionWithRating = Doc<'submissions'> & {
+  myRating: number | null;
+  averageRating: number;
+};
+
+type SubmissionData = PublicSubmission | SubmissionWithRating;
+
 interface SubmissionCardProps {
-  submission: any; // Using any for now since the submission type is complex
+  submission: SubmissionData;
   isContestant: boolean;
   isAuthenticated: boolean;
   onView: (submissionId: Id<'submissions'>) => void;
@@ -398,7 +424,7 @@ export function SubmissionsList({
             </Button>
           )}
         </div>
-      ) : hasMySubmissions ? (
+      ) : hasMySubmissions && otherSubmissions.length > 0 ? (
         // Split view: My Submissions and Other Submissions
         <div className="space-y-8">
           {/* My Submissions Section */}
@@ -418,35 +444,36 @@ export function SubmissionsList({
           </div>
 
           {/* Other Submissions Section */}
-          {otherSubmissions.length > 0 && (
-            <div className="space-y-4">
-              <h3 className="text-xl font-semibold">Other Submissions</h3>
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {otherSubmissions.map((submission) => (
-                  <SubmissionCard
-                    key={submission._id}
-                    submission={submission}
-                    isContestant={isContestant}
-                    isAuthenticated={isAuthenticated}
-                    onView={handleViewSubmission}
-                  />
-                ))}
-              </div>
+          <div className="space-y-4">
+            <h3 className="text-xl font-semibold">Other Submissions</h3>
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {otherSubmissions.map((submission) => (
+                <SubmissionCard
+                  key={submission._id}
+                  submission={submission}
+                  isContestant={isContestant}
+                  isAuthenticated={isAuthenticated}
+                  onView={handleViewSubmission}
+                />
+              ))}
             </div>
-          )}
+          </div>
         </div>
       ) : (
-        // Single view: All Submissions
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {submissions.map((submission) => (
-            <SubmissionCard
-              key={submission._id}
-              submission={submission}
-              isContestant={isContestant}
-              isAuthenticated={isAuthenticated}
-              onView={handleViewSubmission}
-            />
-          ))}
+        // Single view: Submissions (only one type exists)
+        <div className="space-y-4">
+          <h3 className="text-xl font-semibold">Submissions</h3>
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {submissions.map((submission) => (
+              <SubmissionCard
+                key={submission._id}
+                submission={submission}
+                isContestant={isContestant}
+                isAuthenticated={isAuthenticated}
+                onView={handleViewSubmission}
+              />
+            ))}
+          </div>
         </div>
       )}
 

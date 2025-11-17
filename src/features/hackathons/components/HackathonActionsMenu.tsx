@@ -84,7 +84,7 @@ export function HackathonActionsMenu({
         {isSiteAdmin && (
           <DropdownMenuItem onClick={onSeedSubmissions}>
             <Sprout className="h-4 w-4" />
-            Seed Submissions
+            Seed from Vibe Apps
           </DropdownMenuItem>
         )}
         {(canLeave || canDelete) && hasNonDestructiveActions && <DropdownMenuSeparator />}

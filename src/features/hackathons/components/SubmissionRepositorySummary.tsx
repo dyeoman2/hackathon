@@ -128,6 +128,7 @@ export function SubmissionRepositorySummary({
   const aiSummary = submission.source?.aiSummary;
   const summary = manualSummary || aiSummary;
   const processingState = submission.source?.processingState;
+  const processingError = submission.source?.processingError;
   const isAISearchComplete = processingState === 'complete';
   const hasManualSummary = !!manualSummary;
 
@@ -163,6 +164,7 @@ export function SubmissionRepositorySummary({
       return {
         title: 'Repository Processing Failed',
         description:
+          processingError ||
           'Failed to download or process the repository. This could be due to access restrictions, network issues, or repository problems. No summary could be generated.',
       };
     }

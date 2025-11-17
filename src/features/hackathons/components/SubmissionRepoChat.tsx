@@ -32,6 +32,7 @@ interface Message {
 
 export function SubmissionRepoChat({ submission }: SubmissionRepoChatProps) {
   const processingState = submission.source?.processingState;
+  const processingError = submission.source?.processingError;
   const aiSearchSyncCompletedAt = submission.source?.aiSearchSyncCompletedAt;
   const r2PathPrefix = submission.source?.r2Key;
   const streamAISearch = useAction(api.cloudflareAi.streamAISearchForRepoChat);
@@ -468,6 +469,7 @@ export function SubmissionRepoChat({ submission }: SubmissionRepoChatProps) {
   const getErrorMessage = () => ({
     title: 'Repository Processing Failed',
     description:
+      processingError ||
       'Failed to download or process the repository. This could be due to access restrictions, network issues, or repository problems.',
   });
 
