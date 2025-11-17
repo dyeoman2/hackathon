@@ -170,9 +170,18 @@ export function SubmissionScreenshots({ submission, canEdit = false }: Submissio
     async (file: File) => {
       setIsUploadingScreenshot(true);
       try {
-        // Read file as base64 string for Convex compatibility
-        const fileBuffer = await file.arrayBuffer();
-        const base64String = btoa(String.fromCharCode(...new Uint8Array(fileBuffer)));
+        // Read file as base64 string for Convex compatibility using FileReader
+        const base64String = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            const result = reader.result as string;
+            // Remove the "data:image/jpeg;base64," prefix if present
+            const base64Data = result.split(',')[1];
+            resolve(base64Data);
+          };
+          reader.onerror = () => reject(new Error('Failed to read file'));
+          reader.readAsDataURL(file);
+        });
 
         const result = await uploadScreenshot({
           submissionId: submission._id,
@@ -423,6 +432,34 @@ export function SubmissionScreenshots({ submission, canEdit = false }: Submissio
                     </div>
                   </CarouselItem>
                 )}
+                {/* Screenshot capture placeholder */}
+                {isCapturingScreenshot && (
+                  <CarouselItem className="basis-1/2 md:basis-1/3">
+                    <div className="relative aspect-video w-full overflow-hidden rounded-lg border bg-muted/50">
+                      <div className="absolute inset-0 flex flex-col items-center justify-center">
+                        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground mb-2" />
+                        <div className="text-xs text-muted-foreground text-center px-2">
+                          <div className="font-medium">Capturing</div>
+                          <div className="mt-1">Auto screenshots</div>
+                        </div>
+                      </div>
+                    </div>
+                  </CarouselItem>
+                )}
+                {/* Screenshot upload placeholder */}
+                {isUploadingScreenshot && (
+                  <CarouselItem className="basis-1/2 md:basis-1/3">
+                    <div className="relative aspect-video w-full overflow-hidden rounded-lg border bg-muted/50">
+                      <div className="absolute inset-0 flex flex-col items-center justify-center">
+                        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground mb-2" />
+                        <div className="text-xs text-muted-foreground text-center px-2">
+                          <div className="font-medium">Uploading</div>
+                          <div className="mt-1">Custom screenshot</div>
+                        </div>
+                      </div>
+                    </div>
+                  </CarouselItem>
+                )}
                 {/* Screenshots */}
                 {screenshots.map((screenshot, index) => (
                   <CarouselItem key={screenshot.r2Key} className="basis-1/2 md:basis-1/3">
@@ -494,7 +531,11 @@ export function SubmissionScreenshots({ submission, canEdit = false }: Submissio
                   </CarouselItem>
                 ))}
               </CarouselContent>
-              {screenshots.length + (submission.videoUrl ? 1 : 0) > 1 && (
+              {screenshots.length +
+                (submission.videoUrl ? 1 : 0) +
+                (isCapturingScreenshot ? 1 : 0) +
+                (isUploadingScreenshot ? 1 : 0) >
+                1 && (
                 <>
                   <CarouselPrevious className="left-2 z-10 bg-background/80 backdrop-blur-sm hover:bg-background" />
                   <CarouselNext className="right-2 z-10 bg-background/80 backdrop-blur-sm hover:bg-background" />
@@ -512,7 +553,7 @@ export function SubmissionScreenshots({ submission, canEdit = false }: Submissio
       >
         {openIndex !== null && screenshots[openIndex] && (
           <DialogContent
-            className="!max-w-[98vw] !w-[98vw] max-h-[98vh] h-[98vh] p-2 bg-black/95 border-none"
+            className="max-w-[98vw]! w-[98vw]! max-h-[98vh] h-[98vh] p-2 bg-black/95 border-none"
             showCloseButton={false}
           >
             <div className="relative flex items-center justify-center w-full h-full">

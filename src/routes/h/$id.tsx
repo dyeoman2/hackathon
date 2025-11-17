@@ -203,7 +203,7 @@ function HackathonPageComponent() {
       }
 
       toast.showToast(
-        `Creating ${submissionsData.length} submissions from vibe apps data with 20-second delays between each...`,
+        `Creating ${submissionsData.length} submissions from vibe apps data with 5-second delays between each...`,
         'info',
       );
 

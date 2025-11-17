@@ -439,15 +439,15 @@ export function SubmissionRepoChat({ submission }: SubmissionRepoChatProps) {
   }, [streamingResponse, currentRequestId]);
 
   // Treat repo as processing until we have an indexed path prefix or an explicit error
-  const isAwaitingRepoUpload = !!submission.repoUrl && !r2PathPrefix && processingState !== 'error';
+  const hasProcessingError = processingState === 'error' || !!processingError;
+
+  // Treat repo as processing until we have an indexed path prefix or an explicit error
+  const isAwaitingRepoUpload = !!submission.repoUrl && !r2PathPrefix && !hasProcessingError;
 
   // Show processing state while indexing or waiting for upload
   const isProcessing =
     isAwaitingRepoUpload ||
-    (processingState !== 'complete' && processingState !== 'error' && !aiSearchSyncCompletedAt);
-
-  // Show error state if processing failed
-  const hasProcessingError = processingState === 'error';
+    (!hasProcessingError && processingState !== 'complete' && !aiSearchSyncCompletedAt);
 
   const getProcessingMessage = (state: string | undefined) => {
     switch (state) {
@@ -475,7 +475,7 @@ export function SubmissionRepoChat({ submission }: SubmissionRepoChatProps) {
     title: 'Repository Processing Failed',
     description:
       processingError ||
-      'Failed to download or process the repository. This could be due to access restrictions, network issues, or repository problems.',
+      'Failed to download or process the repository. This could be due to access restrictions, network issues, repository problems, or an automatic safeguard stopping a stuck workflow. Use Retry Processing to re-queue the job.',
   });
 
   const createRequestId = () =>

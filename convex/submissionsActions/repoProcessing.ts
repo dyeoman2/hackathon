@@ -12,12 +12,26 @@ import type { ActionCtx } from '../_generated/server';
 import { internalAction } from '../_generated/server';
 import { guarded } from '../authz/guardFactory';
 import { checkAllProcessesCompleteAndGenerateSummary } from './aiSummary';
+import { markProcessingErrorWithFallback } from './processingError';
 import type {
   CheckCloudflareIndexingRef,
   GenerateSummaryRef,
   GetSubmissionInternalRef,
   UpdateSubmissionSourceInternalRef,
 } from './types';
+
+const PROCESSING_MONITOR_DELAY_MS = 5 * 60 * 1000; // 5 minutes between checks
+const PROCESSING_MONITOR_MAX_ATTEMPTS = 3;
+const PROCESSING_STAGE_THRESHOLDS_MS: Record<
+  'downloading' | 'uploading' | 'indexing' | 'generating' | 'unknown',
+  number
+> = {
+  downloading: 5 * 60 * 1000,
+  uploading: 15 * 60 * 1000,
+  indexing: 25 * 60 * 1000,
+  generating: 15 * 60 * 1000,
+  unknown: 10 * 60 * 1000,
+};
 
 /**
  * Trigger Cloudflare AI Search sync to index new R2 files immediately
@@ -109,9 +123,6 @@ async function triggerAISearchSync(_ctx: ActionCtx): Promise<string | null> {
   const syncResponse = await response.json();
   // Response format: Envelope<{ job_id }> per API docs
   const jobId = syncResponse?.result?.job_id || syncResponse?.job_id;
-  console.log(
-    `[AI Search] Sync triggered successfully (job_id: ${jobId || 'unknown'}) - will scan bucket and index new/modified files`,
-  );
   return jobId || null;
 }
 
@@ -138,7 +149,6 @@ export async function checkAISearchJobStatus(
   const jobStatusUrl = `https://api.cloudflare.com/client/v4/accounts/${accountId}/autorag/rags/${aiSearchInstanceId}/jobs/${jobId}`;
 
   try {
-    console.log(`[AI Search] Fetching job status from: ${jobStatusUrl}`);
     const response = await fetch(jobStatusUrl, {
       method: 'GET',
       headers: {
@@ -159,19 +169,9 @@ export async function checkAISearchJobStatus(
     }
 
     const jobData = await response.json();
-    console.log(`[AI Search] Job status API response:`, JSON.stringify(jobData, null, 2));
     // Response format: Envelope<{ id, source, end_reason, ended_at, last_seen_at, started_at }>
     // Reference: https://developers.cloudflare.com/api/resources/autorag/methods/sync/
     const job = jobData.result || jobData;
-
-    console.log(`[AI Search] Parsed job data:`, {
-      id: job.id,
-      source: job.source,
-      end_reason: job.end_reason,
-      ended_at: job.ended_at,
-      started_at: job.started_at,
-      last_seen_at: job.last_seen_at,
-    });
 
     // Determine job status based on API response fields:
     // - If ended_at exists, job is finished (check end_reason for success/failure)
@@ -181,32 +181,143 @@ export async function checkAISearchJobStatus(
       // Job has ended - check end_reason to determine if completed or failed
       // end_reason might be "completed", "success", "failed", "error", etc.
       const endReason = (job.end_reason || '').toLowerCase();
-      console.log(
-        `[AI Search] Job ${jobId} has ended_at: ${job.ended_at}, end_reason: ${job.end_reason || 'none'}`,
-      );
       if (endReason.includes('fail') || endReason.includes('error')) {
-        console.log(`[AI Search] Job ${jobId} status: FAILED (end_reason: ${job.end_reason})`);
         return 'failed';
       }
       // If ended_at exists, assume completed (even if end_reason is empty or unknown)
-      console.log(`[AI Search] Job ${jobId} status: COMPLETED`);
       return 'completed';
     }
     if (job.started_at) {
       // Job has started but not ended yet - it's running
-      console.log(
-        `[AI Search] Job ${jobId} status: RUNNING (started_at: ${job.started_at}, no ended_at)`,
-      );
       return 'running';
     }
     // Job exists but hasn't started yet - it's pending
-    console.log(`[AI Search] Job ${jobId} status: PENDING (no started_at)`);
     return 'pending';
   } catch (error) {
     console.error(`[AI Search] Error checking job status for ${jobId}:`, error);
     return null;
   }
 }
+
+type SubmissionSourceTimestamps = {
+  uploadStartedAt?: number;
+  uploadCompletedAt?: number;
+  aiSearchSyncStartedAt?: number;
+  aiSearchSyncCompletedAt?: number;
+  summaryGenerationStartedAt?: number;
+};
+
+function getStageStartTimestamp(
+  submission: { createdAt: number; source?: SubmissionSourceTimestamps },
+  state: string,
+): number {
+  const source = submission.source ?? {};
+  const toNumber = (value: number | undefined | null) =>
+    typeof value === 'number' ? value : undefined;
+
+  const uploadStartedAt = toNumber(source.uploadStartedAt);
+  const uploadCompletedAt = toNumber(source.uploadCompletedAt);
+  const aiSearchSyncStartedAt = toNumber(source.aiSearchSyncStartedAt);
+  const aiSearchSyncCompletedAt = toNumber(source.aiSearchSyncCompletedAt);
+  const summaryGenerationStartedAt = toNumber(source.summaryGenerationStartedAt);
+
+  switch (state) {
+    case 'uploading':
+      return uploadStartedAt ?? submission.createdAt;
+    case 'indexing':
+      return aiSearchSyncStartedAt ?? uploadCompletedAt ?? submission.createdAt;
+    case 'generating':
+      return summaryGenerationStartedAt ?? aiSearchSyncCompletedAt ?? submission.createdAt;
+    case 'downloading':
+      return uploadStartedAt ?? submission.createdAt;
+    default:
+      return (
+        uploadStartedAt ??
+        aiSearchSyncStartedAt ??
+        summaryGenerationStartedAt ??
+        submission.createdAt
+      );
+  }
+}
+
+function getStuckMessage(state: string): string {
+  switch (state) {
+    case 'downloading':
+      return 'Repository processing never started. We could not begin downloading the GitHub repository.';
+    case 'uploading':
+      return 'Repository upload to storage did not finish. This often means the download job stalled.';
+    case 'indexing':
+      return 'Repository indexing in Cloudflare AI Search did not complete.';
+    case 'generating':
+      return 'Repository summary generation stalled.';
+    default:
+      return 'Repository processing stalled before completing.';
+  }
+}
+
+/**
+ * Watchdog to detect stuck submissions that never progress or fail silently.
+ * Marks the submission as errored so the UI can display retry controls.
+ */
+export const monitorSubmissionProcessing = internalAction({
+  args: {
+    submissionId: v.id('submissions'),
+    attempt: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const attempt = args.attempt ?? 0;
+    const submission = await ctx.runQuery(internal.submissions.getSubmissionInternal, {
+      submissionId: args.submissionId,
+    });
+
+    if (!submission?.repoUrl?.trim()) {
+      return;
+    }
+
+    const source = submission.source ?? {};
+    const state = (source.processingState as string | undefined) ?? 'downloading';
+
+    if (state === 'complete' || state === 'error') {
+      return;
+    }
+
+    const threshold =
+      PROCESSING_STAGE_THRESHOLDS_MS[state as keyof typeof PROCESSING_STAGE_THRESHOLDS_MS] ??
+      PROCESSING_STAGE_THRESHOLDS_MS.unknown;
+    const stageStartedAt = getStageStartTimestamp(submission, state);
+    const elapsed = Date.now() - stageStartedAt;
+
+    if (elapsed > threshold || attempt >= PROCESSING_MONITOR_MAX_ATTEMPTS) {
+      const reason =
+        elapsed > threshold
+          ? getStuckMessage(state)
+          : 'Repository processing did not complete after multiple checks.';
+
+      console.warn('[Repo Processing] Watchdog marking submission as failed', {
+        submissionId: submission._id,
+        state,
+        elapsed,
+        attempt,
+      });
+
+      await markProcessingErrorWithFallback(
+        ctx,
+        submission._id,
+        `${reason} Click "Retry Processing" to run the workflow again.`,
+      );
+      return;
+    }
+
+    await ctx.scheduler.runAfter(
+      PROCESSING_MONITOR_DELAY_MS,
+      internal.submissionsActions.repoProcessing.monitorSubmissionProcessing,
+      {
+        submissionId: submission._id,
+        attempt: attempt + 1,
+      },
+    );
+  },
+});
 
 /**
  * Helper function to download and upload repo to R2
@@ -316,9 +427,6 @@ export async function downloadAndUploadRepoHelper(
 
     // Fetch repository metadata to determine default branch
     const repoApiUrl = `https://api.github.com/repos/${owner}/${repoName}`;
-    console.log(`[Repo Download] Fetching repo metadata from: ${repoApiUrl}`);
-    console.log(`[Repo Download] Original URL: ${githubUrl}`);
-    console.log(`[Repo Download] Parsed owner: ${owner}, repo: ${repoName}`);
 
     const repoInfoResponse = await fetch(repoApiUrl, {
       headers,
@@ -330,9 +438,6 @@ export async function downloadAndUploadRepoHelper(
     if (repoInfoResponse.ok) {
       const repoInfo: { default_branch?: string } = await repoInfoResponse.json();
       defaultBranch = repoInfo.default_branch;
-      console.log(
-        `[Repo Download] Successfully fetched repo info. Default branch: ${defaultBranch}`,
-      );
     } else {
       const errorText = await repoInfoResponse.text();
       console.error(
@@ -383,7 +488,6 @@ export async function downloadAndUploadRepoHelper(
 
     for (const branch of branchCandidates) {
       const archiveUrl = `https://codeload.github.com/${owner}/${repoName}/zip/${branch}`;
-      console.log(`[Repo Download] Trying to download archive from: ${archiveUrl}`);
 
       try {
         const archiveResponse = await fetch(archiveUrl, {
@@ -391,14 +495,9 @@ export async function downloadAndUploadRepoHelper(
           signal: AbortSignal.timeout(30000), // 30 second timeout for larger downloads
         });
 
-        console.log(
-          `[Repo Download] Archive download response: ${archiveResponse.status} for branch ${branch}`,
-        );
-
         if (archiveResponse.ok) {
           archiveBuffer = Buffer.from(await archiveResponse.arrayBuffer());
           usedBranch = branch;
-          console.log(`[Repo Download] Successfully downloaded archive for branch: ${branch}`);
           break;
         } else {
           const errorText = await archiveResponse.text();
@@ -534,16 +633,8 @@ export async function downloadAndUploadRepoHelper(
       },
     });
 
-    // Upload each file to R2 with metadata
-    console.log(
-      `[R2 Upload] Starting upload of ${codeFiles.length} files to prefix ${r2PathPrefix}`,
-    );
-
-    const uploadStartTime = Date.now();
-
     for (const file of codeFiles) {
       const r2Key = `${r2PathPrefix}${file.path}`;
-      const fileUploadStart = Date.now();
       const upload = new Upload({
         client: s3Client,
         params: {
@@ -558,16 +649,7 @@ export async function downloadAndUploadRepoHelper(
         },
       });
       await upload.done();
-      const uploadDuration = Date.now() - fileUploadStart;
-      console.log(
-        `[R2 Upload] ✅ Uploaded ${file.path} (${file.content.length} bytes) in ${uploadDuration}ms`,
-      );
     }
-
-    const totalUploadTime = Date.now() - uploadStartTime;
-    console.log(
-      `[R2 Upload] ✅ Successfully uploaded ${codeFiles.length} files in ${totalUploadTime}ms`,
-    );
 
     // Update submission with R2 path prefix, record upload completion, and set state to indexing
     const uploadCompletedAt = Date.now();
@@ -593,9 +675,6 @@ export async function downloadAndUploadRepoHelper(
 
     try {
       jobId = await triggerAISearchSync(ctx);
-      console.log(
-        `[R2 Upload] Triggered AI Search sync for submission ${args.submissionId}${jobId ? ` (job_id: ${jobId})` : ''}`,
-      );
     } catch (syncError) {
       // Log but don't fail - sync will happen automatically eventually
       console.warn(
@@ -626,9 +705,6 @@ export async function downloadAndUploadRepoHelper(
     // Schedule the indexing check
     // This will poll for indexing completion and mark the submission as complete
     try {
-      console.log(
-        `[R2 Upload] Scheduling indexing check for submission ${args.submissionId} (will start checking in 15 seconds)`,
-      );
       await ctx.scheduler.runAfter(
         15000, // Wait 15 seconds before first check to give indexing time to start
         (
@@ -641,9 +717,6 @@ export async function downloadAndUploadRepoHelper(
           attempt: 0,
           forceRegenerate: false,
         },
-      );
-      console.log(
-        `[R2 Upload] ✅ Successfully scheduled indexing check for submission ${args.submissionId}`,
       );
     } catch (error) {
       // Log but don't fail - this is critical but we don't want to fail the upload
@@ -665,26 +738,11 @@ export async function downloadAndUploadRepoHelper(
       errorMessage,
     );
 
-    try {
-      await ctx.runMutation(
-        (
-          internal.submissions as unknown as {
-            updateSubmissionSourceInternal: UpdateSubmissionSourceInternalRef;
-          }
-        ).updateSubmissionSourceInternal,
-        {
-          submissionId: args.submissionId,
-          processingState: 'error',
-          processingError: error instanceof Error ? error.message : String(error),
-          // biome-ignore lint/suspicious/noExplicitAny: Temporary workaround until Convex types are updated
-        } as any, // TODO: Remove when Convex types include processingError field
-      );
-    } catch (updateError) {
-      console.error(
-        `[Repo Download] Failed to update submission error state:`,
-        updateError instanceof Error ? updateError.message : String(updateError),
-      );
-    }
+    await markProcessingErrorWithFallback(
+      ctx,
+      args.submissionId,
+      error instanceof Error ? error.message : String(error),
+    );
 
     // Check if we have screenshots or videos available for fallback summary generation
     try {
@@ -703,10 +761,6 @@ export async function downloadAndUploadRepoHelper(
 
         // If we have screenshots or video but no summary, try to generate one
         if ((hasScreenshots || hasVideo) && !hasSummary) {
-          console.log(
-            `[Repo Download] Repository processing failed but screenshots/videos available - triggering fallback summary generation for submission ${args.submissionId}`,
-          );
-
           try {
             await ctx.scheduler.runAfter(
               0,
@@ -720,19 +774,12 @@ export async function downloadAndUploadRepoHelper(
                 forceRegenerate: false,
               },
             );
-            console.log(
-              `[Repo Download] Successfully scheduled fallback summary generation for submission ${args.submissionId}`,
-            );
           } catch (summaryError) {
             console.error(
               `[Repo Download] Failed to schedule fallback summary generation for submission ${args.submissionId}:`,
               summaryError instanceof Error ? summaryError.message : String(summaryError),
             );
           }
-        } else {
-          console.log(
-            `[Repo Download] Repository processing failed - no screenshots or video available for fallback summary (screenshots: ${hasScreenshots}, video: ${hasVideo}, hasSummary: ${hasSummary})`,
-          );
         }
       }
     } catch (checkError) {
@@ -766,10 +813,6 @@ export const testGitHubToken = internalAction({
       return { configured: false, message: 'GITHUB_TOKEN not found in environment' };
     }
 
-    console.log(
-      `[GitHub Token Test] ✅ GITHUB_TOKEN is configured (length: ${githubToken.length})`,
-    );
-
     // Test the token with a simple GitHub API call
     try {
       const testResponse = await fetch('https://api.github.com/rate_limit', {
@@ -781,9 +824,6 @@ export const testGitHubToken = internalAction({
 
       if (testResponse.ok) {
         const rateLimitData = await testResponse.json();
-        console.log(
-          `[GitHub Token Test] ✅ Token is valid. Rate limit: ${rateLimitData.rate.remaining}/${rateLimitData.rate.limit} remaining`,
-        );
         return {
           configured: true,
           valid: true,
@@ -855,9 +895,6 @@ export const fetchReadmeFromGitHub = internalAction({
       let defaultBranch: string | undefined;
       try {
         const repoApiUrl = `https://api.github.com/repos/${owner}/${repoName}`;
-        console.log(`[README Fetch] Fetching repo info from: ${repoApiUrl}`);
-        console.log(`[README Fetch] Original URL: ${githubUrl}`);
-        console.log(`[README Fetch] Parsed owner: ${owner}, repo: ${repoName}`);
 
         const repoInfoResponse = await fetch(repoApiUrl, {
           headers,
@@ -867,7 +904,6 @@ export const fetchReadmeFromGitHub = internalAction({
         if (repoInfoResponse.ok) {
           const repoInfo: { default_branch?: string } = await repoInfoResponse.json();
           defaultBranch = repoInfo.default_branch;
-          console.log(`[README Fetch] Default branch: ${defaultBranch || 'not found'}`);
         } else {
           const errorText = await repoInfoResponse.text();
           console.warn(
@@ -904,15 +940,11 @@ export const fetchReadmeFromGitHub = internalAction({
       let readmeFilename: string | null = null;
 
       // Try each branch and filename combination
-      console.log(
-        `[README Fetch] Trying branches: ${branchCandidates.join(', ')}, filenames: ${readmeFilenames.join(', ')}`,
-      );
       for (const branch of branchCandidates) {
         for (const filename of readmeFilenames) {
           try {
             // Try GitHub API first (supports private repos with token)
             const apiUrl = `https://api.github.com/repos/${owner}/${repoName}/contents/${filename}?ref=${branch}`;
-            console.log(`[README Fetch] Trying API: ${apiUrl}`);
             const apiResponse = await fetch(apiUrl, {
               headers,
               signal: AbortSignal.timeout(10000), // 10 second timeout
@@ -924,17 +956,9 @@ export const fetchReadmeFromGitHub = internalAction({
               if (fileData.content && fileData.encoding === 'base64') {
                 readmeContent = Buffer.from(fileData.content, 'base64').toString('utf-8');
                 readmeFilename = fileData.name || filename;
-                console.log(
-                  `[README Fetch] ✅ Found README via API: ${filename} on branch ${branch}`,
-                );
                 break;
-              } else {
-                console.log(
-                  `[README Fetch] API response OK but content/encoding missing: encoding=${fileData.encoding}, hasContent=${!!fileData.content}`,
-                );
               }
             } else if (apiResponse.status === 404) {
-              console.log(`[README Fetch] 404 for ${filename} on branch ${branch}`);
               // File doesn't exist, try next filename
             } else {
               const errorText = await apiResponse.text();
@@ -947,7 +971,6 @@ export const fetchReadmeFromGitHub = internalAction({
             // Try raw GitHub URL as fallback
             try {
               const rawUrl = `https://raw.githubusercontent.com/${owner}/${repoName}/${branch}/${filename}`;
-              console.log(`[README Fetch] Trying raw URL: ${rawUrl}`);
               const rawResponse = await fetch(rawUrl, {
                 headers,
                 signal: AbortSignal.timeout(10000), // 10 second timeout
@@ -956,14 +979,7 @@ export const fetchReadmeFromGitHub = internalAction({
               if (rawResponse.ok) {
                 readmeContent = await rawResponse.text();
                 readmeFilename = filename;
-                console.log(
-                  `[README Fetch] ✅ Found README via raw URL: ${filename} on branch ${branch}`,
-                );
                 break;
-              } else {
-                console.log(
-                  `[README Fetch] Raw URL ${rawResponse.status} for ${filename} on branch ${branch}`,
-                );
               }
             } catch (rawError) {
               console.warn(`[README Fetch] Raw URL error for ${filename} on ${branch}:`, rawError);
@@ -986,17 +1002,9 @@ export const fetchReadmeFromGitHub = internalAction({
           readmeFetchedAt: Date.now(),
         });
 
-        console.log(
-          `[README Fetch] Successfully fetched README (${readmeFilename}) for submission ${args.submissionId}`,
-        );
-
         // Call coordinator to check if summary can be generated
         await checkAllProcessesCompleteAndGenerateSummary(ctx, args.submissionId);
       } else {
-        console.log(
-          `[README Fetch] No README found for submission ${args.submissionId} (repo: ${owner}/${repoName})`,
-        );
-
         // Mark README fetch as attempted and call coordinator
         await ctx.runMutation(internal.submissions.updateSubmissionSourceInternal, {
           submissionId: args.submissionId,

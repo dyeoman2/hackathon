@@ -131,6 +131,7 @@ export function SubmissionRepositorySummary({
   const processingError = submission.source?.processingError;
   const isAISearchComplete = !!submission.source?.aiSearchSyncCompletedAt;
   const hasManualSummary = !!manualSummary;
+  const hasProcessingError = processingState === 'error' || !!processingError;
 
   // Show summary if it exists, regardless of processing state
   // The summary should not change when Cloudflare AI Search indexing finishes
@@ -160,7 +161,7 @@ export function SubmissionRepositorySummary({
     }
 
     // Check if processing failed completely
-    if (processingState === 'error') {
+    if (hasProcessingError) {
       return {
         title: 'Repository Processing Failed',
         description:
@@ -388,7 +389,7 @@ export function SubmissionRepositorySummary({
             <AlertTitle>{noSummaryReason.title}</AlertTitle>
             <AlertDescription className="space-y-3">
               <p>{noSummaryReason.description}</p>
-              {processingState === 'error' && (
+              {hasProcessingError && (
                 <Button
                   onClick={handleRetryProcessing}
                   disabled={isRetrying}

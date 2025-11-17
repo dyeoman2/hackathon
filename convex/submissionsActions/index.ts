@@ -16,6 +16,7 @@ export {
   downloadAndUploadRepo,
   downloadAndUploadRepoHelper,
   fetchReadmeFromGitHub,
+  monitorSubmissionProcessing,
 } from './repoProcessing';
 export { captureScreenshot, deleteScreenshot, deleteScreenshotFromR2 } from './screenshot';
 export type {

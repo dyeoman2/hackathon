@@ -81,7 +81,6 @@ export async function checkAllProcessesCompleteAndGenerateSummary(
     submission.source?.summaryGenerationStartedAt &&
     !submission.source?.summaryGenerationCompletedAt;
   if (isGenerating) {
-    console.log(`[Summary Coordinator] Summary generation already in progress for ${submissionId}`);
     return;
   }
 
@@ -121,37 +120,15 @@ export async function checkAllProcessesCompleteAndGenerateSummary(
 
   // If a summary already exists, avoid auto-regeneration to prevent clobbering manual/approved text.
   if (hasSummary) {
-    console.log(
-      `[Summary Coordinator] Summary already exists for ${submissionId} - skipping automatic generation`,
-    );
     return;
   }
 
   // Only generate when all expected processes are done (including failures) and we have resources
   if (allProcessesCompleted && hasAnySuccessfulResources && hasEarlySummaryResources) {
-    console.log(
-      `[Summary Coordinator] Generating summary with available resources: ${[
-        hasReadme ? 'README' : '',
-        hasScreenshots ? 'Screenshots' : '',
-        hasRepoFiles ? 'RepoFiles' : '',
-        hasVideo ? 'Video' : '',
-      ]
-        .filter(Boolean)
-        .join(', ')}`,
-    );
-
     await generateSummaryHelper(ctx, {
       submissionId,
       forceRegenerate: false,
     });
-  } else if (allProcessesCompleted && !hasAnySuccessfulResources) {
-    console.log(
-      `[Summary Coordinator] All processes completed but no resources obtained - cannot generate summary`,
-    );
-  } else {
-    console.log(
-      `[Summary Coordinator] Waiting for more resources: README=${readmeCompleted ? '✅' : '⏳'}, Screenshots=${screenshotsCompleted ? '✅' : '⏳'}`,
-    );
   }
 }
 
@@ -355,54 +332,20 @@ export const checkCloudflareIndexing = internalAction({
       let jobStatus: CloudflareJobStatus = null;
       let waitForJobCompletion = false;
 
-      // Log current state for debugging
-      console.log(
-        `[AI Search] Checking indexing status for submission ${args.submissionId} (attempt ${args.attempt}/${maxAttempts})`,
-      );
-      console.log(`[AI Search] Current state:`, {
-        processingState: submission.source?.processingState,
-        hasJobId: !!submission.source?.aiSearchSyncJobId,
-        jobId: submission.source?.aiSearchSyncJobId,
-        syncStartedAt: submission.source?.aiSearchSyncStartedAt
-          ? new Date(submission.source.aiSearchSyncStartedAt).toISOString()
-          : null,
-        syncCompletedAt: submission.source?.aiSearchSyncCompletedAt
-          ? new Date(submission.source.aiSearchSyncCompletedAt).toISOString()
-          : null,
-        uploadedAt: submission.source?.uploadedAt
-          ? new Date(submission.source.uploadedAt).toISOString()
-          : null,
-        timeSinceUpload: timeSinceUpload > 0 ? `${Math.round(timeSinceUpload / 1000)}s` : 'N/A',
-        r2PathPrefix,
-      });
-
       // If sync completion time is already recorded, assume indexing is complete
       // This handles cases where indexing was confirmed in a previous attempt
       if (submission.source?.aiSearchSyncCompletedAt) {
-        console.log(
-          `[AI Search] ✅ Sync completion already recorded at ${new Date(submission.source.aiSearchSyncCompletedAt).toISOString()} - assuming indexing is complete`,
-        );
         indexed = true;
       }
 
       // First, try to check job status if we have a job_id and indexing isn't already confirmed
       if (!indexed && submission.source?.aiSearchSyncJobId) {
-        console.log(
-          `[AI Search] Checking job status for job ${submission.source.aiSearchSyncJobId}...`,
-        );
         jobStatus = await checkAISearchJobStatus(ctx, submission.source.aiSearchSyncJobId);
-        console.log(
-          `[AI Search] Job ${submission.source.aiSearchSyncJobId} status: ${jobStatus || 'unknown (null)'}`,
-        );
 
         if (jobStatus === 'completed') {
-          console.log(`[AI Search] ✅ Sync job completed - files should be indexed`);
           indexed = true;
           // Record sync completion time
           const completedAt = Date.now();
-          console.log(
-            `[AI Search] Recording sync completion time: ${new Date(completedAt).toISOString()}`,
-          );
           await ctx.runMutation(
             (
               internal.submissions as unknown as {
@@ -414,14 +357,10 @@ export const checkCloudflareIndexing = internalAction({
               aiSearchSyncCompletedAt: completedAt,
             },
           );
-          console.log(`[AI Search] ✅ Sync completion recorded successfully`);
         } else if (jobStatus === 'failed') {
           console.warn(`[AI Search] ⚠️ Sync job failed - will try querying documents as fallback`);
           // Continue to document query fallback below
         } else if (jobStatus === 'running' || jobStatus === 'pending') {
-          console.log(
-            `[AI Search] ⏳ Sync job still ${jobStatus} - waiting for completion (attempt ${args.attempt}/${maxAttempts})`,
-          );
           // Job is still running, don't mark as indexed yet
           indexed = false;
           waitForJobCompletion = true;
@@ -435,15 +374,9 @@ export const checkCloudflareIndexing = internalAction({
 
           if (syncStartedAt > 0 && timeSinceSyncStart > MIN_TIME_FOR_JOB_COMPLETION) {
             // Job was started but is now not found - likely completed and cleaned up
-            console.log(
-              `[AI Search] ✅ Job not found but sync started ${Math.round(timeSinceSyncStart / 1000)}s ago (${Math.round(timeSinceSyncStart / 60000)} minutes). Assuming job completed and was cleaned up.`,
-            );
             indexed = true;
             // Record sync completion time
             const completedAt = Date.now();
-            console.log(
-              `[AI Search] Recording sync completion time (job cleanup): ${new Date(completedAt).toISOString()}`,
-            );
             await ctx.runMutation(
               (
                 internal.submissions as unknown as {
@@ -454,12 +387,6 @@ export const checkCloudflareIndexing = internalAction({
                 submissionId: args.submissionId,
                 aiSearchSyncCompletedAt: completedAt,
               },
-            );
-            console.log(`[AI Search] ✅ Sync completion recorded successfully (job cleanup)`);
-          } else {
-            // Job not found and not enough time has passed - fall back to document query
-            console.log(
-              `[AI Search] ⏳ Job status unknown or not found (sync started ${Math.round(timeSinceSyncStart / 1000)}s ago, need ${Math.round(MIN_TIME_FOR_JOB_COMPLETION / 60000)} minutes) - falling back to document query`,
             );
           }
         }
@@ -494,7 +421,6 @@ export const checkCloudflareIndexing = internalAction({
               path?: string;
             };
 
-            console.log('[AI Search] Querying with folder-scoped filter first');
             const filteredResponse = await fetch(testQueryUrl, {
               method: 'POST',
               headers: {
@@ -532,38 +458,13 @@ export const checkCloudflareIndexing = internalAction({
                   return docPath.startsWith(r2PathPrefix);
                 });
 
-                const sampleFilteredPaths = filteredDocs.slice(0, 5).map((doc) => ({
-                  path: doc.attributes?.path || doc.path || doc.filename || 'Unknown',
-                  matchesPrefix: (
-                    doc.attributes?.path ||
-                    doc.path ||
-                    doc.filename ||
-                    ''
-                  ).startsWith(r2PathPrefix),
-                  submissionId:
-                    (doc.attributes?.path || doc.path || doc.filename || '').match(
-                      /repos\/([^/]+)\//,
-                    )?.[1] || 'unknown',
-                }));
-                console.log(
-                  `[AI Search] Sample filtered paths:`,
-                  JSON.stringify(sampleFilteredPaths, null, 2),
-                );
-
                 if (filteredMatches.length > 0) {
-                  console.log(
-                    `[AI Search] ✅ Filtered query confirmed ${filteredMatches.length} documents for this submission`,
-                  );
                   indexed = true;
                 } else {
                   console.warn(
                     `[AI Search] ⚠️ Filtered query returned ${filteredDocs.length} documents but none matched prefix ${r2PathPrefix}`,
                   );
                 }
-              } else {
-                console.log(
-                  '[AI Search] Filtered query returned 0 documents - running diagnostic query',
-                );
               }
             } else {
               const errorText = await filteredResponse.text();
@@ -767,7 +668,6 @@ export const checkCloudflareIndexing = internalAction({
             aiSearchSyncCompletedAt: completedAt,
           },
         );
-        console.log(`[AI Search] ✅ Sync completion recorded successfully`);
       }
 
       // Files are indexed - mark indexing as complete
@@ -793,7 +693,6 @@ export const checkCloudflareIndexing = internalAction({
             processingState: 'complete',
           },
         );
-        console.log(`[AI Search] ✅ Final processing state update complete`);
       }
     } catch (error) {
       // Log error details
@@ -1178,7 +1077,6 @@ export const continueCloudflareIndexing = internalAction({
               processingState: 'complete',
             },
           );
-          console.log(`[AI Search] ✅ Continuation: Processing state marked as complete`);
           return;
         }
       }
@@ -1383,9 +1281,6 @@ async function generateSummaryWithAI(
     // Format the structured output as markdown
     const summary = `${result.summary.mainPurpose}\n\n**Main Features and Functionality:**\n\n${result.summary.mainFeaturesAndFunctionality}\n\n**Key Technologies and Frameworks:**\n\n${result.summary.keyTechnologiesAndFrameworks}`;
 
-    console.log(`[Early Summary] Generated structured summary with all three sections`);
-    console.log(`[Early Summary] Finish reason: ${result.finishReason}`);
-
     return summary;
   } catch (error) {
     const errorMessage =
@@ -1423,7 +1318,6 @@ async function generateSummaryWithAI(
 
     // Try fallback to text generation if structured output fails
     try {
-      console.log(`[Early Summary] Attempting fallback to text generation...`);
       const { generateWithGatewayHelper } = await import('../cloudflareAi');
       const fallbackResult = await generateWithGatewayHelper(prompt, 'llama');
 
@@ -1435,7 +1329,6 @@ async function generateSummaryWithAI(
         text.includes('**Key Technologies and Frameworks:**') &&
         text.includes('**Main Features and Functionality:**')
       ) {
-        console.log(`[Early Summary] Fallback text generation produced valid format`);
         // Strip "**Main Purpose:**" if present since we don't want that label
         const cleanedText = text.replace(/^\*\\*Main Purpose:\*\*\s*\n\n?/i, '');
         return cleanedText;
@@ -1480,7 +1373,6 @@ async function generateSummaryHelper(
   // Check if summary already exists (skip only if not forcing regeneration)
   // Note: aiSummary can contain either early summary or AI Search summary
   if (submission.source?.aiSummary && !args.forceRegenerate) {
-    console.log(`[Early Summary] Submission ${args.submissionId} already has a summary - skipping`);
     return { success: true, skipped: true };
   }
 

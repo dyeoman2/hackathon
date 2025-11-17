@@ -6,6 +6,7 @@ import { getAutumnCreditFeatureId } from '../src/lib/server/env.server';
 import { calculateAverageRating, extractRatingValues } from '../src/lib/shared/rating-utils';
 import { assertUserId } from '../src/lib/shared/user-id';
 import { components, internal } from './_generated/api';
+import type { Id } from './_generated/dataModel';
 import {
   action,
   internalAction,
@@ -18,6 +19,7 @@ import { authComponent } from './auth';
 import { guarded } from './authz/guardFactory';
 import { AUTUMN_NOT_CONFIGURED_ERROR, autumn, isAutumnConfigured } from './autumn';
 import { requireHackathonRole } from './hackathons';
+import { markProcessingErrorWithFallback } from './submissionsActions/processingError';
 
 const submissionsInternalApi = internal as unknown as {
   submissions: {
@@ -29,6 +31,33 @@ const submissionsInternalApi = internal as unknown as {
     migrateSubmissionUrl: FunctionReference<'mutation', 'internal'>;
   };
 };
+
+const PROCESSING_MONITOR_DELAY_MS = 5 * 60 * 1000;
+
+type SchedulerContext = {
+  scheduler: {
+    runAfter: (
+      delayMs: number,
+      fn: FunctionReference<'action', 'internal'>,
+      args: Record<string, unknown>,
+    ) => Promise<unknown>;
+  };
+};
+
+async function scheduleProcessingWatchdog(ctx: SchedulerContext, submissionId: Id<'submissions'>) {
+  try {
+    await ctx.scheduler.runAfter(
+      PROCESSING_MONITOR_DELAY_MS,
+      internal.submissionsActions.repoProcessing.monitorSubmissionProcessing,
+      {
+        submissionId,
+        attempt: 0,
+      },
+    );
+  } catch (error) {
+    console.error('Failed to schedule processing watchdog:', error);
+  }
+}
 
 // Status transitions are now unrestricted - any status can transition to any other status
 
@@ -350,8 +379,18 @@ export const createSubmissionInternal = internalMutation({
       await ctx.scheduler.runAfter(0, internal.submissions.processSubmission, {
         submissionId,
       });
+      await scheduleProcessingWatchdog(ctx, submissionId);
     } catch (error) {
       console.error('Failed to schedule submission processing:', error);
+      // Mark as errored so the UI shows retry controls instead of spinning forever
+      await ctx.db.patch(submissionId, {
+        source: {
+          processingState: 'error',
+          processingError:
+            'Failed to start repository processing. Click "Retry Processing" to try again.',
+        },
+        updatedAt: Date.now(),
+      });
       // Don't throw - submission creation should succeed even if scheduling fails
     }
 
@@ -709,8 +748,14 @@ export const retrySubmissionProcessing = action({
       await ctx.scheduler.runAfter(0, internal.submissions.processSubmission, {
         submissionId: args.submissionId,
       });
+      await scheduleProcessingWatchdog(ctx, args.submissionId);
     } catch (error) {
       console.error('Failed to schedule retry processing:', error);
+      await markProcessingErrorWithFallback(
+        ctx,
+        args.submissionId,
+        'Failed to restart repository processing. Please try again.',
+      );
       throw new Error('Failed to retry processing. Please try again.');
     }
 
@@ -924,7 +969,12 @@ export const processSubmission = internalAction({
           `Failed to schedule repo processing for submission ${args.submissionId}:`,
           error,
         );
-        // Don't throw - submission creation should succeed even if repo processing fails
+        await markProcessingErrorWithFallback(
+          ctx,
+          args.submissionId,
+          'Failed to start repository processing. Click "Retry Processing" to try again.',
+        );
+        return;
       }
 
       // Trigger screenshot capture if siteUrl is provided (runs in parallel with README fetch and repo upload)
@@ -1279,6 +1329,44 @@ export const updateSubmissionSourceInternal = internalMutation({
     });
 
     return { success: true };
+  },
+});
+
+/**
+ * Minimal internal mutation to mark a submission's processing state as errored.
+ * Used as a fallback when updateSubmissionSourceInternal fails in actions.
+ */
+export const markProcessingErrorInternal = internalMutation({
+  args: {
+    submissionId: v.id('submissions'),
+    processingError: v.string(),
+    processingState: v.optional(
+      v.union(
+        v.literal('downloading'),
+        v.literal('uploading'),
+        v.literal('indexing'),
+        v.literal('generating'),
+        v.literal('complete'),
+        v.literal('error'),
+      ),
+    ),
+  },
+  handler: async (ctx, args) => {
+    const submission = await ctx.db.get(args.submissionId);
+    if (!submission) {
+      throw new Error('Submission not found');
+    }
+
+    const nextSource = {
+      ...submission.source,
+      processingState: args.processingState ?? 'error',
+      processingError: args.processingError,
+    };
+
+    await ctx.db.patch(args.submissionId, {
+      source: nextSource,
+      updatedAt: Date.now(),
+    });
   },
 });
 
@@ -1653,7 +1741,7 @@ export const migrateSubmissionUrl = internalMutation({
 
 /**
  * Seed hackathon with submissions (admin only)
- * Creates multiple submissions from provided data with 20-second delays between each
+ * Creates multiple submissions from provided data with 5-second delays between each
  */
 export const seedHackathonSubmissions = guarded.action(
   'user.write',
@@ -1721,9 +1809,9 @@ export const seedHackathonSubmissions = guarded.action(
           `Created submission ${i + 1}/${args.submissions.length}: ${submissionData.title}`,
         );
 
-        // Wait 20 seconds before creating the next submission (except for the last one)
+        // Wait 5 seconds before creating the next submission (except for the last one)
         if (i < args.submissions.length - 1) {
-          await new Promise((resolve) => setTimeout(resolve, 20000));
+          await new Promise((resolve) => setTimeout(resolve, 5000));
         }
       } catch (error) {
         console.error(`Failed to create submission ${i + 1}: ${submissionData.title}`, error);

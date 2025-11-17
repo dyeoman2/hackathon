@@ -25,6 +25,7 @@ import type * as reveal from "../reveal.js";
 import type * as submissions from "../submissions.js";
 import type * as submissionsActions_aiSummary from "../submissionsActions/aiSummary.js";
 import type * as submissionsActions_index from "../submissionsActions/index.js";
+import type * as submissionsActions_processingError from "../submissionsActions/processingError.js";
 import type * as submissionsActions_r2Cleanup from "../submissionsActions/r2Cleanup.js";
 import type * as submissionsActions_repoProcessing from "../submissionsActions/repoProcessing.js";
 import type * as submissionsActions_screenshot from "../submissionsActions/screenshot.js";
@@ -58,6 +59,7 @@ declare const fullApi: ApiFromModules<{
   submissions: typeof submissions;
   "submissionsActions/aiSummary": typeof submissionsActions_aiSummary;
   "submissionsActions/index": typeof submissionsActions_index;
+  "submissionsActions/processingError": typeof submissionsActions_processingError;
   "submissionsActions/r2Cleanup": typeof submissionsActions_r2Cleanup;
   "submissionsActions/repoProcessing": typeof submissionsActions_repoProcessing;
   "submissionsActions/screenshot": typeof submissionsActions_screenshot;
