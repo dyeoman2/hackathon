@@ -88,15 +88,13 @@ export async function checkAllProcessesCompleteAndGenerateSummary(
   // Determine which processes should run for this submission
   const shouldFetchReadme = !!submission.repoUrl?.trim();
   const shouldCaptureScreenshots = !!submission.siteUrl?.trim();
-  const shouldUploadRepo = !!submission.repoUrl?.trim();
 
   // Check completion status of async processes
-  const screenshotCaptureCompletedAt =
-    (submission.source as { screenshotCaptureCompletedAt?: number } | undefined)
-      ?.screenshotCaptureCompletedAt;
+  const screenshotCaptureCompletedAt = (
+    submission.source as { screenshotCaptureCompletedAt?: number } | undefined
+  )?.screenshotCaptureCompletedAt;
   const readmeCompleted = !shouldFetchReadme || !!submission.source?.readmeFetchedAt;
-  const screenshotsCompleted =
-    !shouldCaptureScreenshots || !!screenshotCaptureCompletedAt;
+  const screenshotsCompleted = !shouldCaptureScreenshots || !!screenshotCaptureCompletedAt;
   // Repo processing is complete if uploaded successfully OR failed (error state)
   // Have ALL expected processes completed? (success or failure)
   const allProcessesCompleted = readmeCompleted && screenshotsCompleted;
@@ -130,11 +128,7 @@ export async function checkAllProcessesCompleteAndGenerateSummary(
   }
 
   // Only generate when all expected processes are done (including failures) and we have resources
-  if (
-    allProcessesCompleted &&
-    hasAnySuccessfulResources &&
-    hasEarlySummaryResources
-  ) {
+  if (allProcessesCompleted && hasAnySuccessfulResources && hasEarlySummaryResources) {
     console.log(
       `[Summary Coordinator] Generating summary with available resources: ${[
         hasReadme ? 'README' : '',

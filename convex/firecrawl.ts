@@ -130,54 +130,13 @@ export const getVibeAppsProjects = guarded.action(
 
       // Step 1: Scrape main page to get project info and vibeapps URLs
       console.log('Step 1: Scraping main vibeapps.dev page...');
-      const mainPageSchema = {
-        type: 'object',
-        properties: {
-          projects: {
-            type: 'array',
-            items: {
-              type: 'object',
-              properties: {
-                name: {
-                  type: 'string',
-                  description: 'Name of the project as shown on vibeapps.dev',
-                },
-                creator: {
-                  type: 'string',
-                  description: 'Display name or handle of the creator of the project',
-                },
-                vibeappsUrl: {
-                  type: 'string',
-                  description:
-                    'URL of the project page on vibeapps.dev (e.g., https://vibeapps.dev/app/project-name)',
-                },
-                githubUrl: {
-                  type: 'string',
-                  description: 'GitHub repository URL for the project, if available on the page',
-                },
-                description: {
-                  type: 'string',
-                  description: 'Short description of the project if available',
-                },
-                tags: {
-                  type: 'array',
-                  items: { type: 'string' },
-                  description: 'Tags associated with the project',
-                },
-              },
-              required: ['name', 'vibeappsUrl'],
-            },
-          },
-        },
-        required: ['projects'],
-      };
 
       // Scrape the page to get links directly from Firecrawl
       // Note: Firecrawl cannot click "Load More" buttons, so we get initially visible projects only
       const pageResult = await firecrawl.scrape('https://vibeapps.dev/tag/tanstackstart', {
         formats: ['links'], // Get all links directly from Firecrawl
         onlyMainContent: false,
-        waitFor: 10000, // Wait for content to load
+        waitFor: 15000, // Increased wait time for JS-heavy content
         maxAge: 0, // Bypass cache for fresh data (0 = no caching)
       });
 
@@ -215,23 +174,29 @@ export const getVibeAppsProjects = guarded.action(
 
       console.log(`Created ${markdownProjects.length} projects from links extraction`);
 
-      // Now try JSON extraction as well
+      // Now try JSON extraction as well - use simpler schema
       const mainResult = await firecrawl.scrape('https://vibeapps.dev/tag/tanstackstart', {
         formats: [
           {
             type: 'json',
-            schema: mainPageSchema,
-            prompt:
-              'Extract ALL projects listed on this vibeapps.dev tag page (https://vibeapps.dev/tag/tanstackstart). ' +
-              'Look for project cards, listings, or entries that show individual projects. ' +
-              'For each project, capture: ' +
-              'name (project name as displayed), ' +
-              'creator (person or team name/handle), ' +
-              'vibeappsUrl (the URL to the individual project page on vibeapps.dev, usually /s/project-name), ' +
-              'githubUrl (GitHub repository URL if shown), ' +
-              'description (project description if available), ' +
-              'tags (any tags or categories associated with the project). ' +
-              'Make sure to find ALL projects on the page, including any that might be in different sections or layouts.',
+            schema: {
+              type: 'object',
+              properties: {
+                projects: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      name: { type: 'string' },
+                      vibeappsUrl: { type: 'string' },
+                    },
+                    required: ['name', 'vibeappsUrl'],
+                  },
+                },
+              },
+              required: ['projects'],
+            },
+            prompt: 'Extract project names and their vibeapps.dev URLs from this page.',
           },
         ],
         maxAge: 0, // Bypass cache for fresh data (0 = no caching)
@@ -282,57 +247,72 @@ export const getVibeAppsProjects = guarded.action(
         }
 
         try {
-          // Define schema for individual project page
-          const projectPageSchema = {
-            type: 'object',
-            properties: {
-              websiteUrl: {
-                type: 'string',
-                description: 'The actual website/demo URL from the Project Links & Tags section',
-              },
-              videoUrl: {
-                type: 'string',
-                description: 'YouTube video URL from the Project Links & Tags section',
-              },
-            },
-          };
-
+          // Extract URLs from the "Project Links & Tags" section
           const projectResult = await firecrawl.scrape(vibeappsUrl, {
             formats: [
               {
                 type: 'json',
-                schema: projectPageSchema,
+                schema: {
+                  type: 'object',
+                  properties: {
+                    creator: {
+                      type: 'string',
+                      description: 'The project creator/team name (e.g., "by Hamza Tekin")',
+                    },
+                    websiteUrl: {
+                      type: 'string',
+                      description: 'The main website/demo URL from Project Links & Tags section',
+                    },
+                    videoUrl: {
+                      type: 'string',
+                      description: 'YouTube video URL from Project Links & Tags section',
+                    },
+                    githubUrl: {
+                      type: 'string',
+                      description: 'GitHub repository URL from Project Links & Tags section',
+                    },
+                  },
+                },
                 prompt:
-                  'Extract the website/demo URL and YouTube video URL from the "Project Links & Tags" section of this vibeapps.dev project page. ' +
-                  'Look for links in sections like "Project Links", "Links & Tags", or similar. ' +
-                  'Return the main website/demo URL that users would visit to see the actual project, and any YouTube video URL if present.',
+                  'Extract information from this vibeapps.dev project page: 1) The creator/team name (look for text like "by [Name]" near the top of the page), 2) The website/demo URL from the "Project Links & Tags" section, 3) Any YouTube video URL from the "Project Links & Tags" section, 4) The GitHub repository URL from the "Project Links & Tags" section. Focus on the main website/demo link (usually the first link in Project Links & Tags), YouTube video links, and GitHub repository links.',
               },
             ],
+            onlyMainContent: true, // Focus on main content for better extraction
+            waitFor: 15000, // Increased wait time for JS-heavy content
             maxAge: 0, // Bypass cache for fresh data (0 = no caching)
           });
 
-          let websiteUrl = null;
-          let videoUrl = null;
+          let websiteUrl: string | undefined;
+          let videoUrl: string | undefined;
+          let extractedGithubUrl: string | undefined;
+          let extractedCreator: string | undefined;
+
           if (projectResult?.json) {
             const projectJson = projectResult.json as Record<string, unknown>;
-            websiteUrl = (projectJson.websiteUrl as string | undefined)?.trim() || null;
-            videoUrl = (projectJson.videoUrl as string | undefined)?.trim() || null;
+            websiteUrl = (projectJson.websiteUrl as string | undefined)?.trim();
+            videoUrl = (projectJson.videoUrl as string | undefined)?.trim();
+            extractedGithubUrl = (projectJson.githubUrl as string | undefined)?.trim();
+            extractedCreator = (projectJson.creator as string | undefined)?.trim();
           }
 
-          // Store the project in the database
+          // Use extracted creator if available, otherwise use the one from main page
+          const finalCreator = extractedCreator || creator;
+          // Use extracted GitHub URL if we didn't get one from the main page
+          const finalGithubUrl = githubUrl || extractedGithubUrl;
+
           await ctx.runMutation(api.vibeApps.upsertVibeAppsProject, {
             name,
-            creator: creator || undefined,
+            creator: finalCreator || undefined,
             vibeappsUrl,
-            githubUrl: githubUrl || undefined,
+            githubUrl: finalGithubUrl || undefined,
             websiteUrl: websiteUrl || undefined,
             videoUrl: videoUrl || undefined,
           });
         } catch {
-          // Still store the project but without website URL or youtube URL
+          // Still store the project but without extracted URLs
           await ctx.runMutation(api.vibeApps.upsertVibeAppsProject, {
             name,
-            creator: creator || undefined,
+            creator: creator || undefined, // Use original creator from main page in catch block
             vibeappsUrl,
             githubUrl: githubUrl || undefined,
             websiteUrl: undefined,
