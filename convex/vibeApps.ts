@@ -22,7 +22,7 @@ export type VibeAppsProject = {
 export const getAllVibeAppsProjects = query({
   args: {},
   handler: async (ctx) => {
-    return await ctx.db.query('vibeAppsProjects').collect();
+    return await ctx.db.query('vibeAppsProjects').order('desc').collect();
   },
 });
 

@@ -262,7 +262,7 @@ export function VibeAppsPage() {
                         href={project.videoUrl}
                         target="_blank"
                         rel="noreferrer"
-                        className="text-sm text-blue-600 hover:text-blue-800 underline flex items-center gap-1"
+                        className="text-sm text-red-600 hover:text-red-800 underline flex items-center gap-1"
                       >
                         <svg
                           className="h-4 w-4"
