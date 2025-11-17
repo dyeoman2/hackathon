@@ -769,6 +769,7 @@ export const diagnoseAISearchPaths = internalAction({
       body: JSON.stringify({
         query: `files in ${r2PathPrefix}`,
         max_num_results: 10,
+        model: '@cf/meta/llama-3.1-8b-instruct-fast',
         filters: buildFolderFilter(r2PathPrefix, args.submissionId),
       }),
     });
@@ -1042,6 +1043,7 @@ export const continueCloudflareIndexing = internalAction({
         body: JSON.stringify({
           query: `files in path ${r2PathPrefix} for submission ${args.submissionId}`,
           max_num_results: 10, // Just check if any documents exist
+          model: '@cf/meta/llama-3.1-8b-instruct-fast',
           filters: folderFilter,
         }),
       });
