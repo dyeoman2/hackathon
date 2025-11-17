@@ -139,8 +139,8 @@ function SubmissionDetailComponent() {
       return { currentIndex: -1, previousSubmissionId: null, nextSubmissionId: null };
     }
 
-    const sortedSubmissions = [...submissions].sort((a, b) => a.createdAt - b.createdAt);
-    const index = sortedSubmissions.findIndex((s) => s._id === submissionId);
+    // Use submissions in the same order as they appear in the list (newest first from Convex)
+    const index = submissions.findIndex((s) => s._id === submissionId);
 
     if (index === -1) {
       return { currentIndex: -1, previousSubmissionId: null, nextSubmissionId: null };
@@ -148,9 +148,9 @@ function SubmissionDetailComponent() {
 
     return {
       currentIndex: index,
-      previousSubmissionId: index > 0 ? sortedSubmissions[index - 1]._id : null,
+      previousSubmissionId: index > 0 ? submissions[index - 1]._id : null,
       nextSubmissionId:
-        index < sortedSubmissions.length - 1 ? sortedSubmissions[index + 1]._id : null,
+        index < submissions.length - 1 ? submissions[index + 1]._id : null,
     };
   }, [submissions, submission, submissionId]);
 
