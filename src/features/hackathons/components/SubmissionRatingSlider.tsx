@@ -101,7 +101,7 @@ export function SubmissionRatingSlider({
           </div>
           <div className="text-right">
             <CardTitle className="text-right">
-              {isLoading ? 'Loading...' : getScoreDisplay(displayValue)}
+              {isLoading ? '' : getScoreDisplay(displayValue)}
             </CardTitle>
           </div>
         </div>

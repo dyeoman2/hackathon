@@ -26,3 +26,35 @@ export function calculateAverageRating(ratings: number[]): number {
 export function extractRatingValues(ratingObjects: Array<{ rating: number }>): number[] {
   return ratingObjects.map((r) => r.rating);
 }
+
+/**
+ * Check if a GitHub repository is inaccessible based on processing state and error
+ *
+ * @param source - The source object from a submission
+ * @returns true if the repository appears to be inaccessible (private or doesn't exist)
+ */
+export function isRepoInaccessible(source?: {
+  processingState?: string;
+  processingError?: string;
+}): boolean {
+  if (!source) return false;
+
+  const { processingError } = source;
+
+  // Check if there's a processing error related to repo access
+  if (processingError) {
+    const errorLower = processingError.toLowerCase();
+    return (
+      errorLower.includes('repository not found') ||
+      errorLower.includes('access denied') ||
+      errorLower.includes('private') ||
+      errorLower.includes('authentication failed') ||
+      errorLower.includes('does not exist') ||
+      errorLower.includes('requires github token') ||
+      errorLower.includes('not accessible') ||
+      errorLower.includes('could not access')
+    );
+  }
+
+  return false;
+}

@@ -4,7 +4,7 @@ import type { Doc, Id } from '@convex/_generated/dataModel';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 
 import { useAction, useQuery } from 'convex/react';
-import { ExternalLink } from 'lucide-react';
+import { AlertTriangle, ExternalLink } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SiGithub } from 'react-icons/si';
 import { NotFound } from '~/components/NotFound';
@@ -12,6 +12,7 @@ import { PageHeader } from '~/components/PageHeader';
 import { DashboardErrorBoundary } from '~/components/RouteErrorBoundaries';
 import { Button } from '~/components/ui/button';
 import { DeleteConfirmationDialog } from '~/components/ui/delete-confirmation-dialog';
+import { SimpleTooltip } from '~/components/ui/simple-tooltip';
 import { Skeleton } from '~/components/ui/skeleton';
 import { useToast } from '~/components/ui/toast';
 import { useOptimisticMutation } from '~/features/admin/hooks/useOptimisticUpdates';
@@ -26,6 +27,7 @@ import { SubmissionScreenshots } from '~/features/hackathons/components/Submissi
 import { SubmissionTimeline } from '~/features/hackathons/components/SubmissionTimeline';
 import { flushPendingSubmissionRatingsWithTimeout } from '~/features/hackathons/hooks/useSubmissionRatingQueue';
 import { usePerformanceMonitoring } from '~/hooks/use-performance-monitoring';
+import { isRepoInaccessible } from '~/lib/shared/rating-utils';
 
 export const Route = createFileRoute('/h/$id/submissions/$submissionId')({
   component: SubmissionDetailComponent,
@@ -304,6 +306,9 @@ function SubmissionDetailComponent() {
     return <NotFound />;
   }
 
+  // Prefer authenticated submission source if available (more complete), otherwise use submission source
+  const submissionSource = authenticatedSubmission?.source ?? submission.source;
+
   return (
     <div className="space-y-6">
       <SubmissionNavigation
@@ -321,13 +326,36 @@ function SubmissionDetailComponent() {
         titleActions={
           <>
             <div className="hidden sm:flex items-center gap-2 flex-wrap">
-              {submission.repoUrl && (
-                <Button variant="ghost" size="sm" asChild className="touch-manipulation">
-                  <a href={submission.repoUrl} target="_blank" rel="noopener noreferrer">
-                    <SiGithub className="h-4 w-4" />
-                  </a>
-                </Button>
-              )}
+              {submission.repoUrl &&
+                (() => {
+                  const isInaccessible = isRepoInaccessible(submissionSource);
+                  const button = (
+                    <Button variant="ghost" size="sm" asChild className="touch-manipulation">
+                      <a
+                        href={submission.repoUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="relative inline-flex items-center justify-center"
+                      >
+                        <SiGithub className="h-4 w-4" />
+                        {isInaccessible && (
+                          <AlertTriangle
+                            className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 text-orange-500 z-10"
+                            strokeWidth={2.5}
+                          />
+                        )}
+                      </a>
+                    </Button>
+                  );
+
+                  return isInaccessible ? (
+                    <SimpleTooltip content="Repository may be private or does not exist">
+                      {button}
+                    </SimpleTooltip>
+                  ) : (
+                    button
+                  );
+                })()}
               {submission.siteUrl && (
                 <Button variant="ghost" size="sm" asChild className="touch-manipulation">
                   <a href={submission.siteUrl} target="_blank" rel="noopener noreferrer">
@@ -356,13 +384,36 @@ function SubmissionDetailComponent() {
         actions={
           <div className="flex items-center justify-between gap-2 w-full sm:w-auto sm:justify-end">
             <div className="flex items-center gap-2 sm:hidden">
-              {submission.repoUrl && (
-                <Button variant="ghost" size="sm" asChild className="touch-manipulation">
-                  <a href={submission.repoUrl} target="_blank" rel="noopener noreferrer">
-                    <SiGithub className="h-4 w-4" />
-                  </a>
-                </Button>
-              )}
+              {submission.repoUrl &&
+                (() => {
+                  const isInaccessible = isRepoInaccessible(submissionSource);
+                  const button = (
+                    <Button variant="ghost" size="sm" asChild className="touch-manipulation">
+                      <a
+                        href={submission.repoUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="relative inline-flex items-center justify-center"
+                      >
+                        <SiGithub className="h-4 w-4" />
+                        {isInaccessible && (
+                          <AlertTriangle
+                            className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 text-orange-500 z-10"
+                            strokeWidth={2.5}
+                          />
+                        )}
+                      </a>
+                    </Button>
+                  );
+
+                  return isInaccessible ? (
+                    <SimpleTooltip content="Repository may be private or does not exist">
+                      {button}
+                    </SimpleTooltip>
+                  ) : (
+                    button
+                  );
+                })()}
               {submission.siteUrl && (
                 <Button variant="ghost" size="sm" asChild className="touch-manipulation">
                   <a href={submission.siteUrl} target="_blank" rel="noopener noreferrer">

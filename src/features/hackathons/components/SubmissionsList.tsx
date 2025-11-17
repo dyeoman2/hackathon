@@ -2,16 +2,25 @@ import { api } from '@convex/_generated/api';
 import type { Doc, Id } from '@convex/_generated/dataModel';
 import { useRouter } from '@tanstack/react-router';
 import { useQuery } from 'convex/react';
-import { ExternalLink, Eye, EyeOff, Github, Plus, Youtube } from 'lucide-react';
+import { AlertTriangle, ExternalLink, Eye, EyeOff, Github, Plus, Youtube } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Badge } from '~/components/ui/badge';
 import { Button } from '~/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~/components/ui/card';
 import { DeleteConfirmationDialog } from '~/components/ui/delete-confirmation-dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '~/components/ui/select';
+import { SimpleTooltip } from '~/components/ui/simple-tooltip';
 import { Skeleton } from '~/components/ui/skeleton';
 import { useToast } from '~/components/ui/toast';
 import { useOptimisticMutation } from '~/features/admin/hooks/useOptimisticUpdates';
 import { useAuth } from '~/features/auth/hooks/useAuth';
+import { isRepoInaccessible } from '~/lib/shared/rating-utils';
 import { NewSubmissionModal } from './NewSubmissionModal';
 
 type PublicSubmission = {
@@ -40,6 +49,14 @@ type SubmissionWithRating = Doc<'submissions'> & {
 };
 
 type SubmissionData = PublicSubmission | SubmissionWithRating;
+
+type SortOption =
+  | 'newest'
+  | 'oldest'
+  | 'rating-high'
+  | 'rating-low'
+  | 'my-rating-high'
+  | 'my-rating-low';
 
 interface SubmissionCardProps {
   submission: SubmissionData;
@@ -144,24 +161,48 @@ function SubmissionCard({
                 <Youtube className="h-4 w-4" />
               </Button>
             )}
-            {submission.repoUrl && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  window.open(submission.repoUrl, '_blank', 'noopener,noreferrer');
-                }}
-                className={`h-8 w-8 p-0 backdrop-blur-sm ${
-                  homepageScreenshot
-                    ? 'text-white hover:bg-white/20 bg-black/30'
-                    : 'text-muted-foreground hover:bg-background/20 bg-background/50'
-                }`}
-                title="View on GitHub"
-              >
-                <Github className="h-4 w-4" />
-              </Button>
-            )}
+            {submission.repoUrl &&
+              (() => {
+                const isInaccessible = isRepoInaccessible(submission.source);
+                const button = (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      window.open(submission.repoUrl, '_blank', 'noopener,noreferrer');
+                    }}
+                    className={`relative h-8 w-8 p-0 backdrop-blur-sm ${
+                      homepageScreenshot
+                        ? 'text-white hover:bg-white/20 bg-black/30'
+                        : 'text-muted-foreground hover:bg-background/20 bg-background/50'
+                    }`}
+                    title={
+                      isInaccessible
+                        ? 'Repository may be private or does not exist'
+                        : 'View on GitHub'
+                    }
+                  >
+                    <Github className="h-4 w-4" />
+                    {isInaccessible && (
+                      <AlertTriangle
+                        className={`absolute -top-0.5 -right-0.5 h-2.5 w-2.5 z-10 ${
+                          homepageScreenshot ? 'text-orange-400' : 'text-orange-500'
+                        }`}
+                        strokeWidth={2.5}
+                      />
+                    )}
+                  </Button>
+                );
+
+                return isInaccessible ? (
+                  <SimpleTooltip content="Repository may be private or does not exist">
+                    {button}
+                  </SimpleTooltip>
+                ) : (
+                  button
+                );
+              })()}
             {submission.siteUrl && (
               <Button
                 variant="ghost"
@@ -220,6 +261,7 @@ export function SubmissionsList({
   const router = useRouter();
   const { user } = useAuth();
   const [showOnlyUnrated, setShowOnlyUnrated] = useState(false);
+  const [sortBy, setSortBy] = useState<SortOption>('newest');
 
   // Use different queries based on authentication
   const authenticatedSubmissions = useQuery(
@@ -239,16 +281,86 @@ export function SubmissionsList({
   // Check if user is a contestant
   const isContestant = isAuthenticated && userRole === 'contestant';
 
-  // Filter client-side for instant toggle without re-fetching (only for authenticated users)
+  // Filter and sort client-side for instant toggle without re-fetching (only for authenticated users)
   const submissions = useMemo(() => {
     if (!allSubmissions) return undefined;
-    if (!showOnlyUnrated || !isAuthenticated) return allSubmissions;
-    return allSubmissions.filter(
-      (submission) =>
-        'myRating' in submission &&
-        (submission.myRating === null || submission.myRating === undefined),
-    );
-  }, [allSubmissions, showOnlyUnrated, isAuthenticated]);
+
+    // Apply rating filter first
+    let filtered = allSubmissions;
+    if (showOnlyUnrated && isAuthenticated) {
+      filtered = allSubmissions.filter(
+        (submission): submission is SubmissionWithRating =>
+          'myRating' in submission &&
+          (submission.myRating === null || submission.myRating === undefined),
+      );
+    }
+
+    // Apply sorting
+    const sorted = [...filtered].sort((a, b) => {
+      switch (sortBy) {
+        case 'newest':
+          return b.createdAt - a.createdAt;
+        case 'oldest':
+          return a.createdAt - b.createdAt;
+        case 'rating-high':
+          if ('averageRating' in a && 'averageRating' in b) {
+            return b.averageRating - a.averageRating;
+          }
+          // If one doesn't have rating, put it at the end
+          if ('averageRating' in a) return -1;
+          if ('averageRating' in b) return 1;
+          return 0;
+        case 'rating-low':
+          if ('averageRating' in a && 'averageRating' in b) {
+            return a.averageRating - b.averageRating;
+          }
+          // If one doesn't have rating, put it at the end
+          if ('averageRating' in a) return -1;
+          if ('averageRating' in b) return 1;
+          return 0;
+        case 'my-rating-high':
+          if ('myRating' in a && 'myRating' in b) {
+            const aHasRating = a.myRating !== null && a.myRating !== undefined;
+            const bHasRating = b.myRating !== null && b.myRating !== undefined;
+            // If both have ratings, sort by rating (highest first)
+            if (aHasRating && bHasRating) {
+              return (b.myRating ?? 0) - (a.myRating ?? 0);
+            }
+            // If only one has rating, put the one with rating first
+            if (aHasRating && !bHasRating) return -1;
+            if (!aHasRating && bHasRating) return 1;
+            // If neither has rating, maintain order
+            return 0;
+          }
+          // If one doesn't have the myRating property at all, put it at the end
+          if ('myRating' in a && a.myRating !== null && a.myRating !== undefined) return -1;
+          if ('myRating' in b && b.myRating !== null && b.myRating !== undefined) return 1;
+          return 0;
+        case 'my-rating-low':
+          if ('myRating' in a && 'myRating' in b) {
+            const aHasRating = a.myRating !== null && a.myRating !== undefined;
+            const bHasRating = b.myRating !== null && b.myRating !== undefined;
+            // If both have ratings, sort by rating (lowest first)
+            if (aHasRating && bHasRating) {
+              return (a.myRating ?? 0) - (b.myRating ?? 0);
+            }
+            // If only one has rating, put the one with rating first
+            if (aHasRating && !bHasRating) return -1;
+            if (!aHasRating && bHasRating) return 1;
+            // If neither has rating, maintain order
+            return 0;
+          }
+          // If one doesn't have the myRating property at all, put it at the end
+          if ('myRating' in a && a.myRating !== null && a.myRating !== undefined) return -1;
+          if ('myRating' in b && b.myRating !== null && b.myRating !== undefined) return 1;
+          return 0;
+        default:
+          return b.createdAt - a.createdAt;
+      }
+    });
+
+    return sorted;
+  }, [allSubmissions, showOnlyUnrated, isAuthenticated, sortBy]);
 
   // Split submissions into user's submissions and others when authenticated
   // Only split when we have authenticated data (which includes userId)
@@ -313,6 +425,9 @@ export function SubmissionsList({
   // Determine if user can see rating filters (judges, owners, admins)
   const canSeeRatingFilters =
     isAuthenticated && ['owner', 'admin', 'judge'].includes(userRole || '');
+
+  // Determine if user can see aggregate rating sort options (owners, admins only)
+  const canSeeAggregateRatingSort = isAuthenticated && ['owner', 'admin'].includes(userRole || '');
 
   // Calculate rating statistics (only for authenticated users)
   // Always use allSubmissions (unfiltered) so button shows correct counts regardless of current filter
@@ -382,31 +497,49 @@ export function SubmissionsList({
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-col gap-2">
           {!isSplitView && (
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
               <h2 className="text-2xl font-semibold">Submissions</h2>
-              {canSeeRatingFilters &&
-                ratingStats.total > 0 &&
-                ratingStats.rated > 0 &&
-                ratingStats.unrated > 0 && (
-                  <Button
-                    variant={showOnlyUnrated ? 'secondary' : 'outline'}
-                    size="sm"
-                    onClick={() => setShowOnlyUnrated(!showOnlyUnrated)}
-                    className="gap-2"
-                  >
-                    {showOnlyUnrated ? (
-                      <>
-                        <EyeOff className="h-4 w-4" />
-                        Show All ({ratingStats.total})
-                      </>
-                    ) : (
-                      <>
-                        <Eye className="h-4 w-4" />
-                        Show Unrated ({ratingStats.unrated})
-                      </>
-                    )}
-                  </Button>
-                )}
+              {canSeeRatingFilters && (
+                <>
+                  {ratingStats.total > 0 && ratingStats.rated > 0 && ratingStats.unrated > 0 && (
+                    <Button
+                      variant={showOnlyUnrated ? 'secondary' : 'outline'}
+                      size="sm"
+                      onClick={() => setShowOnlyUnrated(!showOnlyUnrated)}
+                      className="gap-2"
+                    >
+                      {showOnlyUnrated ? (
+                        <>
+                          <EyeOff className="h-4 w-4" />
+                          Show All ({ratingStats.total})
+                        </>
+                      ) : (
+                        <>
+                          <Eye className="h-4 w-4" />
+                          Show Unrated ({ratingStats.unrated})
+                        </>
+                      )}
+                    </Button>
+                  )}
+                  <Select value={sortBy} onValueChange={(value) => setSortBy(value as SortOption)}>
+                    <SelectTrigger className="w-[180px]" size="sm">
+                      <SelectValue placeholder="Sort by" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="newest">Newest First</SelectItem>
+                      <SelectItem value="oldest">Oldest First</SelectItem>
+                      {canSeeAggregateRatingSort && (
+                        <>
+                          <SelectItem value="rating-high">Highest Rating</SelectItem>
+                          <SelectItem value="rating-low">Lowest Rating</SelectItem>
+                        </>
+                      )}
+                      <SelectItem value="my-rating-high">My Rating (Highest)</SelectItem>
+                      <SelectItem value="my-rating-low">My Rating (Lowest)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </>
+              )}
             </div>
           )}
         </div>
