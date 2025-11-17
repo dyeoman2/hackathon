@@ -1125,6 +1125,152 @@ export const deleteScreenshotFromR2Internal = internalAction({
 });
 
 /**
+ * Upload a custom screenshot for a submission
+ */
+export const uploadScreenshot = guarded.action(
+  'submission.write',
+  {
+    submissionId: v.id('submissions'),
+    fileBase64: v.string(),
+    fileName: v.optional(v.string()),
+    pageName: v.optional(v.string()),
+  },
+  async (ctx: ActionCtx, args, _role) => {
+    // Get submission to verify access
+    const submission = await ctx.runQuery(
+      (internal.submissions as unknown as { getSubmissionInternal: GetSubmissionInternalRef })
+        .getSubmissionInternal,
+      {
+        submissionId: args.submissionId,
+      },
+    );
+
+    if (!submission) {
+      throw new Error('Submission not found');
+    }
+
+    // Decode base64 to bytes
+    const fileBytes = Uint8Array.from(atob(args.fileBase64), (c) => c.charCodeAt(0));
+
+    // Validate file size (limit to 10MB)
+    const maxFileSize = 10 * 1024 * 1024; // 10MB
+    if (fileBytes.length > maxFileSize) {
+      throw new Error('File size must be less than 10MB');
+    }
+
+    // Validate file type (only images)
+    // Simple check based on file header (first few bytes)
+    const fileHeader = fileBytes.slice(0, 16);
+    const isValidImage =
+      // JPEG/JPG
+      (fileHeader[0] === 0xff && fileHeader[1] === 0xd8 && fileHeader[2] === 0xff) ||
+      // PNG
+      (fileHeader[0] === 0x89 &&
+        fileHeader[1] === 0x50 &&
+        fileHeader[2] === 0x4e &&
+        fileHeader[3] === 0x47) ||
+      // WebP
+      (fileHeader[0] === 0x52 &&
+        fileHeader[1] === 0x49 &&
+        fileHeader[2] === 0x46 &&
+        fileHeader[3] === 0x46 &&
+        fileHeader[8] === 0x57 &&
+        fileHeader[9] === 0x45 &&
+        fileHeader[10] === 0x42 &&
+        fileHeader[11] === 0x50);
+
+    if (!isValidImage) {
+      throw new Error('File must be a valid image (JPEG, PNG, or WebP)');
+    }
+
+    // Get R2 credentials (throws if not configured)
+    const r2Creds = getR2Credentials();
+
+    // Create S3 client for R2
+    const s3Client = new S3Client({
+      region: 'auto',
+      endpoint: `https://${r2Creds.r2AccountId}.r2.cloudflarestorage.com`,
+      credentials: {
+        accessKeyId: r2Creds.r2AccessKeyId,
+        secretAccessKey: r2Creds.r2SecretAccessKey,
+      },
+    });
+
+    const timestamp = Date.now();
+    // Use "custom" instead of "firecrawl" to distinguish from automatically captured screenshots
+    const r2Key = `repos/${args.submissionId}/custom/${timestamp}.png`;
+
+    // Determine content type based on file header
+    let contentType = 'image/png'; // default
+    if (fileHeader[0] === 0xff && fileHeader[1] === 0xd8 && fileHeader[2] === 0xff) {
+      contentType = 'image/jpeg';
+    } else if (
+      fileHeader[0] === 0x89 &&
+      fileHeader[1] === 0x50 &&
+      fileHeader[2] === 0x4e &&
+      fileHeader[3] === 0x47
+    ) {
+      contentType = 'image/png';
+    } else if (
+      fileHeader[0] === 0x52 &&
+      fileHeader[1] === 0x49 &&
+      fileHeader[2] === 0x46 &&
+      fileHeader[3] === 0x46 &&
+      fileHeader[8] === 0x57 &&
+      fileHeader[9] === 0x45 &&
+      fileHeader[10] === 0x42 &&
+      fileHeader[11] === 0x50
+    ) {
+      contentType = 'image/webp';
+    }
+
+    // Upload screenshot to R2
+    await s3Client.send(
+      new PutObjectCommand({
+        Bucket: r2Creds.r2BucketName,
+        Key: r2Key,
+        Body: fileBytes,
+        ContentType: contentType,
+        Metadata: {
+          submissionId: args.submissionId,
+          uploadedBy: 'user', // distinguish from firecrawl
+          pageName: args.pageName || '',
+          fileName: args.fileName || '',
+          uploadedAt: timestamp.toString(),
+        },
+      }),
+    );
+
+    // Generate presigned URL for R2 object (valid for 7 days - maximum allowed)
+    const getObjectCommand = new GetObjectCommand({
+      Bucket: r2Creds.r2BucketName,
+      Key: r2Key,
+    });
+    const publicUrl = await getSignedUrl(s3Client, getObjectCommand, {
+      expiresIn: 7 * 24 * 60 * 60, // 7 days in seconds (maximum allowed)
+    });
+
+    // Add screenshot to database
+    await ctx.runMutation(internal.submissions.addScreenshot, {
+      submissionId: args.submissionId,
+      screenshot: {
+        r2Key,
+        url: publicUrl,
+        capturedAt: timestamp,
+        pageName: args.pageName || args.fileName || `Custom Screenshot`,
+      },
+    });
+
+    return {
+      success: true,
+      r2Key,
+      url: publicUrl,
+      capturedAt: timestamp,
+    };
+  },
+);
+
+/**
  * Delete a screenshot from a submission (legacy - kept for backward compatibility)
  * Note: Prefer using removeScreenshot mutation + deleteScreenshotFromR2 action for better UX
  */

@@ -1,8 +1,18 @@
 import { api } from '@convex/_generated/api';
 import type { Doc } from '@convex/_generated/dataModel';
 import { useAction } from 'convex/react';
-import { Camera, ChevronLeft, ChevronRight, Loader2, MoreVertical, Trash2, X } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import {
+  Camera,
+  ChevronLeft,
+  ChevronRight,
+  Loader2,
+  MoreVertical,
+  SearchCode,
+  Trash2,
+  Upload,
+  X,
+} from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -96,6 +106,8 @@ export function SubmissionScreenshots({ submission, canEdit = false }: Submissio
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deletingR2Key, setDeletingR2Key] = useState<string | null>(null);
   const [isCapturingScreenshot, setIsCapturingScreenshot] = useState(false);
+  const [isUploadingScreenshot, setIsUploadingScreenshot] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Check if we're in screenshot processing stages
   const screenshotProcessingStage = getScreenshotProcessingStage(submission);
@@ -104,6 +116,7 @@ export function SubmissionScreenshots({ submission, canEdit = false }: Submissio
 
   const toast = useToast();
   const captureScreenshot = useAction(api.submissionsActions.screenshot.captureScreenshot);
+  const uploadScreenshot = useAction(api.submissionsActions.screenshot.uploadScreenshot);
 
   const handleCaptureScreenshot = useCallback(async () => {
     if (!submission.siteUrl) {
@@ -138,6 +151,65 @@ export function SubmissionScreenshots({ submission, canEdit = false }: Submissio
       setIsCapturingScreenshot(false);
     }
   }, [submission.siteUrl, submission._id, captureScreenshot, toast]);
+
+  const handleUploadScreenshot = useCallback(
+    async (file: File) => {
+      setIsUploadingScreenshot(true);
+      try {
+        // Read file as base64 string for Convex compatibility
+        const fileBuffer = await file.arrayBuffer();
+        const base64String = btoa(String.fromCharCode(...new Uint8Array(fileBuffer)));
+
+        const result = await uploadScreenshot({
+          submissionId: submission._id,
+          fileBase64: base64String,
+          fileName: file.name,
+          pageName: file.name.split('.')[0] || 'Uploaded Screenshot',
+        });
+
+        if (result?.success) {
+          toast.showToast('Screenshot uploaded successfully', 'success');
+        } else {
+          toast.showToast('Failed to upload screenshot', 'error');
+        }
+      } catch (error) {
+        console.error('Failed to upload screenshot:', error);
+        toast.showToast(
+          error instanceof Error ? error.message : 'Failed to upload screenshot',
+          'error',
+        );
+      } finally {
+        setIsUploadingScreenshot(false);
+      }
+    },
+    [submission._id, uploadScreenshot, toast],
+  );
+
+  const handleFileSelect = useCallback(
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      if (file) {
+        // Validate file type
+        const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+        if (!allowedTypes.includes(file.type)) {
+          toast.showToast('Please select a valid image file (JPEG, PNG, or WebP)', 'error');
+          return;
+        }
+
+        // Validate file size (10MB limit)
+        const maxSize = 10 * 1024 * 1024;
+        if (file.size > maxSize) {
+          toast.showToast('File size must be less than 10MB', 'error');
+          return;
+        }
+
+        handleUploadScreenshot(file);
+      }
+      // Reset input
+      event.target.value = '';
+    },
+    [handleUploadScreenshot, toast],
+  );
 
   // Use optimistic mutation for instant UI updates - Convex handles rollback on error
   const removeScreenshotOptimistic = useOptimisticMutation(api.submissions.removeScreenshot, {
@@ -203,7 +275,9 @@ export function SubmissionScreenshots({ submission, canEdit = false }: Submissio
         <div className="flex items-start justify-between gap-4">
           <div>
             <CardTitle>Screenshots</CardTitle>
-            <CardDescription>Visual previews of the site captured via Firecrawl</CardDescription>
+            <CardDescription>
+              Visual previews of the site captured via Firecrawl or uploaded manually
+            </CardDescription>
           </div>
           {canEdit && submission.siteUrl && (
             <DropdownMenu>
@@ -225,8 +299,24 @@ export function SubmissionScreenshots({ submission, canEdit = false }: Submissio
                     </>
                   ) : (
                     <>
-                      <Camera className="h-4 w-4" />
-                      Capture Screenshots
+                      <SearchCode className="h-4 w-4" />
+                      Auto Capture
+                    </>
+                  )}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isUploadingScreenshot}
+                >
+                  {isUploadingScreenshot ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Uploading...
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="h-4 w-4" />
+                      Upload
                     </>
                   )}
                 </DropdownMenuItem>
@@ -517,6 +607,15 @@ export function SubmissionScreenshots({ submission, canEdit = false }: Submissio
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Hidden file input for screenshot upload */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/jpeg,image/jpg,image/png,image/webp"
+        onChange={handleFileSelect}
+        className="hidden"
+      />
     </Card>
   );
 }

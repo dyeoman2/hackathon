@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { ConvexHttpClient } from 'convex/browser';
+import { routeAdminGuard } from '~/features/auth/server/route-guards';
 import { api } from '../../convex/_generated/api';
 import type { VibeAppsProject } from '../../convex/vibeApps';
 import { VibeAppsPage } from '../components/VibeAppsPage';
@@ -7,6 +8,7 @@ import { VibeAppsPage } from '../components/VibeAppsPage';
 const convex = new ConvexHttpClient(import.meta.env.VITE_CONVEX_URL ?? '');
 
 export const Route = createFileRoute('/vibe-apps')({
+  beforeLoad: routeAdminGuard,
   loader: async () => {
     try {
       // Only load existing projects from database, don't trigger scraping
@@ -19,6 +21,7 @@ export const Route = createFileRoute('/vibe-apps')({
         vibeappsUrl: p.vibeappsUrl,
         githubUrl: p.githubUrl || null,
         websiteUrl: p.websiteUrl || null,
+        youtubeUrl: p.youtubeUrl || null,
         isActive: p.isActive ?? true, // Default to true for backward compatibility
       }));
 

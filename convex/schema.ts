@@ -35,6 +35,7 @@ export default defineSchema({
     vibeappsUrl: v.string(), // Unique identifier for the project
     githubUrl: v.optional(v.string()),
     websiteUrl: v.optional(v.string()),
+    youtubeUrl: v.optional(v.string()),
     isActive: v.boolean(), // Whether this project should be included in seeding
     lastScrapedAt: v.number(), // Timestamp when this project was last scraped
     createdAt: v.number(),

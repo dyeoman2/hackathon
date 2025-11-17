@@ -12,6 +12,7 @@ export type Capability =
   | 'route:/app/admin'
   | 'route:/app/admin.users'
   | 'route:/app/admin.stats'
+  | 'route:/app/vibe-apps'
   | 'route:/app/profile'
   | 'user.write'
   | 'user.bootstrap'
@@ -25,13 +26,15 @@ export type Capability =
   | 'hackathon.manageJudges'
   | 'submission.read'
   | 'submission.write'
-  | 'submission.review';
+  | 'submission.review'
+  | 'vibe-apps.admin';
 
 export const Caps = {
   'route:/app': ['user', 'admin'],
   'route:/app/admin': ['admin'],
   'route:/app/admin.users': ['admin'],
   'route:/app/admin.stats': ['admin'],
+  'route:/app/vibe-apps': ['admin'],
   'route:/app/profile': ['user', 'admin'],
   'user.write': ['admin'],
   'user.bootstrap': ['public', 'user', 'admin'], // Bootstrap allowed for everyone, but logic restricts it
@@ -46,6 +49,7 @@ export const Caps = {
   'submission.read': ['owner', 'admin', 'judge'],
   'submission.write': ['owner', 'admin', 'judge'],
   'submission.review': ['owner', 'admin', 'judge'],
+  'vibe-apps.admin': ['admin'],
 } as const;
 
 export const PublicCaps = new Set<Capability>([
