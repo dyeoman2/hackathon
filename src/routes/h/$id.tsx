@@ -176,7 +176,7 @@ function HackathonPageComponent() {
         existingSubmissions.map((sub) => sub.siteUrl).filter(Boolean),
       );
 
-      // Transform vibe apps data to submission format, filter out existing ones, and limit to 3
+      // Transform vibe apps data to submission format, filter out existing ones, and limit to 6
       const submissionsData = vibeAppsProjects
         .filter((project) => project.isActive) // Only include active projects
         .filter((project) => {
@@ -185,7 +185,7 @@ function HackathonPageComponent() {
           const hasMatchingSiteUrl = project.websiteUrl && existingSiteUrls.has(project.websiteUrl);
           return !hasMatchingRepoUrl && !hasMatchingSiteUrl;
         })
-        .slice(0, 3) // Limit to 3 submissions
+        .slice(0, 6) // Limit to 6 submissions
         .map((project) => ({
           repoUrl: project.githubUrl || '', // Use empty string if no GitHub URL
           siteUrl: project.websiteUrl || undefined,
