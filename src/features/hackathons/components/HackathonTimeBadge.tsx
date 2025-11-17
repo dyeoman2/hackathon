@@ -11,10 +11,8 @@ export function HackathonTimeBadge({ submissionDeadline, className }: HackathonT
     return null;
   }
 
-  const isClosed = new Date(submissionDeadline).getTime() < Date.now();
-
   return (
-    <Badge variant={isClosed ? 'secondary' : 'default'} className={className}>
+    <Badge variant="outline" className={className}>
       {formatTimeRemaining(submissionDeadline)}
     </Badge>
   );

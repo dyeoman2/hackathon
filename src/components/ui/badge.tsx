@@ -22,6 +22,8 @@ const badgeVariants = cva(
           'border-orange-200/70 bg-orange-50 text-orange-700 *:data-[slot=alert-description]:text-orange-700/90 dark:border-orange-500/40 dark:bg-orange-500/15 dark:text-orange-100 dark:*:data-[slot=alert-description]:text-orange-100/80',
         success:
           'border-emerald-200/70 bg-emerald-50 text-emerald-700 *:data-[slot=alert-description]:text-emerald-700/90 dark:border-emerald-500/40 dark:bg-emerald-500/15 dark:text-emerald-100 dark:*:data-[slot=alert-description]:text-emerald-100/80',
+        'primary-subtle':
+          'border-primary/70 bg-primary/10 text-primary *:data-[slot=badge]:hover:bg-primary/20 dark:border-primary/40 dark:bg-primary/10 dark:text-primary-foreground dark:*:data-[slot=badge]:hover:bg-primary/20',
       },
     },
     defaultVariants: {

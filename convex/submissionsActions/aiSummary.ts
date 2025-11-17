@@ -1218,7 +1218,10 @@ async function generateSummaryWithAI(
     .map((s) => s.url)
     .filter((url): url is string => typeof url === 'string' && url.length > 0);
 
-  // Build prompt with README and screenshots
+  // Get video URL
+  const videoUrl = (submission as { videoUrl?: string }).videoUrl?.trim();
+
+  // Build prompt with README, screenshots, and video
   const repoName = repoUrl.match(/github\.com[:/]+([^/]+)\/([^/#?]+)/i)?.[2] || 'unknown';
 
   let prompt = `You are an expert hackathon judge analyzing a submission. Generate a comprehensive summary of this project based on the available information.\n\n`;
@@ -1245,12 +1248,24 @@ async function generateSummaryWithAI(
     prompt += `\n**Note:** No screenshots of the live site are available.\n`;
   }
 
+  if (videoUrl) {
+    prompt += `\n**Demo Video:**\n`;
+    prompt += `The project includes a demo video that showcases the application in action:\n`;
+    prompt += `${videoUrl}\n\n`;
+    prompt += `IMPORTANT: Analyze this video to understand:\n`;
+    prompt += `- User interface and user experience in action\n`;
+    prompt += `- Key functionality demonstrations and workflows\n`;
+    prompt += `- Visual design, animations, and aesthetics\n`;
+    prompt += `- How users interact with the application\n`;
+    prompt += `- Any spoken explanations, tutorials, or audio content\n\n`;
+  }
+
   prompt += `\n**Your Task:**\n`;
   prompt += `Generate a concise summary with these three fields as JSON:\n\n`;
   prompt += `1. mainPurpose: Brief description (2-3 sentences max)\n`;
   prompt += `2. keyTechnologiesAndFrameworks: Markdown bullet list (max 8 items, keep descriptions short)\n`;
   prompt += `3. mainFeaturesAndFunctionality: Markdown bullet list of key features (max 10 items, keep descriptions short)\n\n`;
-  prompt += `Keep responses concise to fit within token limits. Be specific and reference README/screenshots.\n`;
+  prompt += `Keep responses concise to fit within token limits. Be specific and reference README, screenshots, and video content.\n`;
 
   try {
     // Import the structured output helper

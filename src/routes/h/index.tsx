@@ -8,6 +8,7 @@ import { Button } from '~/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~/components/ui/card';
 import { Skeleton } from '~/components/ui/skeleton';
 import { useAuth } from '~/features/auth/hooks/useAuth';
+import { HackathonRoleBadge } from '~/features/hackathons/components/HackathonRoleBadge';
 import { HackathonTimeBadge } from '~/features/hackathons/components/HackathonTimeBadge';
 import { NewHackathonModal } from '~/features/hackathons/components/NewHackathonModal';
 import { usePerformanceMonitoring } from '~/hooks/use-performance-monitoring';
@@ -124,10 +125,9 @@ function HackathonListComponent() {
                         <CardTitle className="wrap-break-word leading-normal flex-1">
                           {hackathon.title}
                         </CardTitle>
-                        <HackathonTimeBadge
-                          submissionDeadline={hackathon.dates?.submissionDeadline}
-                          className="shrink-0"
-                        />
+                        <div className="shrink-0">
+                          <HackathonRoleBadge role={hackathon.role} />
+                        </div>
                       </div>
                       {hackathon.description && (
                         <CardDescription className="line-clamp-2 mt-2">
@@ -135,6 +135,11 @@ function HackathonListComponent() {
                         </CardDescription>
                       )}
                     </CardHeader>
+                    <CardContent className="pt-0">
+                      <HackathonTimeBadge
+                        submissionDeadline={hackathon.dates?.submissionDeadline}
+                      />
+                    </CardContent>
                   </Card>
                 ))}
               </div>
@@ -164,10 +169,6 @@ function HackathonListComponent() {
                         <CardTitle className="wrap-break-word leading-normal flex-1">
                           {hackathon.title}
                         </CardTitle>
-                        <HackathonTimeBadge
-                          submissionDeadline={hackathon.dates?.submissionDeadline}
-                          className="shrink-0"
-                        />
                       </div>
                       {hackathon.description && (
                         <CardDescription className="line-clamp-2 mt-2">
@@ -175,6 +176,11 @@ function HackathonListComponent() {
                         </CardDescription>
                       )}
                     </CardHeader>
+                    <CardContent className="pt-0">
+                      <HackathonTimeBadge
+                        submissionDeadline={hackathon.dates?.submissionDeadline}
+                      />
+                    </CardContent>
                   </Card>
                 ))}
               </div>
