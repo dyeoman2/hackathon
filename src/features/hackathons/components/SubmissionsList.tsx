@@ -111,16 +111,16 @@ function SubmissionCard({
       )}
 
       {/* Title and team at bottom */}
-      <div className="absolute bottom-0 left-0 right-0 p-4 z-10">
+      <div className="absolute bottom-0 left-0 right-0 p-4 pb-5 z-10">
         <div className="flex items-end justify-between gap-2">
-          <div className="flex-1 min-w-0">
+          <div className="flex-1 min-w-0 pb-0.5">
             <CardTitle
-              className={`mb-1 line-clamp-2 ${homepageScreenshot ? 'text-white' : 'text-foreground'}`}
+              className={`mb-1 line-clamp-2 leading-tight ${homepageScreenshot ? 'text-white' : 'text-foreground'}`}
             >
               {submission.title}
             </CardTitle>
             <CardDescription
-              className={homepageScreenshot ? 'text-white/80' : 'text-muted-foreground'}
+              className={`leading-snug ${homepageScreenshot ? 'text-white/80' : 'text-muted-foreground'}`}
             >
               {submission.team}
             </CardDescription>
