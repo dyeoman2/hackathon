@@ -597,6 +597,24 @@ export function SubmissionRepoChat({ submission }: SubmissionRepoChatProps) {
     );
   }
 
+  if (!submission.repoUrl) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Repo Chat</CardTitle>
+          <CardDescription>
+            AI-powered comprehensive analysis of the repository using Cloudflare AI Search
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground">
+            Repo Chat is unavailable. This submission does not have a GitHub repository URL.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
   if (!r2PathPrefix) {
     return (
       <Card>
