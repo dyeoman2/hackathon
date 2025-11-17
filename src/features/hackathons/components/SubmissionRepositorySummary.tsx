@@ -20,6 +20,31 @@ import { SimpleTooltip } from '~/components/ui/simple-tooltip';
 import { useToast } from '~/components/ui/toast';
 import { EditSummaryModal } from './EditSummaryModal';
 
+/**
+ * Parses error messages and makes URLs clickable, opening in new tabs
+ */
+function renderErrorMessageWithClickableLinks(message: string) {
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+  const parts = message.split(urlRegex);
+
+  return parts.map((part, index) => {
+    if (urlRegex.test(part)) {
+      return (
+        <button
+          key={part}
+          type="button"
+          onClick={() => window.open(part, '_blank', 'noopener,noreferrer')}
+          className="text-primary hover:text-primary/80 underline cursor-pointer"
+          title={`Open ${part} in new tab`}
+        >
+          {part}
+        </button>
+      );
+    }
+    return `${part}-${index}`;
+  });
+}
+
 type EarlyProcessingStage =
   | 'fetching-readme'
   | 'mapping-urls'
@@ -395,7 +420,11 @@ export function SubmissionRepositorySummary({
           <Alert variant="warning">
             <AlertTitle>{noSummaryReason.title}</AlertTitle>
             <AlertDescription className="space-y-3">
-              <p>{noSummaryReason.description}</p>
+              <p>
+                {hasBlockingProcessingError && processingError
+                  ? renderErrorMessageWithClickableLinks(processingError)
+                  : noSummaryReason.description}
+              </p>
               {hasBlockingProcessingError && (
                 <Button
                   onClick={handleRetryProcessing}
