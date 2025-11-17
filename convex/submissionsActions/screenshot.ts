@@ -416,6 +416,7 @@ export const captureScreenshot = guarded.action(
         const hasReadme = !!submission.source?.readme;
         const hasRepoUrl = !!submission.repoUrl?.trim();
         const hasSummary = !!submission.source?.aiSummary;
+        const repoProcessingFailed = submission.source?.processingState === 'error';
 
         if (!hasSummary) {
           if (hasReadme) {
@@ -445,6 +446,23 @@ export const captureScreenshot = guarded.action(
               internal.submissionsActions.aiSummary.generateScreenshotOnlySummary,
               {
                 submissionId: args.submissionId,
+              },
+            );
+          } else if (repoProcessingFailed) {
+            // Repository processing failed: generate summary from screenshots only as fallback
+            console.log(
+              `[Screenshot] Repository processing failed but screenshots captured - triggering fallback summary generation for submission ${args.submissionId}`,
+            );
+            await ctx.scheduler.runAfter(
+              0,
+              (
+                internal.submissionsActions.aiSummary as unknown as {
+                  generateSummary: GenerateSummaryRef;
+                }
+              ).generateSummary,
+              {
+                submissionId: args.submissionId,
+                forceRegenerate: false,
               },
             );
           } else {
@@ -922,6 +940,7 @@ export const captureScreenshotInternal = internalAction({
         const hasReadme = !!submission.source?.readme;
         const hasRepoUrl = !!submission.repoUrl?.trim();
         const hasSummary = !!submission.source?.aiSummary;
+        const repoProcessingFailed = submission.source?.processingState === 'error';
 
         if (!hasSummary) {
           if (hasReadme) {
@@ -951,6 +970,23 @@ export const captureScreenshotInternal = internalAction({
               internal.submissionsActions.aiSummary.generateScreenshotOnlySummary,
               {
                 submissionId: args.submissionId,
+              },
+            );
+          } else if (repoProcessingFailed) {
+            // Repository processing failed: generate summary from screenshots only as fallback
+            console.log(
+              `[Screenshot] Repository processing failed but screenshots captured - triggering fallback summary generation for submission ${args.submissionId}`,
+            );
+            await ctx.scheduler.runAfter(
+              0,
+              (
+                internal.submissionsActions.aiSummary as unknown as {
+                  generateSummary: GenerateSummaryRef;
+                }
+              ).generateSummary,
+              {
+                submissionId: args.submissionId,
+                forceRegenerate: false,
               },
             );
           } else {

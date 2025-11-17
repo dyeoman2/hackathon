@@ -1164,6 +1164,7 @@ async function generateSummaryWithAI(
   submissionTitle: string,
   repoUrl: string,
   r2PathPrefix: string | undefined,
+  skipReadme: boolean = false,
 ): Promise<string> {
   // Import Cloudflare AI helper dynamically to avoid circular dependencies
   // (generateSummaryWithGateway is imported later when needed)
@@ -1185,31 +1186,35 @@ async function generateSummaryWithAI(
   let readmeContent: string | null = null;
   let readmeFilename: string | null = null;
 
-  // Prefer stored README (fetched directly from GitHub)
-  if (submission.source?.readme) {
-    readmeContent = submission.source.readme;
-    readmeFilename = submission.source.readmeFilename || 'README.md';
-    console.log(
-      `[Early Summary] Using stored README (${readmeFilename}) for submission ${submissionId}`,
-    );
-  } else if (r2PathPrefix) {
-    // Fallback to extracting from R2 if stored README not available
-    try {
-      const readmeResult = await extractReadmeFromR2(r2PathPrefix);
-      if (readmeResult) {
-        readmeContent = readmeResult.content;
-        readmeFilename = readmeResult.filename;
-        console.log(
-          `[Early Summary] Extracted README from R2 (${readmeFilename}) for submission ${submissionId}`,
-        );
-      }
-    } catch (error) {
-      console.warn(
-        `[Early Summary] Failed to extract README from R2 for submission ${submissionId}:`,
-        error instanceof Error ? error.message : String(error),
+  if (!skipReadme) {
+    // Prefer stored README (fetched directly from GitHub)
+    if (submission.source?.readme) {
+      readmeContent = submission.source.readme;
+      readmeFilename = submission.source.readmeFilename || 'README.md';
+      console.log(
+        `[Early Summary] Using stored README (${readmeFilename}) for submission ${submissionId}`,
       );
-      // Continue without README
+    } else if (r2PathPrefix) {
+      // Fallback to extracting from R2 if stored README not available
+      try {
+        const readmeResult = await extractReadmeFromR2(r2PathPrefix);
+        if (readmeResult) {
+          readmeContent = readmeResult.content;
+          readmeFilename = readmeResult.filename;
+          console.log(
+            `[Early Summary] Extracted README from R2 (${readmeFilename}) for submission ${submissionId}`,
+          );
+        }
+      } catch (error) {
+        console.warn(
+          `[Early Summary] Failed to extract README from R2 for submission ${submissionId}:`,
+          error instanceof Error ? error.message : String(error),
+        );
+        // Continue without README
+      }
     }
+  } else {
+    console.log(`[Early Summary] Skipping README processing for submission ${submissionId} (skipReadme=true)`);
   }
 
   // Get screenshots
@@ -1292,6 +1297,26 @@ async function generateSummaryWithAI(
     console.error(`[Early Summary] AI Gateway error for submission ${submissionId}:`, errorMessage);
     console.error(`[Early Summary] Full error:`, error);
 
+    // If README was included and caused the error, try again without README
+    if (readmeContent && readmeContent.length > 0) {
+      console.log(`[Early Summary] README was included but generation failed - retrying without README for submission ${submissionId}`);
+      try {
+        const retrySummary = await generateSummaryWithAI(
+          ctx,
+          submissionId,
+          submissionTitle,
+          repoUrl,
+          r2PathPrefix,
+          true // skipReadme flag
+        );
+        console.log(`[Early Summary] Successfully generated summary without README for submission ${submissionId}`);
+        return retrySummary;
+      } catch (retryError) {
+        console.error(`[Early Summary] Retry without README also failed for submission ${submissionId}:`, retryError);
+        // Continue to fallback attempts
+      }
+    }
+
     // Try fallback to text generation if structured output fails
     try {
       console.log(`[Early Summary] Attempting fallback to text generation...`);
@@ -1308,7 +1333,7 @@ async function generateSummaryWithAI(
       ) {
         console.log(`[Early Summary] Fallback text generation produced valid format`);
         // Strip "**Main Purpose:**" if present since we don't want that label
-        const cleanedText = text.replace(/^\*\*Main Purpose:\*\*\s*\n\n?/i, '');
+        const cleanedText = text.replace(/^\*\\*Main Purpose:\*\*\s*\n\n?/i, '');
         return cleanedText;
       }
 
@@ -1376,16 +1401,17 @@ async function generateSummaryHelper(
     );
   }
 
-  // Check if we have at least README (stored or in R2), R2 files, or screenshots to work with
+  // Check if we have at least README (stored or in R2), R2 files, screenshots, or video to work with
   const hasStoredReadme = !!submission.source?.readme;
   const hasR2Files = !!submission.source?.r2Key;
   const hasScreenshots = (submission.screenshots?.length ?? 0) > 0;
+  const hasVideo = !!((submission as { videoUrl?: string }).videoUrl?.trim());
 
-  if (!hasStoredReadme && !hasR2Files && !hasScreenshots) {
+  if (!hasStoredReadme && !hasR2Files && !hasScreenshots && !hasVideo) {
     console.log(
-      `[Early Summary] Submission ${args.submissionId} has no README, R2 files, or screenshots yet - skipping`,
+      `[Early Summary] Submission ${args.submissionId} has no README, R2 files, screenshots, or video yet - skipping`,
     );
-    return { success: false, reason: 'No README, R2 files, or screenshots available' };
+    return { success: false, reason: 'No README, R2 files, screenshots, or video available' };
   }
 
   try {

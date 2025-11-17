@@ -324,7 +324,7 @@ export function SubmissionRepositorySummary({
                   </DropdownMenuItem>
                 </SimpleTooltip>
                 <DropdownMenuSeparator />
-                <SimpleTooltip content="Generated from the repository README and screenshots of the website">
+                <SimpleTooltip content="Generated from the repository README, video, and screenshots of the website">
                   <DropdownMenuItem
                     onClick={handleGenerateQuickSummary}
                     disabled={isGeneratingQuick || isGeneratingFull}

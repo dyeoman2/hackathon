@@ -677,6 +677,62 @@ export async function downloadAndUploadRepoHelper(
       );
     }
 
+    // Check if we have screenshots or videos available for fallback summary generation
+    try {
+      const submission = await ctx.runQuery(
+        (internal.submissions as unknown as { getSubmissionInternal: GetSubmissionInternalRef })
+          .getSubmissionInternal,
+        {
+          submissionId: args.submissionId,
+        },
+      );
+
+      if (submission) {
+        const hasScreenshots = (submission.screenshots?.length ?? 0) > 0;
+        const hasVideo = !!(submission as { videoUrl?: string }).videoUrl?.trim();
+        const hasSummary = !!submission.source?.aiSummary;
+
+        // If we have screenshots or video but no summary, try to generate one
+        if ((hasScreenshots || hasVideo) && !hasSummary) {
+          console.log(
+            `[Repo Download] Repository processing failed but screenshots/videos available - triggering fallback summary generation for submission ${args.submissionId}`,
+          );
+
+          try {
+            await ctx.scheduler.runAfter(
+              0,
+              (
+                internal.submissionsActions.aiSummary as unknown as {
+                  generateSummary: GenerateSummaryRef;
+                }
+              ).generateSummary,
+              {
+                submissionId: args.submissionId,
+                forceRegenerate: false,
+              },
+            );
+            console.log(
+              `[Repo Download] Successfully scheduled fallback summary generation for submission ${args.submissionId}`,
+            );
+          } catch (summaryError) {
+            console.error(
+              `[Repo Download] Failed to schedule fallback summary generation for submission ${args.submissionId}:`,
+              summaryError instanceof Error ? summaryError.message : String(summaryError),
+            );
+          }
+        } else {
+          console.log(
+            `[Repo Download] Repository processing failed - no screenshots or video available for fallback summary (screenshots: ${hasScreenshots}, video: ${hasVideo}, hasSummary: ${hasSummary})`,
+          );
+        }
+      }
+    } catch (checkError) {
+      console.error(
+        `[Repo Download] Failed to check for fallback summary generation:`,
+        checkError instanceof Error ? checkError.message : String(checkError),
+      );
+    }
+
     // Re-throw the error so it can be logged by the caller
     throw error;
   } finally {
