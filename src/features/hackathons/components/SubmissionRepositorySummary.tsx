@@ -35,7 +35,7 @@ function getEarlyProcessingStage(submission: Doc<'submissions'>): EarlyProcessin
   const hasSiteUrl = !!submission.siteUrl;
   const processingState = submission.source?.processingState;
   const hasSummary = !!source?.aiSummary;
-  const isAISearchComplete = processingState === 'complete';
+  const isAISearchComplete = !!submission.source?.aiSearchSyncCompletedAt;
   const hasProcessingError = processingState === 'error';
 
   // If summary already exists, no need to show loading
@@ -129,7 +129,7 @@ export function SubmissionRepositorySummary({
   const summary = manualSummary || aiSummary;
   const processingState = submission.source?.processingState;
   const processingError = submission.source?.processingError;
-  const isAISearchComplete = processingState === 'complete';
+  const isAISearchComplete = !!submission.source?.aiSearchSyncCompletedAt;
   const hasManualSummary = !!manualSummary;
 
   // Show summary if it exists, regardless of processing state
@@ -337,7 +337,7 @@ export function SubmissionRepositorySummary({
                     ) : (
                       <>
                         <Zap className="h-4 w-4" />
-                        Quick Summary
+                        Summary
                       </>
                     )}
                   </DropdownMenuItem>
@@ -358,12 +358,12 @@ export function SubmissionRepositorySummary({
                     {isGeneratingFull ? (
                       <>
                         <Loader2 className="h-4 w-4 animate-spin" />
-                        Generating Full Summary...
+                        Generating RAG Summary...
                       </>
                     ) : (
                       <>
                         <FileText className="h-4 w-4" />
-                        Full Summary
+                        RAG Summary
                       </>
                     )}
                   </DropdownMenuItem>
@@ -406,8 +406,9 @@ export function SubmissionRepositorySummary({
           </p>
         ) : (
           <p className="text-sm text-muted-foreground">
-            The repository summary will automatically be generated once README and screenshots are
-            available. This happens automatically when screenshots are captured.
+            The repository summary will automatically be generated once the repository README,
+            video, and screenshots are available. This happens automatically when screenshots are
+            captured.
           </p>
         )}
       </CardContent>
