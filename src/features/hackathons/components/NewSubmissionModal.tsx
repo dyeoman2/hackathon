@@ -298,7 +298,7 @@ export function NewSubmissionModal({
       title: 'My Awesome Project',
       team: 'Team Awesome',
       repoUrl: 'https://github.com/dyeoman2/hackathon',
-      siteUrl: '',
+      siteUrl: 'https://tryhackathon.com/',
       videoUrl: '',
     },
     onSubmit: async ({ value }) => {
