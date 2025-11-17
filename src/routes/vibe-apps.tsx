@@ -21,7 +21,7 @@ export const Route = createFileRoute('/vibe-apps')({
         vibeappsUrl: p.vibeappsUrl,
         githubUrl: p.githubUrl || null,
         websiteUrl: p.websiteUrl || null,
-        youtubeUrl: p.youtubeUrl || null,
+        videoUrl: p.videoUrl || null,
         isActive: p.isActive ?? true, // Default to true for backward compatibility
       }));
 

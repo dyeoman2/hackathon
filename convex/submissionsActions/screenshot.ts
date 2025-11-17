@@ -1197,13 +1197,14 @@ export const uploadScreenshot = guarded.action(
     });
 
     const timestamp = Date.now();
-    // Use "custom" instead of "firecrawl" to distinguish from automatically captured screenshots
-    const r2Key = `repos/${args.submissionId}/custom/${timestamp}.png`;
 
-    // Determine content type based on file header
+    // Determine content type and file extension based on file header
     let contentType = 'image/png'; // default
+    let fileExtension = 'png'; // default
+
     if (fileHeader[0] === 0xff && fileHeader[1] === 0xd8 && fileHeader[2] === 0xff) {
       contentType = 'image/jpeg';
+      fileExtension = 'jpg';
     } else if (
       fileHeader[0] === 0x89 &&
       fileHeader[1] === 0x50 &&
@@ -1211,6 +1212,7 @@ export const uploadScreenshot = guarded.action(
       fileHeader[3] === 0x47
     ) {
       contentType = 'image/png';
+      fileExtension = 'png';
     } else if (
       fileHeader[0] === 0x52 &&
       fileHeader[1] === 0x49 &&
@@ -1222,7 +1224,11 @@ export const uploadScreenshot = guarded.action(
       fileHeader[11] === 0x50
     ) {
       contentType = 'image/webp';
+      fileExtension = 'webp';
     }
+
+    // Use "custom" instead of "firecrawl" to distinguish from automatically captured screenshots
+    const r2Key = `repos/${args.submissionId}/custom/${timestamp}.${fileExtension}`;
 
     // Upload screenshot to R2
     await s3Client.send(

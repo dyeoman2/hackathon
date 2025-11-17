@@ -25,6 +25,8 @@ const submissionsInternalApi = internal as unknown as {
     getSubmissionInternal: FunctionReference<'query', 'internal'>;
     getSubmissionWithAccessInternal: FunctionReference<'query', 'internal'>;
     createSubmissionInternal: FunctionReference<'mutation', 'internal'>;
+    getSubmissionsForMigration: FunctionReference<'query', 'internal'>;
+    migrateSubmissionUrl: FunctionReference<'mutation', 'internal'>;
   };
 };
 
@@ -59,6 +61,7 @@ export const listPublicSubmissions = query({
       team: submission.team,
       repoUrl: submission.repoUrl,
       siteUrl: submission.siteUrl,
+      videoUrl: submission.videoUrl,
       screenshots: submission.screenshots,
       source: submission.source, // Include source for AI summaries and processing state
       createdAt: submission.createdAt,
@@ -287,6 +290,7 @@ export const createSubmissionInternal = internalMutation({
     team: v.string(),
     repoUrl: v.string(),
     siteUrl: v.optional(v.string()),
+    videoUrl: v.optional(v.string()),
     usingPaidCredit: v.boolean(),
   },
   handler: async (ctx, args) => {
@@ -330,6 +334,7 @@ export const createSubmissionInternal = internalMutation({
       team: args.team.trim(),
       repoUrl: args.repoUrl.trim(),
       siteUrl: args.siteUrl?.trim(),
+      videoUrl: args.videoUrl?.trim(),
       source: {
         processingState: 'downloading', // Start with downloading state
       },
@@ -361,6 +366,7 @@ export const createSubmission = action({
     team: v.string(),
     repoUrl: v.string(),
     siteUrl: v.optional(v.string()),
+    videoUrl: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     // Get current user
@@ -497,6 +503,7 @@ export const createSubmission = action({
         team: args.team,
         repoUrl: args.repoUrl,
         siteUrl: args.siteUrl,
+        videoUrl: args.videoUrl,
         usingPaidCredit,
       },
     );
@@ -955,6 +962,7 @@ export const updateSubmission = mutation({
     team: v.optional(v.string()),
     repoUrl: v.optional(v.string()),
     siteUrl: v.optional(v.string()),
+    videoUrl: v.optional(v.string()),
     manualSummary: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
@@ -986,6 +994,7 @@ export const updateSubmission = mutation({
       team?: string;
       repoUrl?: string;
       siteUrl?: string;
+      videoUrl?: string;
       manualSummary?: string;
       updatedAt: number;
     } = {
@@ -1003,6 +1012,9 @@ export const updateSubmission = mutation({
     }
     if (args.siteUrl !== undefined) {
       updateData.siteUrl = args.siteUrl.trim();
+    }
+    if (args.videoUrl !== undefined) {
+      updateData.videoUrl = args.videoUrl.trim();
     }
     if (args.manualSummary !== undefined) {
       updateData.manualSummary = args.manualSummary.trim();
@@ -1552,6 +1564,94 @@ export const getUserRating = query({
 });
 
 /**
+ * Migrate existing submissions from youtubeUrl to videoUrl field
+ * This should be run once after updating the schema to support both fields
+ */
+export const migrateYoutubeUrlToVideoUrl = guarded.action('user.write', {}, async (ctx) => {
+  // Query all submissions that have youtubeUrl but not videoUrl
+  const submissionsWithYoutubeUrl = await ctx.runQuery(
+    internal.submissions.getSubmissionsForMigration,
+    {},
+  );
+
+  console.log(`Found ${submissionsWithYoutubeUrl.length} submissions with youtubeUrl to migrate`);
+
+  let migrated = 0;
+  let errors = 0;
+
+  for (const submission of submissionsWithYoutubeUrl) {
+    try {
+      // Skip if videoUrl already exists (already migrated)
+      if (submission.videoUrl) {
+        console.log(`Skipping submission ${submission._id} - already has videoUrl`);
+        continue;
+      }
+
+      // Migrate youtubeUrl to videoUrl using internal mutation
+      if (submission.youtubeUrl) {
+        await ctx.runMutation(internal.submissions.migrateSubmissionUrl, {
+          submissionId: submission._id,
+          youtubeUrl: submission.youtubeUrl,
+        });
+      }
+
+      migrated++;
+      console.log(`Migrated submission ${submission._id}: ${submission.title}`);
+    } catch (error) {
+      console.error(`Failed to migrate submission ${submission._id}:`, error);
+      errors++;
+    }
+  }
+
+  return {
+    success: errors === 0,
+    message: `Migration complete: ${migrated} submissions migrated, ${errors} errors`,
+    migrated,
+    errors,
+  };
+});
+
+/**
+ * Internal query to get submissions that need migration
+ */
+export const getSubmissionsForMigration = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    return await ctx.db
+      .query('submissions')
+      .filter((q) => q.neq(q.field('youtubeUrl'), undefined))
+      .collect();
+  },
+});
+
+/**
+ * Internal mutation to migrate a single submission's URL
+ */
+export const migrateSubmissionUrl = internalMutation({
+  args: {
+    submissionId: v.id('submissions'),
+    youtubeUrl: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const submission = await ctx.db.get(args.submissionId);
+    if (!submission) {
+      throw new Error('Submission not found');
+    }
+
+    // Skip if already migrated
+    if (submission.videoUrl) {
+      return;
+    }
+
+    // Migrate youtubeUrl to videoUrl
+    await ctx.db.patch(args.submissionId, {
+      videoUrl: args.youtubeUrl,
+      youtubeUrl: undefined, // Remove the old field
+    });
+  },
+});
+
+/**
  * Seed hackathon with submissions (admin only)
  * Creates multiple submissions from provided data with 20-second delays between each
  */
@@ -1563,6 +1663,7 @@ export const seedHackathonSubmissions = guarded.action(
       v.object({
         repoUrl: v.string(),
         siteUrl: v.optional(v.string()),
+        videoUrl: v.optional(v.string()),
         team: v.string(),
         title: v.string(),
       }),
@@ -1604,6 +1705,7 @@ export const seedHackathonSubmissions = guarded.action(
             team: submissionData.team,
             repoUrl: submissionData.repoUrl,
             siteUrl: submissionData.siteUrl,
+            videoUrl: submissionData.videoUrl,
             usingPaidCredit: false, // Admin seeding doesn't consume credits
           },
         );

@@ -1,4 +1,4 @@
-import { Edit, LogOut, MoreVertical, Scale, Send, Sprout, Trash2 } from 'lucide-react';
+import { Download, Edit, LogOut, MoreVertical, Scale, Send, Sprout, Trash2 } from 'lucide-react';
 import { Button } from '~/components/ui/button';
 import {
   DropdownMenu,
@@ -19,6 +19,7 @@ interface HackathonActionsMenuProps {
   onInviteJudge: () => void;
   onDelete: () => void;
   onLeave: () => void;
+  onExtractFromVibeApps: () => void;
   onSeedSubmissions: () => void;
 }
 
@@ -33,13 +34,14 @@ export function HackathonActionsMenu({
   onInviteJudge,
   onDelete,
   onLeave,
+  onExtractFromVibeApps,
   onSeedSubmissions,
 }: HackathonActionsMenuProps) {
   // Count visible menu items
   const visibleItemCount =
     (canEdit ? 1 : 0) +
     (canManageJudges ? 2 : 0) + // Judges and Invite Judge are both canManageJudges
-    (isSiteAdmin ? 1 : 0) +
+    (isSiteAdmin ? 2 : 0) + // Extract from Vibe Apps and Seed from Vibe Apps
     (canLeave ? 1 : 0) +
     (canDelete ? 1 : 0);
 
@@ -82,9 +84,15 @@ export function HackathonActionsMenu({
         )}
         {isSiteAdmin && hasMultipleItems && <DropdownMenuSeparator />}
         {isSiteAdmin && (
+          <DropdownMenuItem onClick={onExtractFromVibeApps}>
+            <Download className="h-4 w-4" />
+            Extract Vibe Apps
+          </DropdownMenuItem>
+        )}
+        {isSiteAdmin && (
           <DropdownMenuItem onClick={onSeedSubmissions}>
             <Sprout className="h-4 w-4" />
-            Seed from Vibe Apps
+            Seed 3 Vibe Apps
           </DropdownMenuItem>
         )}
         {(canLeave || canDelete) && hasNonDestructiveActions && <DropdownMenuSeparator />}

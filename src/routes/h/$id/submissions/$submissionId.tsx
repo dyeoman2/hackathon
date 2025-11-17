@@ -318,6 +318,7 @@ function SubmissionDetailComponent() {
 
       <PageHeader
         title={submission.title}
+        description={submission.team}
         titleActions={
           <>
             <div className="hidden sm:flex items-center gap-2 flex-wrap">

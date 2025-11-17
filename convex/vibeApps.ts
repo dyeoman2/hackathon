@@ -9,6 +9,8 @@ export type VibeAppsProject = {
   vibeappsUrl: string;
   githubUrl?: string;
   websiteUrl?: string;
+  videoUrl?: string;
+  // Temporary field during migration
   youtubeUrl?: string;
   isActive: boolean;
   lastScrapedAt: number;
@@ -32,7 +34,7 @@ export const upsertVibeAppsProject = mutation({
     vibeappsUrl: v.string(),
     githubUrl: v.optional(v.string()),
     websiteUrl: v.optional(v.string()),
-    youtubeUrl: v.optional(v.string()),
+    videoUrl: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const existing = await ctx.db
@@ -49,7 +51,7 @@ export const upsertVibeAppsProject = mutation({
         creator: args.creator,
         githubUrl: args.githubUrl,
         websiteUrl: args.websiteUrl,
-        youtubeUrl: args.youtubeUrl,
+        videoUrl: args.videoUrl,
         lastScrapedAt: now,
         updatedAt: now,
       });
@@ -62,7 +64,7 @@ export const upsertVibeAppsProject = mutation({
         vibeappsUrl: args.vibeappsUrl,
         githubUrl: args.githubUrl,
         websiteUrl: args.websiteUrl,
-        youtubeUrl: args.youtubeUrl,
+        videoUrl: args.videoUrl,
         isActive: true, // New projects default to active
         lastScrapedAt: now,
         createdAt: now,
@@ -80,7 +82,7 @@ export const updateVibeAppsProject = mutation({
     creator: v.optional(v.string()),
     githubUrl: v.optional(v.string()),
     websiteUrl: v.optional(v.string()),
-    youtubeUrl: v.optional(v.string()),
+    videoUrl: v.optional(v.string()),
     isActive: v.boolean(),
   },
   handler: async (ctx, args) => {
@@ -99,5 +101,77 @@ export const updateVibeAppsProject = mutation({
     });
 
     return id;
+  },
+});
+
+// Mutation to delete a project
+export const deleteVibeAppsProject = mutation({
+  args: {
+    id: v.id('vibeAppsProjects'),
+  },
+  handler: async (ctx, args) => {
+    // Verify the project exists
+    const existing = await ctx.db.get(args.id);
+    if (!existing) {
+      throw new Error('Project not found');
+    }
+
+    // Delete the project
+    await ctx.db.delete(args.id);
+
+    return args.id;
+  },
+});
+
+/**
+ * Migrate existing vibeApps projects from youtubeUrl to videoUrl field
+ */
+export const migrateVibeAppsYoutubeUrlToVideoUrl = mutation({
+  args: {},
+  handler: async (ctx) => {
+    // Query all projects that have youtubeUrl but not videoUrl
+    const projectsWithYoutubeUrl = await ctx.db
+      .query('vibeAppsProjects')
+      .filter((q) => q.neq(q.field('youtubeUrl'), undefined))
+      .collect();
+
+    console.log(
+      `Found ${projectsWithYoutubeUrl.length} vibeApps projects with youtubeUrl to migrate`,
+    );
+
+    let migrated = 0;
+    let errors = 0;
+
+    for (const project of projectsWithYoutubeUrl) {
+      try {
+        // Skip if videoUrl already exists (already migrated)
+        if (project.videoUrl) {
+          console.log(`Skipping project ${project._id} - already has videoUrl`);
+          continue;
+        }
+
+        // Migrate youtubeUrl to videoUrl
+        if (project.youtubeUrl) {
+          await ctx.db.patch(project._id, {
+            videoUrl: project.youtubeUrl,
+            youtubeUrl: undefined, // Remove the old field
+            updatedAt: Date.now(),
+          });
+        }
+
+        migrated++;
+        console.log(`Migrated project ${project._id}: ${project.name}`);
+      } catch (error) {
+        console.error(`Failed to migrate project ${project._id}:`, error);
+        errors++;
+      }
+    }
+
+    return {
+      success: errors === 0,
+      message: `Migration complete: ${migrated} projects migrated, ${errors} errors`,
+      migrated,
+      errors,
+    };
   },
 });

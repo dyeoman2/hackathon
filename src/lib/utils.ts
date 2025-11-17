@@ -14,6 +14,52 @@ export function getAppName(): string {
 }
 
 /**
+ * Extract YouTube video ID from various YouTube URL formats
+ * Supports: youtube.com/watch?v=ID, youtu.be/ID, youtube.com/embed/ID, etc.
+ */
+export function extractYouTubeVideoId(url: string): string | null {
+  if (!url) return null;
+
+  try {
+    const urlObj = new URL(url);
+
+    // Handle youtu.be short URLs
+    if (urlObj.hostname === 'youtu.be') {
+      return urlObj.pathname.slice(1); // Remove leading slash
+    }
+
+    // Handle youtube.com URLs
+    if (urlObj.hostname.includes('youtube.com')) {
+      // Handle /watch?v=VIDEO_ID format
+      if (urlObj.pathname === '/watch') {
+        return urlObj.searchParams.get('v');
+      }
+
+      // Handle /embed/VIDEO_ID format
+      if (urlObj.pathname.startsWith('/embed/')) {
+        return urlObj.pathname.split('/embed/')[1]?.split('/')[0] || null;
+      }
+
+      // Handle /v/VIDEO_ID format (legacy)
+      if (urlObj.pathname.startsWith('/v/')) {
+        return urlObj.pathname.split('/v/')[1]?.split('/')[0] || null;
+      }
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Generate YouTube embed URL from video ID
+ */
+export function getYouTubeEmbedUrl(videoId: string): string {
+  return `https://www.youtube.com/embed/${videoId}`;
+}
+
+/**
  * Format time remaining until a date
  * Returns a human-readable string like "2 days left", "5 hours left", "Submissions closed", etc.
  */

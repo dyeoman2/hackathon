@@ -25,7 +25,8 @@ const submissionSchema = z.object({
   title: z.string().min(1, 'Title is required').max(255, 'Title is too long'),
   team: z.string().min(1, 'Team name is required').max(255, 'Team name is too long'),
   repoUrl: z.string().url('Please enter a valid GitHub repository URL'),
-  siteUrl: z.string().url('Please enter a valid URL').optional().or(z.literal('')),
+  siteUrl: z.string(),
+  videoUrl: z.string(),
 });
 
 interface NewSubmissionModalProps {
@@ -290,11 +291,15 @@ export function NewSubmissionModal({
   };
 
   const form = useForm({
+    validators: {
+      onSubmit: submissionSchema,
+    },
     defaultValues: {
       title: 'My Awesome Project',
       team: 'Team Awesome',
       repoUrl: 'https://github.com/dyeoman2/hackathon',
-      siteUrl: 'https://tryhackathon.com/',
+      siteUrl: '',
+      videoUrl: '',
     },
     onSubmit: async ({ value }) => {
       if (submissionLocked) {
@@ -320,6 +325,7 @@ export function NewSubmissionModal({
           team: value.team,
           repoUrl: value.repoUrl,
           siteUrl: value.siteUrl?.trim() || undefined,
+          videoUrl: value.videoUrl?.trim() || undefined,
         });
 
         toast.showToast('Submission created successfully!', 'success');
@@ -473,6 +479,24 @@ export function NewSubmissionModal({
                   value={field.state.value}
                   onChange={(e) => field.handleChange(e.target.value)}
                   placeholder="https://myproject.com"
+                  disabled={isSubmitting}
+                />
+                {field.state.meta.errors && field.state.meta.errors.length > 0 && (
+                  <p className="text-sm text-destructive">{String(field.state.meta.errors[0])}</p>
+                )}
+              </Field>
+            )}
+          </form.Field>
+
+          <form.Field name="videoUrl">
+            {(field) => (
+              <Field>
+                <FieldLabel>Demo Video URL (Optional)</FieldLabel>
+                <Input
+                  type="url"
+                  value={field.state.value}
+                  onChange={(e) => field.handleChange(e.target.value)}
+                  placeholder="https://youtube.com/watch?v=... or any video URL"
                   disabled={isSubmitting}
                 />
                 {field.state.meta.errors && field.state.meta.errors.length > 0 && (

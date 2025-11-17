@@ -69,6 +69,7 @@ function HackathonPageComponent() {
 
   const deleteHackathon = useMutation(api.hackathons.deleteHackathon);
   const seedHackathonSubmissions = useAction(api.submissions.seedHackathonSubmissions);
+  const getVibeAppsProjects = useAction(api.firecrawl.getVibeAppsProjects);
   const vibeAppsProjects = useQuery(api.vibeApps.getAllVibeAppsProjects);
   const joinHackathon = useMutation(api.hackathons.joinHackathon);
   const leaveHackathon = useMutation(api.hackathons.leaveHackathon);
@@ -126,6 +127,20 @@ function HackathonPageComponent() {
     return isAuthenticated && !isUserMember && isHackathonOpen;
   }, [isAuthenticated, isUserMember, isHackathonOpen]);
 
+  const handleExtractFromVibeApps = async () => {
+    try {
+      toast.showToast('Extracting projects from Vibe Apps...', 'info');
+      await getVibeAppsProjects({});
+      toast.showToast('Successfully extracted projects from Vibe Apps!', 'success');
+    } catch (error) {
+      console.error('Failed to extract from Vibe Apps:', error);
+      toast.showToast(
+        error instanceof Error ? error.message : 'Failed to extract from Vibe Apps',
+        'error',
+      );
+    }
+  };
+
   const handleSeedSubmissions = async () => {
     if (!hackathon) return;
 
@@ -153,19 +168,28 @@ function HackathonPageComponent() {
         ratingFilter: 'all',
       });
 
-      // Create a set of existing repo URLs for quick lookup
+      // Create sets of existing repo URLs and site URLs for quick lookup
       const existingRepoUrls = new Set(
         existingSubmissions.map((sub) => sub.repoUrl).filter(Boolean),
+      );
+      const existingSiteUrls = new Set(
+        existingSubmissions.map((sub) => sub.siteUrl).filter(Boolean),
       );
 
       // Transform vibe apps data to submission format, filter out existing ones, and limit to 3
       const submissionsData = vibeAppsProjects
         .filter((project) => project.isActive) // Only include active projects
-        .filter((project) => !project.githubUrl || !existingRepoUrls.has(project.githubUrl)) // Exclude projects that already have submissions (only check if they have a GitHub URL)
+        .filter((project) => {
+          // Exclude projects that already have submissions with matching GitHub URL or website URL
+          const hasMatchingRepoUrl = project.githubUrl && existingRepoUrls.has(project.githubUrl);
+          const hasMatchingSiteUrl = project.websiteUrl && existingSiteUrls.has(project.websiteUrl);
+          return !hasMatchingRepoUrl && !hasMatchingSiteUrl;
+        })
         .slice(0, 3) // Limit to 3 submissions
         .map((project) => ({
           repoUrl: project.githubUrl || '', // Use empty string if no GitHub URL
           siteUrl: project.websiteUrl || undefined,
+          videoUrl: project.videoUrl || undefined,
           team: project.creator || project.name.replace(/\s+/g, ''), // Use creator as team name, fallback to project name
           title: project.name,
         }));
@@ -384,6 +408,7 @@ function HackathonPageComponent() {
                     onInviteJudge={() => setIsInviteJudgeModalOpen(true)}
                     onLeave={() => setIsLeaveDialogOpen(true)}
                     onDelete={() => setIsDeleteDialogOpen(true)}
+                    onExtractFromVibeApps={handleExtractFromVibeApps}
                     onSeedSubmissions={handleSeedSubmissions}
                   />
                 )}

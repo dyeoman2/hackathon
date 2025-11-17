@@ -147,6 +147,134 @@ export const listHackathons = query({
 });
 
 /**
+ * List pending hackathon invitations for the current user
+ * Returns invites matched by userId or invitedEmail (case-insensitive)
+ */
+export const listPendingInvitesForUser = query({
+  args: {},
+  handler: async (ctx) => {
+    const authUser = await authComponent.getAuthUser(ctx).catch(() => null);
+    if (!authUser) {
+      return [];
+    }
+
+    const userId = assertUserId(authUser, 'User ID not found');
+    const emailOriginal = authUser.email ?? null;
+    const emailLower = authUser.email?.toLowerCase() ?? null;
+
+    const invitesByUserId = await ctx.db
+      .query('memberships')
+      .withIndex('by_userId', (q) => q.eq('userId', userId))
+      .filter((q) => q.eq(q.field('status'), 'invited'))
+      .collect();
+
+    const invitesByEmail: Doc<'memberships'>[] = [];
+    const emailLookups = new Set<string>();
+    if (emailOriginal) {
+      emailLookups.add(emailOriginal);
+    }
+    if (emailLower && emailLower !== emailOriginal) {
+      emailLookups.add(emailLower);
+    }
+
+    for (const address of emailLookups) {
+      const results = await ctx.db
+        .query('memberships')
+        .withIndex('by_invitedEmail', (q) => q.eq('invitedEmail', address))
+        .filter((q) => q.eq(q.field('status'), 'invited'))
+        .collect();
+      invitesByEmail.push(...results);
+    }
+
+    // Deduplicate invitations from userId + invitedEmail lookups
+    const invites = new Map<string, Doc<'memberships'>>();
+    for (const membership of invitesByUserId) {
+      invites.set(membership._id, membership);
+    }
+    for (const membership of invitesByEmail) {
+      invites.set(membership._id, membership);
+    }
+
+    // Collect inviter names for context (best effort)
+    const inviterIds = Array.from(invites.values())
+      .map((invite) => invite.invitedByUserId)
+      .filter((id): id is string => Boolean(id));
+
+    const inviterNamesById = new Map<string, string>();
+    if (inviterIds.length > 0) {
+      const remainingIds = new Set(inviterIds);
+      let cursor: string | null = null;
+      let iterations = 0;
+      const maxIterations = 100;
+
+      try {
+        while (remainingIds.size > 0 && iterations < maxIterations) {
+          iterations++;
+          const rawResult: unknown = await ctx.runQuery(components.betterAuth.adapter.findMany, {
+            model: 'user',
+            paginationOpts: {
+              cursor,
+              numItems: 1000,
+              id: 0,
+            },
+          });
+
+          const normalized = normalizeAdapterFindManyResult<BetterAuthAdapterUserDoc>(rawResult);
+          const { page, continueCursor, isDone } = normalized;
+
+          for (const betterAuthUser of page) {
+            try {
+              const betterAuthUserId = assertUserId(betterAuthUser, 'Better Auth user missing id');
+              if (remainingIds.has(betterAuthUserId)) {
+                inviterNamesById.set(betterAuthUserId, betterAuthUser.name || betterAuthUser.email);
+                remainingIds.delete(betterAuthUserId);
+              }
+            } catch {
+              // Skip malformed user docs
+            }
+          }
+
+          if (isDone || !continueCursor || page.length === 0) {
+            break;
+          }
+
+          cursor = continueCursor;
+        }
+      } catch (error) {
+        console.error('Failed to fetch inviter names:', error);
+      }
+    }
+
+    const invitations = await Promise.all(
+      Array.from(invites.values()).map(async (membership) => {
+        const hackathon = await ctx.db.get(membership.hackathonId);
+        if (!hackathon) {
+          return null;
+        }
+
+        return {
+          membershipId: membership._id,
+          hackathonId: membership.hackathonId,
+          hackathonTitle: hackathon.title,
+          role: membership.role as HackathonRole,
+          invitedEmail: membership.invitedEmail ?? null,
+          invitedByUserId: membership.invitedByUserId ?? null,
+          invitedByName:
+            membership.invitedByUserId !== undefined
+              ? inviterNamesById.get(membership.invitedByUserId) || null
+              : null,
+          createdAt: membership.createdAt,
+        };
+      }),
+    );
+
+    return invitations
+      .filter((invite): invite is NonNullable<typeof invite> => invite !== null)
+      .sort((a, b) => b.createdAt - a.createdAt);
+  },
+});
+
+/**
  * List all public hackathons (no authentication required)
  *
  * This allows anyone to discover and browse available hackathons
@@ -1076,6 +1204,93 @@ export const acceptInvite = mutation({
     });
 
     return { hackathonId: membership.hackathonId };
+  },
+});
+
+/**
+ * Accept a pending invite by membership id (used for in-app notifications)
+ */
+export const acceptPendingInvite = mutation({
+  args: {
+    membershipId: v.id('memberships'),
+  },
+  handler: async (ctx, args) => {
+    const authUser = await authComponent.getAuthUser(ctx);
+    if (!authUser) {
+      throw new Error('Authentication required');
+    }
+
+    const userId = assertUserId(authUser, 'User ID not found');
+    const membership = await ctx.db.get(args.membershipId);
+
+    if (!membership) {
+      throw new Error('Invitation not found');
+    }
+
+    if (membership.status !== 'invited') {
+      return { hackathonId: membership.hackathonId };
+    }
+
+    if (membership.userId && membership.userId !== userId) {
+      throw new Error('This invite is for a different user');
+    }
+
+    const invitedEmail = membership.invitedEmail?.toLowerCase();
+    const authEmail = authUser.email?.toLowerCase() ?? null;
+    if (invitedEmail && authEmail && invitedEmail !== authEmail) {
+      throw new Error('This invite is for a different email address');
+    }
+
+    if (membership.tokenExpiresAt && membership.tokenExpiresAt < Date.now()) {
+      throw new Error('Invite token expired');
+    }
+
+    await ctx.db.patch(membership._id, {
+      userId,
+      status: 'active',
+      tokenHash: undefined,
+      tokenExpiresAt: undefined,
+    });
+
+    return { hackathonId: membership.hackathonId };
+  },
+});
+
+/**
+ * Decline and remove a pending invite
+ */
+export const declinePendingInvite = mutation({
+  args: {
+    membershipId: v.id('memberships'),
+  },
+  handler: async (ctx, args) => {
+    const authUser = await authComponent.getAuthUser(ctx);
+    if (!authUser) {
+      throw new Error('Authentication required');
+    }
+
+    const userId = assertUserId(authUser, 'User ID not found');
+    const membership = await ctx.db.get(args.membershipId);
+
+    if (!membership) {
+      throw new Error('Invitation not found');
+    }
+
+    if (membership.userId && membership.userId !== userId) {
+      throw new Error('This invite is for a different user');
+    }
+
+    const invitedEmail = membership.invitedEmail?.toLowerCase();
+    const authEmail = authUser.email?.toLowerCase() ?? null;
+    if (invitedEmail && authEmail && invitedEmail !== authEmail) {
+      throw new Error('This invite is for a different email address');
+    }
+
+    if (membership.status === 'invited') {
+      await ctx.db.delete(membership._id);
+    }
+
+    return { success: true };
   },
 });
 

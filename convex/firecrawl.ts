@@ -13,7 +13,7 @@ export interface VibeProject {
   vibeappsUrl: string;
   githubUrl: string | null;
   websiteUrl: string | null;
-  youtubeUrl: string | null;
+  videoUrl: string | null;
   isActive: boolean;
 }
 
@@ -119,7 +119,9 @@ export const getVibeAppsProjects = guarded.action(
       // Get existing projects from database
       const existingProjects = await ctx.runQuery(api.vibeApps.getAllVibeAppsProjects);
       const normalizeUrl = (url: string) => url.split('#')[0];
-      const existingUrls = new Set(existingProjects.map((p: VibeAppsProject) => normalizeUrl(p.vibeappsUrl)));
+      const existingUrls = new Set(
+        existingProjects.map((p: VibeAppsProject) => normalizeUrl(p.vibeappsUrl)),
+      );
 
       console.log(`Found ${existingProjects.length} existing projects in database`);
 
@@ -170,60 +172,51 @@ export const getVibeAppsProjects = guarded.action(
         required: ['projects'],
       };
 
-      // First try to scrape just the markdown to get complete content
-      const markdownResult = await firecrawl.scrape('https://vibeapps.dev/tag/tanstackstart', {
-        formats: ['markdown'],
+      // Scrape the page to get links directly from Firecrawl
+      // Note: Firecrawl cannot click "Load More" buttons, so we get initially visible projects only
+      const pageResult = await firecrawl.scrape('https://vibeapps.dev/tag/tanstackstart', {
+        formats: ['links'], // Get all links directly from Firecrawl
+        onlyMainContent: false,
+        waitFor: 10000, // Wait for content to load
       });
 
-      const markdownContent = markdownResult?.markdown || '';
+      // Get all links directly from Firecrawl
+      const allLinks = pageResult?.links || [];
 
-      // Extract projects from markdown by parsing sections
+      // Filter for vibeapps project URLs
+      const uniqueUrls = allLinks
+        .filter((link: string) => link.startsWith('https://vibeapps.dev/s/'))
+        .map((link: string) => link.split('#')[0]) // Remove fragments
+        .filter((link: string, index: number, arr: string[]) => arr.indexOf(link) === index); // Deduplicate
 
-      // Create projects from markdown extraction
+      console.log(`Found ${uniqueUrls.length} unique vibeapps.dev/s/ URLs from links extraction`);
+
+      // Create projects from the URLs found
       const markdownProjects: Array<Record<string, unknown>> = [];
 
-      // Split markdown by project sections (## headings)
-      const projectSections = markdownContent.split(/^## /m);
-
-      for (const section of projectSections) {
-        if (!section.trim()) continue;
-
-        // Extract project name from heading
-        const nameMatch = section.match(/^\[([^\]]+)\]/);
-        if (!nameMatch) continue;
-
-        const name = nameMatch[1];
-
-        // Extract URL from this section (clean URL without fragments)
-        const sectionUrlMatch = section.match(/https:\/\/vibeapps\.dev\/s\/[^)\s]+/);
-        if (!sectionUrlMatch) continue;
-
-        const vibeappsUrl = sectionUrlMatch[0].split('#')[0]; // Remove any fragments
-
-        // Extract creator (usually appears as "by [Creator Name]")
-        const creatorMatch = section.match(/by ([^\n]+)/);
-        const creator = creatorMatch ? creatorMatch[1].trim() : null;
-
-        // Extract GitHub URL if present
-        const githubMatch = section.match(/https:\/\/github\.com\/[^\s)]+/);
-        const githubUrl = githubMatch ? githubMatch[0] : null;
+      for (const url of uniqueUrls) {
+        // Extract project name from URL slug
+        const slugMatch = url.match(/\/s\/([^/]+)/);
+        let name = 'Unknown Project';
+        if (slugMatch) {
+          name = slugMatch[1].replace(/[-_]/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase());
+        }
 
         markdownProjects.push({
           name,
-          creator,
-          vibeappsUrl,
-          githubUrl,
+          creator: null, // Links format doesn't include creator/GitHub info
+          vibeappsUrl: url,
+          githubUrl: null, // Links format doesn't include GitHub URLs
           description: null,
           tags: [],
         });
       }
 
-      console.log(`Parsed ${markdownProjects.length} projects from markdown sections`);
+      console.log(`Created ${markdownProjects.length} projects from links extraction`);
 
       // Now try JSON extraction as well
       const mainResult = await firecrawl.scrape('https://vibeapps.dev/tag/tanstackstart', {
         formats: [
-          'markdown',
           {
             type: 'json',
             schema: mainPageSchema,
@@ -252,9 +245,6 @@ export const getVibeAppsProjects = guarded.action(
         (mainJsonData?.projects as Array<Record<string, unknown>> | undefined) ?? [];
 
       console.log(`Found ${jsonProjects.length} projects on main page via JSON extraction`);
-      console.log(
-        `JSON markdown preview (first 500 chars): ${mainResult.markdown?.substring(0, 500)}...`,
-      );
 
       // Combine JSON projects with markdown projects
       // Normalize URLs by removing fragments for consistent comparison
@@ -265,16 +255,6 @@ export const getVibeAppsProjects = guarded.action(
       ];
 
       console.log(`Total projects after combining JSON and markdown: ${combinedProjects.length}`);
-
-      // Log some details about the projects found
-      if (combinedProjects.length > 0) {
-        console.log('Sample projects found:');
-        combinedProjects.slice(0, 5).forEach((project, index) => {
-          console.log(
-            `  ${index + 1}. ${project.name} by ${project.creator} - ${project.vibeappsUrl}`,
-          );
-        });
-      }
 
       const allProjects = combinedProjects;
 
@@ -299,8 +279,6 @@ export const getVibeAppsProjects = guarded.action(
           continue;
         }
 
-        console.log(`Scraping ${vibeappsUrl} for website URL...`);
-
         try {
           // Define schema for individual project page
           const projectPageSchema = {
@@ -310,7 +288,7 @@ export const getVibeAppsProjects = guarded.action(
                 type: 'string',
                 description: 'The actual website/demo URL from the Project Links & Tags section',
               },
-              youtubeUrl: {
+              videoUrl: {
                 type: 'string',
                 description: 'YouTube video URL from the Project Links & Tags section',
               },
@@ -331,11 +309,11 @@ export const getVibeAppsProjects = guarded.action(
           });
 
           let websiteUrl = null;
-          let youtubeUrl = null;
+          let videoUrl = null;
           if (projectResult?.json) {
             const projectJson = projectResult.json as Record<string, unknown>;
             websiteUrl = (projectJson.websiteUrl as string | undefined)?.trim() || null;
-            youtubeUrl = (projectJson.youtubeUrl as string | undefined)?.trim() || null;
+            videoUrl = (projectJson.videoUrl as string | undefined)?.trim() || null;
           }
 
           // Store the project in the database
@@ -345,10 +323,9 @@ export const getVibeAppsProjects = guarded.action(
             vibeappsUrl,
             githubUrl: githubUrl || undefined,
             websiteUrl: websiteUrl || undefined,
-            youtubeUrl: youtubeUrl || undefined,
+            videoUrl: videoUrl || undefined,
           });
-        } catch (projectError) {
-          console.log(`Failed to scrape ${vibeappsUrl}:`, projectError);
+        } catch {
           // Still store the project but without website URL or youtube URL
           await ctx.runMutation(api.vibeApps.upsertVibeAppsProject, {
             name,
@@ -356,7 +333,7 @@ export const getVibeAppsProjects = guarded.action(
             vibeappsUrl,
             githubUrl: githubUrl || undefined,
             websiteUrl: undefined,
-            youtubeUrl: undefined,
+            videoUrl: undefined,
           });
         }
       }
@@ -371,7 +348,7 @@ export const getVibeAppsProjects = guarded.action(
         vibeappsUrl: p.vibeappsUrl,
         githubUrl: p.githubUrl || null,
         websiteUrl: p.websiteUrl || null,
-        youtubeUrl: p.youtubeUrl || null,
+        videoUrl: p.videoUrl || null,
         isActive: p.isActive ?? true, // Default to true for backward compatibility
       }));
     } catch (error) {

@@ -2,7 +2,7 @@ import { api } from '@convex/_generated/api';
 import type { Doc, Id } from '@convex/_generated/dataModel';
 import { useRouter } from '@tanstack/react-router';
 import { useQuery } from 'convex/react';
-import { ExternalLink, Eye, EyeOff, Github, Plus } from 'lucide-react';
+import { ExternalLink, Eye, EyeOff, Github, Plus, Youtube } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Badge } from '~/components/ui/badge';
 import { Button } from '~/components/ui/button';
@@ -20,6 +20,7 @@ type PublicSubmission = {
   team: string;
   repoUrl: string;
   siteUrl: string | undefined;
+  videoUrl: string | undefined;
   screenshots:
     | {
         r2Key: string;
@@ -125,6 +126,24 @@ function SubmissionCard({
             </CardDescription>
           </div>
           <div className="flex items-center gap-1 shrink-0">
+            {submission.videoUrl && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  window.open(submission.videoUrl, '_blank', 'noopener,noreferrer');
+                }}
+                className={`h-8 w-8 p-0 backdrop-blur-sm ${
+                  homepageScreenshot
+                    ? 'text-white hover:bg-white/20 bg-black/30'
+                    : 'text-muted-foreground hover:bg-background/20 bg-background/50'
+                }`}
+                title="Watch demo video"
+              >
+                <Youtube className="h-4 w-4" />
+              </Button>
+            )}
             {submission.repoUrl && (
               <Button
                 variant="ghost"
@@ -355,36 +374,41 @@ export function SubmissionsList({
     );
   }
 
+  // Only show main header when NOT in split view (My Submissions + Other Submissions)
+  const isSplitView = hasMySubmissions && otherSubmissions.length > 0;
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-col gap-2">
-          <div className="flex items-center gap-3">
-            <h2 className="text-2xl font-semibold">Submissions</h2>
-            {canSeeRatingFilters &&
-              ratingStats.total > 0 &&
-              ratingStats.rated > 0 &&
-              ratingStats.unrated > 0 && (
-                <Button
-                  variant={showOnlyUnrated ? 'secondary' : 'outline'}
-                  size="sm"
-                  onClick={() => setShowOnlyUnrated(!showOnlyUnrated)}
-                  className="gap-2"
-                >
-                  {showOnlyUnrated ? (
-                    <>
-                      <EyeOff className="h-4 w-4" />
-                      Show All ({ratingStats.total})
-                    </>
-                  ) : (
-                    <>
-                      <Eye className="h-4 w-4" />
-                      Show Unrated ({ratingStats.unrated})
-                    </>
-                  )}
-                </Button>
-              )}
-          </div>
+          {!isSplitView && (
+            <div className="flex items-center gap-3">
+              <h2 className="text-2xl font-semibold">Submissions</h2>
+              {canSeeRatingFilters &&
+                ratingStats.total > 0 &&
+                ratingStats.rated > 0 &&
+                ratingStats.unrated > 0 && (
+                  <Button
+                    variant={showOnlyUnrated ? 'secondary' : 'outline'}
+                    size="sm"
+                    onClick={() => setShowOnlyUnrated(!showOnlyUnrated)}
+                    className="gap-2"
+                  >
+                    {showOnlyUnrated ? (
+                      <>
+                        <EyeOff className="h-4 w-4" />
+                        Show All ({ratingStats.total})
+                      </>
+                    ) : (
+                      <>
+                        <Eye className="h-4 w-4" />
+                        Show Unrated ({ratingStats.unrated})
+                      </>
+                    )}
+                  </Button>
+                )}
+            </div>
+          )}
         </div>
         {canSubmit && !hasEnded && (
           <Button
@@ -462,7 +486,6 @@ export function SubmissionsList({
       ) : (
         // Single view: Submissions (only one type exists)
         <div className="space-y-4">
-          <h3 className="text-xl font-semibold">Submissions</h3>
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {submissions.map((submission) => (
               <SubmissionCard

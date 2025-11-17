@@ -2,18 +2,13 @@ import { Link } from '@tanstack/react-router';
 import {
   ArrowRight,
   Bot,
-  Camera,
-  Eye,
-  Monitor,
   Search,
   Settings,
-  Shield,
   Sparkles,
   Trophy,
   Upload,
   Users,
   Vote,
-  Zap,
 } from 'lucide-react';
 import { SiGithub } from 'react-icons/si';
 import { Button } from '~/components/ui/button';
@@ -155,37 +150,43 @@ export function MarketingHome() {
         </div>
 
         <div className="grid gap-8 md:grid-cols-3">
-          <div className="space-y-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-500/10">
-              <Search className="h-6 w-6 text-blue-600" />
+          <div className="flex gap-4 md:flex-col md:text-center md:items-center md:space-y-4 md:gap-0">
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-blue-500/10 md:mx-auto shrink-0">
+              <Search className="h-8 w-8 text-blue-600" />
             </div>
-            <h3 className="text-xl font-semibold text-foreground">Browse</h3>
-            <p className="text-muted-foreground">
-              Explore hackathons by category, deadline, or popularity. Find the perfect challenge
-              for your skills and interests.
-            </p>
+            <div className="space-y-2 md:text-center">
+              <h3 className="text-lg font-semibold text-foreground">Browse</h3>
+              <p className="text-sm text-muted-foreground">
+                Explore hackathons by category, deadline, or popularity. Find the perfect challenge
+                for your skills and interests.
+              </p>
+            </div>
           </div>
 
-          <div className="space-y-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-purple-500/10">
-              <Users className="h-6 w-6 text-purple-600" />
+          <div className="flex gap-4 md:flex-col md:text-center md:items-center md:space-y-4 md:gap-0">
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-purple-500/10 md:mx-auto shrink-0">
+              <Users className="h-8 w-8 text-purple-600" />
             </div>
-            <h3 className="text-xl font-semibold text-foreground">Join</h3>
-            <p className="text-muted-foreground">
-              Connect with organizers and fellow participants. Get insights into judging criteria
-              and submission requirements before you start.
-            </p>
+            <div className="space-y-2 md:text-center">
+              <h3 className="text-lg font-semibold text-foreground">Join</h3>
+              <p className="text-sm text-muted-foreground">
+                Connect with organizers and fellow participants. Get insights into judging criteria
+                and submission requirements before you start.
+              </p>
+            </div>
           </div>
 
-          <div className="space-y-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-500/10">
-              <Trophy className="h-6 w-6 text-green-600" />
+          <div className="flex gap-4 md:flex-col md:text-center md:items-center md:space-y-4 md:gap-0">
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-green-500/10 md:mx-auto shrink-0">
+              <Trophy className="h-8 w-8 text-green-600" />
             </div>
-            <h3 className="text-xl font-semibold text-foreground">Showcase</h3>
-            <p className="text-muted-foreground">
-              Submit your projects with automatic processing, screenshots, and AI-generated
-              summaries that highlight your best work to judges.
-            </p>
+            <div className="space-y-2 md:text-center">
+              <h3 className="text-lg font-semibold text-foreground">Showcase</h3>
+              <p className="text-sm text-muted-foreground">
+                Submit your projects with automatic processing, screenshots, and AI-generated
+                summaries that highlight your best work to judges.
+              </p>
+            </div>
           </div>
         </div>
 
@@ -196,122 +197,6 @@ export function MarketingHome() {
               <ArrowRight className="h-4 w-4" />
             </Link>
           </Button>
-        </div>
-      </section>
-
-      {/* AI-Powered Features Section */}
-      <section className="rounded-3xl border border-border bg-linear-to-br from-purple-500/5 to-pink-500/5 p-10 shadow-sm">
-        <div className="text-center space-y-3 mb-10">
-          <span className="text-sm font-medium uppercase tracking-widest text-muted-foreground">
-            AI-Powered Intelligence
-          </span>
-          <h2 className="text-3xl font-semibold text-foreground sm:text-4xl">
-            Smart automation for modern hackathons
-          </h2>
-          <p className="text-base text-muted-foreground">
-            Our AI analyzes every submission automatically, giving judges deep insights and
-            participants rich project understanding.
-          </p>
-        </div>
-
-        <div className="grid gap-8 md:grid-cols-3">
-          <div className="space-y-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-purple-500/10">
-              <Bot className="h-6 w-6 text-purple-600" />
-            </div>
-            <h3 className="text-xl font-semibold text-foreground">AI Repository Chat</h3>
-            <p className="text-muted-foreground">
-              Ask questions about any codebase in natural language. Get instant answers about
-              architecture, implementation details, and technical decisions from the full
-              repository.
-            </p>
-          </div>
-
-          <div className="space-y-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-500/10">
-              <Eye className="h-6 w-6 text-blue-600" />
-            </div>
-            <h3 className="text-xl font-semibold text-foreground">Smart Project Summaries</h3>
-            <p className="text-muted-foreground">
-              AI analyzes README files and project structure to generate comprehensive summaries,
-              highlighting key features, technologies, and what makes each project unique.
-            </p>
-          </div>
-
-          <div className="space-y-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-500/10">
-              <Camera className="h-6 w-6 text-green-600" />
-            </div>
-            <h3 className="text-xl font-semibold text-foreground">Automatic Screenshots</h3>
-            <p className="text-muted-foreground">
-              Live websites are automatically captured and displayed to judges, ensuring they see
-              your application exactly as users experience it, without manual setup.
-            </p>
-          </div>
-        </div>
-      </section>
-
-      <section className="rounded-3xl border border-border bg-card p-10 shadow-sm">
-        <div className="text-center space-y-3 mb-10">
-          <span className="text-sm font-medium uppercase tracking-widest text-muted-foreground">
-            Competition-Ready Features
-          </span>
-          <h2 className="text-3xl font-semibold text-foreground sm:text-4xl">
-            Built for the intensity of hackathon management
-          </h2>
-          <p className="text-base text-muted-foreground">
-            Designed specifically for high-stakes competitions with real-time collaboration,
-            automated workflows, and spectacular presentation features.
-          </p>
-        </div>
-
-        <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-4">
-          <div className="space-y-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
-              <Zap className="h-6 w-6 text-primary" />
-            </div>
-            <h3 className="text-xl font-semibold text-foreground">Automated Processing</h3>
-            <p className="text-muted-foreground">
-              Submissions are automatically processed—repositories downloaded, screenshots captured,
-              and AI summaries generated. Judges get rich project insights instantly without manual
-              work.
-            </p>
-          </div>
-
-          <div className="space-y-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
-              <Monitor className="h-6 w-6 text-primary" />
-            </div>
-            <h3 className="text-xl font-semibold text-foreground">Live Judging & Results</h3>
-            <p className="text-muted-foreground">
-              Real-time rating updates, live leaderboard changes, and synchronized judging
-              workflows. Everyone sees results update instantly as votes come in during intense
-              judging sessions.
-            </p>
-          </div>
-
-          <div className="space-y-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
-              <Vote className="h-6 w-6 text-primary" />
-            </div>
-            <h3 className="text-xl font-semibold text-foreground">Expert Judging</h3>
-            <p className="text-muted-foreground">
-              Invite expert judges to score projects with detailed ratings. Judges get AI-powered
-              insights and project summaries to make informed decisions during intense judging
-              sessions.
-            </p>
-          </div>
-
-          <div className="space-y-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
-              <Shield className="h-6 w-6 text-primary" />
-            </div>
-            <h3 className="text-xl font-semibold text-foreground">Spectacular Reveals</h3>
-            <p className="text-muted-foreground">
-              Professional podium ceremonies with confetti animations, step-by-step winner reveals,
-              and presenter controls. Create unforgettable moments for your hackathon participants.
-            </p>
-          </div>
         </div>
       </section>
 

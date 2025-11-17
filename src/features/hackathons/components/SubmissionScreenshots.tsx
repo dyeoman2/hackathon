@@ -1,12 +1,13 @@
 import { api } from '@convex/_generated/api';
 import type { Doc } from '@convex/_generated/dataModel';
-import { useAction } from 'convex/react';
+import { useAction, useMutation } from 'convex/react';
 import {
   Camera,
   ChevronLeft,
   ChevronRight,
   Loader2,
   MoreVertical,
+  Play,
   SearchCode,
   Trash2,
   Upload,
@@ -32,15 +33,25 @@ import {
   CarouselNext,
   CarouselPrevious,
 } from '~/components/ui/carousel';
-import { Dialog, DialogContent } from '~/components/ui/dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '~/components/ui/dialog';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '~/components/ui/dropdown-menu';
+import { Field, FieldLabel } from '~/components/ui/field';
+import { Input } from '~/components/ui/input';
 import { ProcessingLoader } from '~/components/ui/processing-loader';
 import { useToast } from '~/components/ui/toast';
+import { VideoPlayer } from '~/components/VideoPlayer';
 import { useOptimisticMutation } from '~/features/admin/hooks/useOptimisticUpdates';
 
 type ScreenshotProcessingStage = 'mapping-urls' | 'capturing-screenshots' | null;
@@ -107,6 +118,8 @@ export function SubmissionScreenshots({ submission, canEdit = false }: Submissio
   const [deletingR2Key, setDeletingR2Key] = useState<string | null>(null);
   const [isCapturingScreenshot, setIsCapturingScreenshot] = useState(false);
   const [isUploadingScreenshot, setIsUploadingScreenshot] = useState(false);
+  const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
+  const [isUpdatingVideo, setIsUpdatingVideo] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Check if we're in screenshot processing stages
@@ -117,6 +130,7 @@ export function SubmissionScreenshots({ submission, canEdit = false }: Submissio
   const toast = useToast();
   const captureScreenshot = useAction(api.submissionsActions.screenshot.captureScreenshot);
   const uploadScreenshot = useAction(api.submissionsActions.screenshot.uploadScreenshot);
+  const updateSubmission = useMutation(api.submissions.updateSubmission);
 
   const handleCaptureScreenshot = useCallback(async () => {
     if (!submission.siteUrl) {
@@ -211,6 +225,33 @@ export function SubmissionScreenshots({ submission, canEdit = false }: Submissio
     [handleUploadScreenshot, toast],
   );
 
+  const handleUpdateVideoUrl = useCallback(
+    async (videoUrl: string) => {
+      setIsUpdatingVideo(true);
+      try {
+        await updateSubmission({
+          submissionId: submission._id,
+          videoUrl: videoUrl.trim() || undefined,
+        });
+
+        toast.showToast(
+          videoUrl.trim() ? 'Demo video added successfully' : 'Demo video removed successfully',
+          'success',
+        );
+        setIsVideoModalOpen(false);
+      } catch (error) {
+        console.error('Failed to update video URL:', error);
+        toast.showToast(
+          error instanceof Error ? error.message : 'Failed to update demo video',
+          'error',
+        );
+      } finally {
+        setIsUpdatingVideo(false);
+      }
+    },
+    [submission._id, updateSubmission, toast],
+  );
+
   // Use optimistic mutation for instant UI updates - Convex handles rollback on error
   const removeScreenshotOptimistic = useOptimisticMutation(api.submissions.removeScreenshot, {
     onSuccess: () => {
@@ -265,7 +306,7 @@ export function SubmissionScreenshots({ submission, canEdit = false }: Submissio
     }
   }, [openIndex, screenshots.length]);
 
-  if (!submission.siteUrl && screenshots.length === 0) {
+  if (!submission.siteUrl && !submission.videoUrl && screenshots.length === 0) {
     return null;
   }
 
@@ -274,9 +315,9 @@ export function SubmissionScreenshots({ submission, canEdit = false }: Submissio
       <CardHeader>
         <div className="flex items-start justify-between gap-4">
           <div>
-            <CardTitle>Screenshots</CardTitle>
+            <CardTitle>Media</CardTitle>
             <CardDescription>
-              Visual previews of the site captured via Firecrawl or uploaded manually
+              Screenshots captured via Firecrawl, uploaded images, and demo videos
             </CardDescription>
           </div>
           {canEdit && submission.siteUrl && (
@@ -320,12 +361,41 @@ export function SubmissionScreenshots({ submission, canEdit = false }: Submissio
                     </>
                   )}
                 </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => setIsVideoModalOpen(true)}
+                  disabled={isUpdatingVideo}
+                >
+                  {isUpdatingVideo ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Updating...
+                    </>
+                  ) : (
+                    <>
+                      <Play className="h-4 w-4" />
+                      Add Demo Video
+                    </>
+                  )}
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           )}
         </div>
       </CardHeader>
       <CardContent>
+        {/* Video Section */}
+        {submission.videoUrl && (
+          <div className="mb-6">
+            <h3 className="text-sm font-medium mb-3">Demo Video</h3>
+            <VideoPlayer
+              url={submission.videoUrl}
+              title={`Demo video for ${submission.title}`}
+              className="max-w-2xl mx-auto"
+            />
+          </div>
+        )}
+
+        {/* Screenshot Processing */}
         {isScreenshotProcessing && screenshotProcessingMessage ? (
           <ProcessingLoader
             title={screenshotProcessingMessage.title}
@@ -336,7 +406,7 @@ export function SubmissionScreenshots({ submission, canEdit = false }: Submissio
             <Camera className="mb-4 h-12 w-12 text-muted-foreground" />
             <p className="text-sm text-muted-foreground mb-4">
               No screenshots captured yet. Use the actions menu to capture a screenshot of the live
-              site.
+              site or upload your own images.
             </p>
           </div>
         ) : (
@@ -607,6 +677,74 @@ export function SubmissionScreenshots({ submission, canEdit = false }: Submissio
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Demo Video Modal */}
+      <Dialog open={isVideoModalOpen} onOpenChange={setIsVideoModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {submission.videoUrl ? 'Update Demo Video' : 'Add Demo Video'}
+            </DialogTitle>
+            <DialogDescription>
+              {submission.videoUrl
+                ? 'Update or remove the demo video URL for your project.'
+                : 'Add a demo video URL to showcase your project. YouTube videos will be embedded directly, while other video platforms will open in a new tab.'}
+            </DialogDescription>
+          </DialogHeader>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              const formData = new FormData(e.currentTarget);
+              const videoUrl = formData.get('videoUrl') as string;
+              handleUpdateVideoUrl(videoUrl);
+            }}
+          >
+            <Field>
+              <FieldLabel>Demo Video URL</FieldLabel>
+              <Input
+                type="url"
+                name="videoUrl"
+                defaultValue={submission.videoUrl || ''}
+                placeholder="https://youtube.com/watch?v=... or any video URL"
+                disabled={isUpdatingVideo}
+                required
+              />
+            </Field>
+            <DialogFooter className="mt-6">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsVideoModalOpen(false)}
+                disabled={isUpdatingVideo}
+              >
+                Cancel
+              </Button>
+              {submission.videoUrl && (
+                <Button
+                  type="button"
+                  variant="destructive"
+                  onClick={() => handleUpdateVideoUrl('')}
+                  disabled={isUpdatingVideo}
+                >
+                  Remove Video
+                </Button>
+              )}
+              <Button type="submit" disabled={isUpdatingVideo}>
+                {isUpdatingVideo ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    {submission.videoUrl ? 'Updating...' : 'Adding...'}
+                  </>
+                ) : submission.videoUrl ? (
+                  'Update Video'
+                ) : (
+                  'Add Video'
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {/* Hidden file input for screenshot upload */}
       <input

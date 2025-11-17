@@ -1,6 +1,7 @@
 import { Link, useLocation } from '@tanstack/react-router';
 import { LogOut, Shield, User } from 'lucide-react';
 import { MobileNavigation } from '~/components/MobileNavigation';
+import { NotificationsMenu } from '~/components/NotificationsMenu';
 import { ThemeToggle } from '~/components/theme-toggle';
 import {
   DropdownMenu,
@@ -171,13 +172,10 @@ export function AppNavigation() {
               <MobileNavigation />
             </div>
 
-            {/* Theme Toggle */}
-            <div className="hidden md:block mr-2">
+            {/* Desktop utilities */}
+            <div className="hidden md:flex items-center space-x-2">
+              <NotificationsMenu />
               <ThemeToggle />
-            </div>
-
-            {/* Desktop Auth Navigation */}
-            <div className="hidden md:block">
               <AuthNavigation currentPath={location.pathname} />
             </div>
           </div>

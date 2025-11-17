@@ -35,7 +35,9 @@ export default defineSchema({
     vibeappsUrl: v.string(), // Unique identifier for the project
     githubUrl: v.optional(v.string()),
     websiteUrl: v.optional(v.string()),
-    youtubeUrl: v.optional(v.string()),
+    videoUrl: v.optional(v.string()),
+    // Temporary field during migration - will be removed after data migration
+    youtubeUrl: v.optional(v.string()), // @deprecated - use videoUrl instead
     isActive: v.boolean(), // Whether this project should be included in seeding
     lastScrapedAt: v.number(), // Timestamp when this project was last scraped
     createdAt: v.number(),
@@ -124,6 +126,9 @@ export default defineSchema({
     team: v.string(),
     repoUrl: v.string(),
     siteUrl: v.optional(v.string()),
+    videoUrl: v.optional(v.string()), // Video URL for demo videos (supports YouTube and other platforms)
+    // Temporary field during migration - will be removed after data migration
+    youtubeUrl: v.optional(v.string()), // @deprecated - use videoUrl instead
     manualSummary: v.optional(v.string()), // Manual summary that can be edited by owners/admins/submitters
     source: v.optional(
       v.object({
