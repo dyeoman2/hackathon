@@ -438,9 +438,13 @@ export function SubmissionRepoChat({ submission }: SubmissionRepoChatProps) {
     }
   }, [streamingResponse, currentRequestId]);
 
-  // Show processing state if indexing is still in progress (until AI Search sync is completed)
+  // Treat repo as processing until we have an indexed path prefix or an explicit error
+  const isAwaitingRepoUpload = !!submission.repoUrl && !r2PathPrefix && processingState !== 'error';
+
+  // Show processing state while indexing or waiting for upload
   const isProcessing =
-    processingState !== 'complete' && processingState !== 'error' && !aiSearchSyncCompletedAt;
+    isAwaitingRepoUpload ||
+    (processingState !== 'complete' && processingState !== 'error' && !aiSearchSyncCompletedAt);
 
   // Show error state if processing failed
   const hasProcessingError = processingState === 'error';
@@ -460,8 +464,9 @@ export function SubmissionRepoChat({ submission }: SubmissionRepoChatProps) {
         };
       default:
         return {
-          title: 'Processing Repository',
-          description: 'Processing repository...',
+          title: 'Preparing Repository',
+          description:
+            'The repository is being prepared and indexed so you can chat with it. This may take a few minutes...',
         };
     }
   };

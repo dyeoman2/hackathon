@@ -1,11 +1,7 @@
 'use node';
 
-import {
-  DeleteObjectCommand,
-  GetObjectCommand,
-  PutObjectCommand,
-  S3Client,
-} from '@aws-sdk/client-s3';
+import { DeleteObjectCommand, GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { Upload } from '@aws-sdk/lib-storage';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import Firecrawl from '@mendable/firecrawl-js';
 import { v } from 'convex/values';
@@ -15,7 +11,8 @@ import type { ActionCtx } from '../_generated/server';
 import { internalAction } from '../_generated/server';
 import { authComponent } from '../auth';
 import { guarded } from '../authz/guardFactory';
-import type { GenerateSummaryRef, GetSubmissionInternalRef } from './types';
+import { checkAllProcessesCompleteAndGenerateSummary } from './aiSummary';
+import type { GetSubmissionInternalRef } from './types';
 
 // Helper function to get the Firecrawl API key from environment
 function getFirecrawlApiKey(): string {
@@ -295,8 +292,9 @@ export const captureScreenshot = guarded.action(
           const r2Key = `repos/${args.submissionId}/firecrawl/page-${pageIndex}-${timestamp}.png`;
 
           // Upload screenshot to R2
-          await s3Client.send(
-            new PutObjectCommand({
+          const upload = new Upload({
+            client: s3Client,
+            params: {
               Bucket: r2Creds.r2BucketName,
               Key: r2Key,
               Body: screenshotBuffer,
@@ -307,8 +305,9 @@ export const captureScreenshot = guarded.action(
                 pageIndex: pageIndex.toString(),
                 capturedAt: timestamp.toString(),
               },
-            }),
-          );
+            },
+          });
+          await upload.done();
 
           // Generate presigned URL for R2 object (valid for 7 days - maximum allowed)
           const getObjectCommand = new GetObjectCommand({
@@ -408,70 +407,8 @@ export const captureScreenshot = guarded.action(
           };
         }
 
-        // Trigger summary generation if README is also ready, or if there's no repo URL (screenshot-only summary)
-        // Summary generation requires:
-        // - If siteUrl exists: both README and screenshots (for repos with GitHub URLs)
-        // - If no siteUrl: only README (handled by README fetch)
-        // - If no repo URL: screenshots only (for projects without GitHub repos)
-        const hasReadme = !!submission.source?.readme;
-        const hasRepoUrl = !!submission.repoUrl?.trim();
-        const hasSummary = !!submission.source?.aiSummary;
-        const repoProcessingFailed = submission.source?.processingState === 'error';
-
-        if (!hasSummary) {
-          if (hasReadme) {
-            // Traditional flow: README + screenshots
-            console.log(
-              `[Screenshot] Screenshots ready, README ready - triggering summary generation for submission ${args.submissionId}`,
-            );
-            await ctx.scheduler.runAfter(
-              0,
-              (
-                internal.submissionsActions.aiSummary as unknown as {
-                  generateSummary: GenerateSummaryRef;
-                }
-              ).generateSummary,
-              {
-                submissionId: args.submissionId,
-                forceRegenerate: false,
-              },
-            );
-          } else if (!hasRepoUrl) {
-            // Screenshot-only flow: no GitHub repo, generate summary from screenshots only
-            console.log(
-              `[Screenshot] Screenshots ready, no repo URL - triggering screenshot-only summary generation for submission ${args.submissionId}`,
-            );
-            await ctx.scheduler.runAfter(
-              0,
-              internal.submissionsActions.aiSummary.generateScreenshotOnlySummary,
-              {
-                submissionId: args.submissionId,
-              },
-            );
-          } else if (repoProcessingFailed) {
-            // Repository processing failed: generate summary from screenshots only as fallback
-            console.log(
-              `[Screenshot] Repository processing failed but screenshots captured - triggering fallback summary generation for submission ${args.submissionId}`,
-            );
-            await ctx.scheduler.runAfter(
-              0,
-              (
-                internal.submissionsActions.aiSummary as unknown as {
-                  generateSummary: GenerateSummaryRef;
-                }
-              ).generateSummary,
-              {
-                submissionId: args.submissionId,
-                forceRegenerate: false,
-              },
-            );
-          } else {
-            // Waiting for README: traditional repo flow where README fetch is still in progress
-            console.log(
-              `[Screenshot] Screenshots ready but waiting for README before generating summary for submission ${args.submissionId}`,
-            );
-          }
-        }
+        // Screenshot capture complete - check if summary can be generated
+        await checkAllProcessesCompleteAndGenerateSummary(ctx, args.submissionId);
       } catch (error) {
         // Log but don't fail - summary generation is optional
         console.warn(
@@ -494,45 +431,13 @@ export const captureScreenshot = guarded.action(
           error.message.includes('ETIMEDOUT') ||
           error.name === 'FirecrawlSdkError')
       ) {
-        // Screenshot capture timed out - if README exists, generate summary with just README
-        try {
-          const submission = await ctx.runQuery(
-            (internal.submissions as unknown as { getSubmissionInternal: GetSubmissionInternalRef })
-              .getSubmissionInternal,
-            {
-              submissionId: args.submissionId,
-            },
-          );
+        // Screenshot capture timed out - mark as attempted and check if summary can be generated
+        await ctx.runMutation(internal.submissions.updateSubmissionSourceInternal, {
+          submissionId: args.submissionId,
+          screenshotCaptureCompletedAt: Date.now(), // Mark as attempted even on timeout
+        });
 
-          if (submission) {
-            const hasReadme = !!submission.source?.readme;
-            const hasSummary = !!submission.source?.aiSummary;
-
-            // If README exists, generate summary with just README
-            if (hasReadme && !hasSummary) {
-              console.log(
-                `[Screenshot] Screenshot capture timed out but README exists - generating summary with README only for submission ${args.submissionId}`,
-              );
-              await ctx.scheduler.runAfter(
-                0,
-                (
-                  internal.submissionsActions.aiSummary as unknown as {
-                    generateSummary: GenerateSummaryRef;
-                  }
-                ).generateSummary,
-                {
-                  submissionId: args.submissionId,
-                  forceRegenerate: false,
-                },
-              );
-            }
-          }
-        } catch (summaryError) {
-          console.warn(
-            `[Screenshot] Failed to trigger summary generation after timeout:`,
-            summaryError instanceof Error ? summaryError.message : String(summaryError),
-          );
-        }
+        await checkAllProcessesCompleteAndGenerateSummary(ctx, args.submissionId);
 
         throw new Error(
           'Screenshot capture timed out. The website may be slow to load or Firecrawl is experiencing high load. Please try again later.',
@@ -773,8 +678,9 @@ export const captureScreenshotInternal = internalAction({
           const r2Key = `repos/${args.submissionId}/firecrawl/page-${pageIndex}-${timestamp}.png`;
 
           // Upload screenshot to R2
-          await s3Client.send(
-            new PutObjectCommand({
+          const upload = new Upload({
+            client: s3Client,
+            params: {
               Bucket: r2Creds.r2BucketName,
               Key: r2Key,
               Body: screenshotBuffer,
@@ -785,8 +691,9 @@ export const captureScreenshotInternal = internalAction({
                 pageIndex: pageIndex.toString(),
                 capturedAt: timestamp.toString(),
               },
-            }),
-          );
+            },
+          });
+          await upload.done();
 
           // Generate presigned URL for R2 object (valid for 7 days - maximum allowed)
           const getObjectCommand = new GetObjectCommand({
@@ -833,48 +740,13 @@ export const captureScreenshotInternal = internalAction({
       }
 
       if (capturedScreenshots.length === 0) {
-        // Screenshot capture failed - if README exists, generate summary with just README
-        console.warn(
-          `[Screenshot] No screenshots captured for submission ${args.submissionId} - checking if README exists to generate summary`,
-        );
-        try {
-          const submission = await ctx.runQuery(
-            (internal.submissions as unknown as { getSubmissionInternal: GetSubmissionInternalRef })
-              .getSubmissionInternal,
-            {
-              submissionId: args.submissionId,
-            },
-          );
+        // Screenshot capture failed - mark as attempted and check if summary can be generated
+        await ctx.runMutation(internal.submissions.updateSubmissionSourceInternal, {
+          submissionId: args.submissionId,
+          screenshotCaptureCompletedAt: Date.now(), // Mark as attempted even on failure
+        });
 
-          if (submission) {
-            const hasReadme = !!submission.source?.readme;
-            const hasSummary = !!submission.source?.aiSummary;
-
-            // If README exists, generate summary with just README
-            if (hasReadme && !hasSummary) {
-              console.log(
-                `[Screenshot] Screenshot capture failed but README exists - generating summary with README only for submission ${args.submissionId}`,
-              );
-              await ctx.scheduler.runAfter(
-                0,
-                (
-                  internal.submissionsActions.aiSummary as unknown as {
-                    generateSummary: GenerateSummaryRef;
-                  }
-                ).generateSummary,
-                {
-                  submissionId: args.submissionId,
-                  forceRegenerate: false,
-                },
-              );
-            }
-          }
-        } catch (error) {
-          console.warn(
-            `[Screenshot] Failed to trigger summary generation after screenshot failure:`,
-            error instanceof Error ? error.message : String(error),
-          );
-        }
+        await checkAllProcessesCompleteAndGenerateSummary(ctx, args.submissionId);
 
         return {
           success: false,
@@ -932,70 +804,8 @@ export const captureScreenshotInternal = internalAction({
           };
         }
 
-        // Trigger summary generation if README is also ready, or if there's no repo URL (screenshot-only summary)
-        // Summary generation requires:
-        // - If siteUrl exists: both README and screenshots (for repos with GitHub URLs)
-        // - If no siteUrl: only README (handled by README fetch)
-        // - If no repo URL: screenshots only (for projects without GitHub repos)
-        const hasReadme = !!submission.source?.readme;
-        const hasRepoUrl = !!submission.repoUrl?.trim();
-        const hasSummary = !!submission.source?.aiSummary;
-        const repoProcessingFailed = submission.source?.processingState === 'error';
-
-        if (!hasSummary) {
-          if (hasReadme) {
-            // Traditional flow: README + screenshots
-            console.log(
-              `[Screenshot] Screenshots ready, README ready - triggering summary generation for submission ${args.submissionId}`,
-            );
-            await ctx.scheduler.runAfter(
-              0,
-              (
-                internal.submissionsActions.aiSummary as unknown as {
-                  generateSummary: GenerateSummaryRef;
-                }
-              ).generateSummary,
-              {
-                submissionId: args.submissionId,
-                forceRegenerate: false,
-              },
-            );
-          } else if (!hasRepoUrl) {
-            // Screenshot-only flow: no GitHub repo, generate summary from screenshots only
-            console.log(
-              `[Screenshot] Screenshots ready, no repo URL - triggering screenshot-only summary generation for submission ${args.submissionId}`,
-            );
-            await ctx.scheduler.runAfter(
-              0,
-              internal.submissionsActions.aiSummary.generateScreenshotOnlySummary,
-              {
-                submissionId: args.submissionId,
-              },
-            );
-          } else if (repoProcessingFailed) {
-            // Repository processing failed: generate summary from screenshots only as fallback
-            console.log(
-              `[Screenshot] Repository processing failed but screenshots captured - triggering fallback summary generation for submission ${args.submissionId}`,
-            );
-            await ctx.scheduler.runAfter(
-              0,
-              (
-                internal.submissionsActions.aiSummary as unknown as {
-                  generateSummary: GenerateSummaryRef;
-                }
-              ).generateSummary,
-              {
-                submissionId: args.submissionId,
-                forceRegenerate: false,
-              },
-            );
-          } else {
-            // Waiting for README: traditional repo flow where README fetch is still in progress
-            console.log(
-              `[Screenshot] Screenshots ready but waiting for README before generating summary for submission ${args.submissionId}`,
-            );
-          }
-        }
+        // Screenshot capture complete - check if summary can be generated
+        await checkAllProcessesCompleteAndGenerateSummary(ctx, args.submissionId);
       } catch (error) {
         // Log but don't fail - summary generation is optional
         console.warn(
@@ -1020,45 +830,13 @@ export const captureScreenshotInternal = internalAction({
       ) {
         console.error('Screenshot capture timed out:', error);
 
-        // Screenshot capture timed out - if README exists, generate summary with just README
-        try {
-          const submission = await ctx.runQuery(
-            (internal.submissions as unknown as { getSubmissionInternal: GetSubmissionInternalRef })
-              .getSubmissionInternal,
-            {
-              submissionId: args.submissionId,
-            },
-          );
+        // Screenshot capture timed out - mark as attempted and check if summary can be generated
+        await ctx.runMutation(internal.submissions.updateSubmissionSourceInternal, {
+          submissionId: args.submissionId,
+          screenshotCaptureCompletedAt: Date.now(), // Mark as attempted even on timeout
+        });
 
-          if (submission) {
-            const hasReadme = !!submission.source?.readme;
-            const hasSummary = !!submission.source?.aiSummary;
-
-            // If README exists, generate summary with just README
-            if (hasReadme && !hasSummary) {
-              console.log(
-                `[Screenshot] Screenshot capture timed out but README exists - generating summary with README only for submission ${args.submissionId}`,
-              );
-              await ctx.scheduler.runAfter(
-                0,
-                (
-                  internal.submissionsActions.aiSummary as unknown as {
-                    generateSummary: GenerateSummaryRef;
-                  }
-                ).generateSummary,
-                {
-                  submissionId: args.submissionId,
-                  forceRegenerate: false,
-                },
-              );
-            }
-          }
-        } catch (summaryError) {
-          console.warn(
-            `[Screenshot] Failed to trigger summary generation after timeout:`,
-            summaryError instanceof Error ? summaryError.message : String(summaryError),
-          );
-        }
+        await checkAllProcessesCompleteAndGenerateSummary(ctx, args.submissionId);
 
         return {
           success: false,
@@ -1267,8 +1045,9 @@ export const uploadScreenshot = guarded.action(
     const r2Key = `repos/${args.submissionId}/custom/${timestamp}.${fileExtension}`;
 
     // Upload screenshot to R2
-    await s3Client.send(
-      new PutObjectCommand({
+    const upload = new Upload({
+      client: s3Client,
+      params: {
         Bucket: r2Creds.r2BucketName,
         Key: r2Key,
         Body: fileBytes,
@@ -1280,8 +1059,9 @@ export const uploadScreenshot = guarded.action(
           fileName: args.fileName || '',
           uploadedAt: timestamp.toString(),
         },
-      }),
-    );
+      },
+    });
+    await upload.done();
 
     // Generate presigned URL for R2 object (valid for 7 days - maximum allowed)
     const getObjectCommand = new GetObjectCommand({

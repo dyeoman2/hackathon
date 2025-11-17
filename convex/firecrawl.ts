@@ -178,6 +178,7 @@ export const getVibeAppsProjects = guarded.action(
         formats: ['links'], // Get all links directly from Firecrawl
         onlyMainContent: false,
         waitFor: 10000, // Wait for content to load
+        ignoreCache: true, // Ignore cache for fresh data
       });
 
       // Get all links directly from Firecrawl
@@ -233,6 +234,7 @@ export const getVibeAppsProjects = guarded.action(
               'Make sure to find ALL projects on the page, including any that might be in different sections or layouts.',
           },
         ],
+        ignoreCache: true, // Ignore cache for fresh data
       });
 
       if (!mainResult) {
@@ -306,6 +308,7 @@ export const getVibeAppsProjects = guarded.action(
                   'Return the main website/demo URL that users would visit to see the actual project, and any YouTube video URL if present.',
               },
             ],
+            ignoreCache: true, // Ignore cache for fresh data
           });
 
           let websiteUrl = null;

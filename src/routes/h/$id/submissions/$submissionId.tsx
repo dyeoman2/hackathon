@@ -149,8 +149,7 @@ function SubmissionDetailComponent() {
     return {
       currentIndex: index,
       previousSubmissionId: index > 0 ? submissions[index - 1]._id : null,
-      nextSubmissionId:
-        index < submissions.length - 1 ? submissions[index + 1]._id : null,
+      nextSubmissionId: index < submissions.length - 1 ? submissions[index + 1]._id : null,
     };
   }, [submissions, submission, submissionId]);
 

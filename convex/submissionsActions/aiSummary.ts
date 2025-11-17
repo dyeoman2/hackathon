@@ -61,6 +61,107 @@ function buildFolderFilter(
 type CloudflareJobStatus = Awaited<ReturnType<typeof checkAISearchJobStatus>>;
 
 /**
+ * Centralized coordinator that waits for all expected processes to complete (success or failure),
+ * then generates comprehensive summaries using only successfully obtained resources.
+ */
+export async function checkAllProcessesCompleteAndGenerateSummary(
+  ctx: ActionCtx,
+  submissionId: Id<'submissions'>,
+): Promise<void> {
+  const submission = await ctx.runQuery(
+    (internal.submissions as unknown as { getSubmissionInternal: GetSubmissionInternalRef })
+      .getSubmissionInternal,
+    { submissionId },
+  );
+
+  if (!submission) return;
+
+  // Check if summary generation is already in progress
+  const isGenerating =
+    submission.source?.summaryGenerationStartedAt &&
+    !submission.source?.summaryGenerationCompletedAt;
+  if (isGenerating) {
+    console.log(`[Summary Coordinator] Summary generation already in progress for ${submissionId}`);
+    return;
+  }
+
+  // Determine which processes should run for this submission
+  const shouldFetchReadme = !!submission.repoUrl?.trim();
+  const shouldCaptureScreenshots = !!submission.siteUrl?.trim();
+  const shouldUploadRepo = !!submission.repoUrl?.trim();
+
+  // Check completion status of async processes
+  const screenshotCaptureCompletedAt =
+    (submission.source as { screenshotCaptureCompletedAt?: number } | undefined)
+      ?.screenshotCaptureCompletedAt;
+  const readmeCompleted = !shouldFetchReadme || !!submission.source?.readmeFetchedAt;
+  const screenshotsCompleted =
+    !shouldCaptureScreenshots || !!screenshotCaptureCompletedAt;
+  // Repo processing is complete if uploaded successfully OR failed (error state)
+  // Have ALL expected processes completed? (success or failure)
+  const allProcessesCompleted = readmeCompleted && screenshotsCompleted;
+
+  // Check what resources we successfully obtained
+  const hasReadme = !!submission.source?.readme;
+  const hasScreenshots = (submission.screenshots?.length ?? 0) > 0;
+  const hasRepoFiles = !!submission.source?.r2Key;
+  const hasVideo = !!(submission as { videoUrl?: string }).videoUrl?.trim();
+
+  // Do we have any successfully obtained resources?
+  const hasAnySuccessfulResources = hasReadme || hasScreenshots || hasRepoFiles || hasVideo;
+
+  // Generate summaries in phases based on available resources:
+
+  // Phase 1: Generate early summary when we have meaningful resources
+  // (README + screenshots, or repo files, or screenshots + video, etc.)
+  const hasEarlySummaryResources =
+    (hasReadme && hasScreenshots) ||
+    hasRepoFiles ||
+    (hasScreenshots && hasVideo) ||
+    (hasReadme && hasVideo);
+  const hasSummary = !!submission.source?.aiSummary;
+
+  // If a summary already exists, avoid auto-regeneration to prevent clobbering manual/approved text.
+  if (hasSummary) {
+    console.log(
+      `[Summary Coordinator] Summary already exists for ${submissionId} - skipping automatic generation`,
+    );
+    return;
+  }
+
+  // Only generate when all expected processes are done (including failures) and we have resources
+  if (
+    allProcessesCompleted &&
+    hasAnySuccessfulResources &&
+    hasEarlySummaryResources
+  ) {
+    console.log(
+      `[Summary Coordinator] Generating summary with available resources: ${[
+        hasReadme ? 'README' : '',
+        hasScreenshots ? 'Screenshots' : '',
+        hasRepoFiles ? 'RepoFiles' : '',
+        hasVideo ? 'Video' : '',
+      ]
+        .filter(Boolean)
+        .join(', ')}`,
+    );
+
+    await generateSummaryHelper(ctx, {
+      submissionId,
+      forceRegenerate: false,
+    });
+  } else if (allProcessesCompleted && !hasAnySuccessfulResources) {
+    console.log(
+      `[Summary Coordinator] All processes completed but no resources obtained - cannot generate summary`,
+    );
+  } else {
+    console.log(
+      `[Summary Coordinator] Waiting for more resources: README=${readmeCompleted ? '✅' : '⏳'}, Screenshots=${screenshotsCompleted ? '✅' : '⏳'}`,
+    );
+  }
+}
+
+/**
  * Internal action to check if files are indexed in Cloudflare AI Search
  * Uses Convex scheduler to poll without blocking - reschedules itself if not ready
  * Once indexing is complete, marks the submission as complete and generates score if needed
@@ -1214,7 +1315,9 @@ async function generateSummaryWithAI(
       }
     }
   } else {
-    console.log(`[Early Summary] Skipping README processing for submission ${submissionId} (skipReadme=true)`);
+    console.log(
+      `[Early Summary] Skipping README processing for submission ${submissionId} (skipReadme=true)`,
+    );
   }
 
   // Get screenshots
@@ -1299,7 +1402,9 @@ async function generateSummaryWithAI(
 
     // If README was included and caused the error, try again without README
     if (readmeContent && readmeContent.length > 0) {
-      console.log(`[Early Summary] README was included but generation failed - retrying without README for submission ${submissionId}`);
+      console.log(
+        `[Early Summary] README was included but generation failed - retrying without README for submission ${submissionId}`,
+      );
       try {
         const retrySummary = await generateSummaryWithAI(
           ctx,
@@ -1307,12 +1412,17 @@ async function generateSummaryWithAI(
           submissionTitle,
           repoUrl,
           r2PathPrefix,
-          true // skipReadme flag
+          true, // skipReadme flag
         );
-        console.log(`[Early Summary] Successfully generated summary without README for submission ${submissionId}`);
+        console.log(
+          `[Early Summary] Successfully generated summary without README for submission ${submissionId}`,
+        );
         return retrySummary;
       } catch (retryError) {
-        console.error(`[Early Summary] Retry without README also failed for submission ${submissionId}:`, retryError);
+        console.error(
+          `[Early Summary] Retry without README also failed for submission ${submissionId}:`,
+          retryError,
+        );
         // Continue to fallback attempts
       }
     }
@@ -1401,34 +1511,48 @@ async function generateSummaryHelper(
     );
   }
 
-  // Check if we have at least README (stored or in R2), R2 files, screenshots, or video to work with
-  const hasStoredReadme = !!submission.source?.readme;
-  const hasR2Files = !!submission.source?.r2Key;
+  // Validate that we have actual resources to summarize
+  // The coordinator checks for expected processes, but we need to ensure resources actually exist
+  const hasReadme = !!submission.source?.readme;
   const hasScreenshots = (submission.screenshots?.length ?? 0) > 0;
-  const hasVideo = !!((submission as { videoUrl?: string }).videoUrl?.trim());
+  const hasRepoFiles = !!submission.source?.r2Key;
+  const hasVideo = !!(submission as { videoUrl?: string }).videoUrl?.trim();
 
-  if (!hasStoredReadme && !hasR2Files && !hasScreenshots && !hasVideo) {
+  const generationInProgress =
+    submission.source?.summaryGenerationStartedAt &&
+    !submission.source?.summaryGenerationCompletedAt;
+  if (generationInProgress && !args.forceRegenerate) {
     console.log(
-      `[Early Summary] Submission ${args.submissionId} has no README, R2 files, screenshots, or video yet - skipping`,
+      `[Early Summary] Generation already in progress for submission ${args.submissionId} - skipping`,
     );
-    return { success: false, reason: 'No README, R2 files, screenshots, or video available' };
+    return { success: false, reason: 'generation_in_progress' };
   }
 
-  try {
-    // Set processing state to generating
-    await ctx.runMutation(
-      (
-        internal.submissions as unknown as {
-          updateSubmissionSourceInternal: UpdateSubmissionSourceInternalRef;
-        }
-      ).updateSubmissionSourceInternal,
-      {
-        submissionId: args.submissionId,
-        processingState: 'generating',
-        summaryGenerationStartedAt: Date.now(),
-      },
+  // Require at least one actual resource
+  if (!hasReadme && !hasScreenshots && !hasRepoFiles && !hasVideo) {
+    console.log(
+      `[Early Summary] No actual resources available for submission ${args.submissionId} - skipping generation`,
     );
+    return { success: false, reason: 'No resources available for summary generation' };
+  }
 
+  // Set processing state to generating and mark start time
+  const generationStartedAt = Date.now();
+  await ctx.runMutation(
+    (
+      internal.submissions as unknown as {
+        updateSubmissionSourceInternal: UpdateSubmissionSourceInternalRef;
+      }
+    ).updateSubmissionSourceInternal,
+    {
+      submissionId: args.submissionId,
+      processingState: 'generating',
+      summaryGenerationStartedAt: generationStartedAt,
+      summaryGenerationCompletedAt: undefined,
+    },
+  );
+
+  try {
     // Generate early summary
     const summary = await generateSummaryWithAI(
       ctx,
@@ -1438,8 +1562,30 @@ async function generateSummaryHelper(
       submission.source?.r2Key,
     );
 
-    // Update submission with early summary (store in aiSummary field)
+    // Ensure this invocation still owns the generation slot to prevent races
+    const latest = await ctx.runQuery(
+      (internal.submissions as unknown as { getSubmissionInternal: GetSubmissionInternalRef })
+        .getSubmissionInternal,
+      {
+        submissionId: args.submissionId,
+      },
+    );
+
+    if (latest?.source?.summaryGenerationStartedAt !== generationStartedAt) {
+      console.log(
+        `[Early Summary] Newer generation detected for submission ${args.submissionId} - skipping write`,
+      );
+      return { success: false, reason: 'stale_generation' };
+    }
+
+    // Mark generation as completed successfully
     const summaryGenerationCompletedAt = Date.now();
+
+    // Determine final processing state: 'indexing' if we have repo files that need AI Search,
+    // 'complete' if this is the final summary (no repo files to index)
+    const hasRepoFiles = !!submission.source?.r2Key;
+    const finalProcessingState = hasRepoFiles ? 'indexing' : 'complete';
+
     await ctx.runMutation(
       (
         internal.submissions as unknown as {
@@ -1451,22 +1597,40 @@ async function generateSummaryHelper(
         aiSummary: summary,
         summarizedAt: summaryGenerationCompletedAt,
         summaryGenerationCompletedAt,
-        processingState: 'indexing', // Back to indexing while waiting for AI Search
+        processingState: finalProcessingState, // 'indexing' if repo files need AI Search, 'complete' if done
       },
     );
 
     console.log(
       `[Early Summary] Generated early summary for submission ${args.submissionId} using README + screenshots`,
     );
-
     return { success: true, summary };
   } catch (error) {
     const errorMessage =
       error instanceof Error ? error.message : 'Failed to generate early summary';
-
     console.error(`[Early Summary] Error for submission ${args.submissionId}:`, errorMessage);
 
-    // Don't throw - allow AI Search summary to be generated later
+    // Mark generation as completed with error (best-effort)
+    try {
+      await ctx.runMutation(
+        (
+          internal.submissions as unknown as {
+            updateSubmissionSourceInternal: UpdateSubmissionSourceInternalRef;
+          }
+        ).updateSubmissionSourceInternal,
+        {
+          submissionId: args.submissionId,
+          summaryGenerationCompletedAt: Date.now(),
+          processingState: 'error',
+        },
+      );
+    } catch (writeError) {
+      console.warn(
+        `[Early Summary] Failed to write error state for submission ${args.submissionId}:`,
+        writeError instanceof Error ? writeError.message : String(writeError),
+      );
+    }
+
     return { success: false, error: errorMessage };
   }
 }

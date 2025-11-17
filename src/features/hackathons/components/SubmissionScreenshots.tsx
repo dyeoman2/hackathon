@@ -383,25 +383,13 @@ export function SubmissionScreenshots({ submission, canEdit = false }: Submissio
         </div>
       </CardHeader>
       <CardContent>
-        {/* Video Section */}
-        {submission.videoUrl && (
-          <div className="mb-6">
-            <h3 className="text-sm font-medium mb-3">Demo Video</h3>
-            <VideoPlayer
-              url={submission.videoUrl}
-              title={`Demo video for ${submission.title}`}
-              className="max-w-2xl mx-auto"
-            />
-          </div>
-        )}
-
         {/* Screenshot Processing */}
         {isScreenshotProcessing && screenshotProcessingMessage ? (
           <ProcessingLoader
             title={screenshotProcessingMessage.title}
             description={screenshotProcessingMessage.description}
           />
-        ) : screenshots.length === 0 ? (
+        ) : screenshots.length === 0 && !submission.videoUrl ? (
           <div className="flex flex-col items-center justify-center py-8 text-center">
             <Camera className="mb-4 h-12 w-12 text-muted-foreground" />
             <p className="text-sm text-muted-foreground mb-4">
@@ -419,6 +407,23 @@ export function SubmissionScreenshots({ submission, canEdit = false }: Submissio
               }}
             >
               <CarouselContent>
+                {/* Video as first item */}
+                {submission.videoUrl && (
+                  <CarouselItem className="basis-1/2 md:basis-1/3">
+                    <div className="relative aspect-video w-full overflow-hidden rounded-lg border bg-muted">
+                      <VideoPlayer
+                        url={submission.videoUrl}
+                        title={`Demo video for ${submission.title}`}
+                        className="absolute inset-0 w-full h-full"
+                      />
+                      <div className="hidden sm:block absolute bottom-0 left-0 right-0 bg-black/60 px-3 py-2 text-xs text-white">
+                        <div className="font-medium truncate">Demo Video</div>
+                        <div className="text-xs opacity-60 mt-1">Click to play</div>
+                      </div>
+                    </div>
+                  </CarouselItem>
+                )}
+                {/* Screenshots */}
                 {screenshots.map((screenshot, index) => (
                   <CarouselItem key={screenshot.r2Key} className="basis-1/2 md:basis-1/3">
                     <button
@@ -489,7 +494,7 @@ export function SubmissionScreenshots({ submission, canEdit = false }: Submissio
                   </CarouselItem>
                 ))}
               </CarouselContent>
-              {screenshots.length > 1 && (
+              {screenshots.length + (submission.videoUrl ? 1 : 0) > 1 && (
                 <>
                   <CarouselPrevious className="left-2 z-10 bg-background/80 backdrop-blur-sm hover:bg-background" />
                   <CarouselNext className="right-2 z-10 bg-background/80 backdrop-blur-sm hover:bg-background" />
