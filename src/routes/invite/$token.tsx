@@ -23,17 +23,6 @@ function InviteAcceptComponent() {
     token: decodedToken,
   });
 
-  // Check if the invited email exists (always call the hook for consistent order)
-  const emailExistsQuery = useQuery(api.auth.checkEmailExists, {
-    email: tokenValidation?.invitedEmail || '',
-  });
-
-  // Only use the result if we have a valid token and email
-  const emailExistsCheck =
-    tokenValidation?.status === 'valid' && tokenValidation.invitedEmail
-      ? emailExistsQuery
-      : { exists: false };
-
   const acceptInvite = useMutation(api.hackathons.acceptInvite);
   const [isAccepting, setIsAccepting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -129,25 +118,11 @@ function InviteAcceptComponent() {
       return;
     }
 
-    // If not authenticated, check if email exists and redirect appropriately
+    // If not authenticated, redirect to login with invite context
     if (tokenValidation && tokenValidation.status === 'valid' && tokenValidation.invitedEmail) {
-      // Wait for email existence check to complete
-      if (emailExistsCheck === undefined) {
-        setIsAccepting(true); // Show loading while checking
-        return;
-      }
-
-      setIsAccepting(false); // Reset loading
-
-      if (emailExistsCheck.exists) {
-        // Email exists - redirect to login
-        const url = `/login?redirect=${encodeURIComponent(`/invite/${token}`)}&email=${encodeURIComponent(tokenValidation.invitedEmail)}&message=${encodeURIComponent(`Login to accept your invitation to join ${tokenValidation.hackathonTitle}`)}`;
-        window.location.href = url;
-      } else {
-        // Email doesn't exist - redirect to register
-        const url = `/register?redirect=${encodeURIComponent(`/invite/${token}`)}&email=${encodeURIComponent(tokenValidation.invitedEmail)}&message=${encodeURIComponent(`Create an account to accept your invitation to join ${tokenValidation.hackathonTitle}`)}`;
-        window.location.href = url;
-      }
+      // Always redirect to login first - the login flow will handle user existence
+      const url = `/login?redirect=${encodeURIComponent(`/invite/${token}`)}&email=${encodeURIComponent(tokenValidation.invitedEmail)}&message=${encodeURIComponent(`Login to accept your invitation to join ${tokenValidation.hackathonTitle}`)}`;
+      window.location.href = url;
     }
   };
 

@@ -2,10 +2,6 @@ import { createClient, type GenericCtx } from '@convex-dev/better-auth';
 import { convex } from '@convex-dev/better-auth/plugins';
 import { betterAuth } from 'better-auth';
 import { v } from 'convex/values';
-import {
-  type BetterAuthAdapterUserDoc,
-  normalizeAdapterFindManyResult,
-} from '../src/lib/server/better-auth/adapter-utils';
 import { getBetterAuthSecret, getSiteUrl } from '../src/lib/server/env.server';
 import { components, internal } from './_generated/api';
 import type { DataModel } from './_generated/dataModel';
@@ -15,45 +11,6 @@ const siteUrl = getSiteUrl();
 const secret = getBetterAuthSecret();
 
 export const authComponent = createClient<DataModel>(components.betterAuth);
-
-/**
- * Check if an email exists in the auth system
- */
-export const checkEmailExists = query({
-  args: {
-    email: v.string(),
-  },
-  handler: async (ctx, args) => {
-    try {
-      // Query all users and check if email exists
-      // This is a simplified approach - in production you'd want better indexing
-      const rawResult: unknown = await ctx.runQuery(components.betterAuth.adapter.findMany, {
-        model: 'user',
-        paginationOpts: {
-          cursor: null,
-          numItems: 1000, // Get a reasonable number of users
-          id: 0,
-        },
-      });
-
-      const normalized = normalizeAdapterFindManyResult<BetterAuthAdapterUserDoc>(rawResult);
-      const users = normalized.page;
-
-      // Check if any user has the target email (case-insensitive)
-      const emailExists = users.some((user) => {
-        return (
-          typeof user.email === 'string' && user.email.toLowerCase() === args.email.toLowerCase()
-        );
-      });
-
-      return { exists: emailExists };
-    } catch (error) {
-      console.error('Error checking email existence:', error);
-      // On error, assume email doesn't exist to be safe
-      return { exists: false };
-    }
-  },
-});
 
 export const createAuth = (
   ctx: GenericCtx<DataModel>,

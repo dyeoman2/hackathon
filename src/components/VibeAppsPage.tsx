@@ -6,6 +6,7 @@ import { PageHeader } from '~/components/PageHeader';
 import { Badge } from '~/components/ui/badge';
 import { Button } from '~/components/ui/button';
 import { DeleteConfirmationDialog } from '~/components/ui/delete-confirmation-dialog';
+import { Textarea } from '~/components/ui/textarea';
 import { useToast } from '~/components/ui/toast';
 import { useOptimisticMutation } from '~/features/admin/hooks/useOptimisticUpdates';
 import { api } from '../../convex/_generated/api';
@@ -20,8 +21,11 @@ export function VibeAppsPage() {
   const dbProjects = useQuery(api.vibeApps.getAllVibeAppsProjects);
 
   const getVibeAppsProjects = useAction(api.firecrawl.getVibeAppsProjects);
+  const processPastedUrls = useAction(api.firecrawl.processPastedUrls);
   const [loading, setLoading] = React.useState(false);
+  const [processingUrls, setProcessingUrls] = React.useState(false);
   const [error, setError] = React.useState<string | null>(loaderData?.error ?? null);
+  const [pastedUrls, setPastedUrls] = React.useState('');
 
   // Edit modal state
   const [editingProject, setEditingProject] = React.useState<Doc<'vibeAppsProjects'> | null>(null);
@@ -46,6 +50,32 @@ export function VibeAppsPage() {
       setLoading(false);
     }
   }, [getVibeAppsProjects]);
+
+  const handleProcessUrls = React.useCallback(async () => {
+    const urls = pastedUrls
+      .split(',')
+      .map((url) => url.trim())
+      .filter((url) => url.length > 0);
+
+    if (urls.length === 0) {
+      toast.showToast('Please enter at least one URL', 'error');
+      return;
+    }
+
+    try {
+      setProcessingUrls(true);
+      setError(null);
+
+      await processPastedUrls({ urls });
+      toast.showToast(`Successfully processed ${urls.length} URLs`, 'success');
+      setPastedUrls(''); // Clear the textarea on success
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error processing URLs');
+      toast.showToast(err instanceof Error ? err.message : 'Failed to process URLs', 'error');
+    } finally {
+      setProcessingUrls(false);
+    }
+  }, [pastedUrls, processPastedUrls, toast]);
 
   // Delete project mutation
   const deleteProjectOptimistic = useOptimisticMutation(api.vibeApps.deleteVibeAppsProject, {
@@ -93,6 +123,60 @@ export function VibeAppsPage() {
           </Button>
         }
       />
+
+      {/* URL Input Section */}
+      <div className="bg-card border rounded-lg p-6">
+        <div className="flex flex-col space-y-4">
+          <div>
+            <label htmlFor="url-input" className="text-sm font-medium">
+              Add Projects by URL
+            </label>
+            <p className="text-sm text-muted-foreground mt-1">
+              Paste comma-separated vibeapps.dev URLs to add new projects to the database.
+            </p>
+          </div>
+          <div className="flex space-x-3">
+            <Textarea
+              id="url-input"
+              placeholder="https://vibeapps.dev/s/turpial, https://vibeapps.dev/s/safeguard-kids, https://vibeapps.dev/s/project-name"
+              value={pastedUrls}
+              onChange={(e) => setPastedUrls(e.target.value)}
+              className="min-h-[80px] flex-1"
+              disabled={processingUrls}
+            />
+            <Button
+              onClick={handleProcessUrls}
+              disabled={processingUrls || !pastedUrls.trim()}
+              variant="outline"
+              className="self-start"
+            >
+              {processingUrls ? (
+                <>
+                  <svg className="animate-spin h-4 w-4 mr-2" viewBox="0 0 24 24" aria-hidden="true">
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                      fill="none"
+                    />
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    />
+                  </svg>
+                  Processing...
+                </>
+              ) : (
+                'Process URLs'
+              )}
+            </Button>
+          </div>
+        </div>
+      </div>
 
       {error && (
         <div className="max-w-2xl mx-auto">

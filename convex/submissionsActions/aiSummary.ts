@@ -107,15 +107,6 @@ export async function checkAllProcessesCompleteAndGenerateSummary(
   // Do we have any successfully obtained resources?
   const hasAnySuccessfulResources = hasReadme || hasScreenshots || hasRepoFiles || hasVideo;
 
-  // Generate summaries in phases based on available resources:
-
-  // Phase 1: Generate early summary when we have meaningful resources
-  // (README + screenshots, or repo files, or screenshots + video, etc.)
-  const hasEarlySummaryResources =
-    (hasReadme && hasScreenshots) ||
-    hasRepoFiles ||
-    (hasScreenshots && hasVideo) ||
-    (hasReadme && hasVideo);
   const hasSummary = !!submission.source?.aiSummary;
 
   // If a summary already exists, avoid auto-regeneration to prevent clobbering manual/approved text.
@@ -123,8 +114,8 @@ export async function checkAllProcessesCompleteAndGenerateSummary(
     return;
   }
 
-  // Only generate when all expected processes are done (including failures) and we have resources
-  if (allProcessesCompleted && hasAnySuccessfulResources && hasEarlySummaryResources) {
+  // Only generate when all expected processes are done (including failures) and we have at least one usable resource
+  if (allProcessesCompleted && hasAnySuccessfulResources) {
     await generateSummaryHelper(ctx, {
       submissionId,
       forceRegenerate: false,

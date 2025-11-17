@@ -33,10 +33,13 @@ function getEarlyProcessingStage(submission: Doc<'submissions'>): EarlyProcessin
   const screenshotStarted = !!source?.screenshotCaptureStartedAt;
   const screenshotCompleted = !!source?.screenshotCaptureCompletedAt;
   const hasSiteUrl = !!submission.siteUrl;
+  const hasVideoUrl = !!submission.videoUrl;
+  const hasNonRepoSources = hasSiteUrl || hasVideoUrl || (submission.screenshots?.length ?? 0) > 0;
   const processingState = submission.source?.processingState;
   const hasSummary = !!source?.aiSummary;
   const isAISearchComplete = !!submission.source?.aiSearchSyncCompletedAt;
-  const hasProcessingError = processingState === 'error';
+  const hasProcessingError =
+    (processingState === 'error' || !!submission.source?.processingError) && !hasNonRepoSources;
 
   // If summary already exists, no need to show loading
   if (hasSummary) {
@@ -131,11 +134,17 @@ export function SubmissionRepositorySummary({
   const processingError = submission.source?.processingError;
   const isAISearchComplete = !!submission.source?.aiSearchSyncCompletedAt;
   const hasManualSummary = !!manualSummary;
-  const hasProcessingError = processingState === 'error' || !!processingError;
+  const hasRepoProcessingError = processingState === 'error' || !!processingError;
+  const hasSummary = !!summary;
+  const hasScreenshots = (submission.screenshots?.length ?? 0) > 0;
+  const hasSiteUrl = !!submission.siteUrl;
+  const hasVideoUrl = !!submission.videoUrl;
+  const hasNonRepoSources = hasScreenshots || hasSiteUrl || hasVideoUrl;
+  const hasBlockingProcessingError = hasRepoProcessingError && !hasNonRepoSources && !hasSummary;
 
   // Show summary if it exists, regardless of processing state
   // The summary should not change when Cloudflare AI Search indexing finishes
-  const showSummary = !!summary;
+  const showSummary = hasSummary;
 
   // Check if we're in early processing stages
   const earlyProcessingStage = getEarlyProcessingStage(submission);
@@ -146,10 +155,8 @@ export function SubmissionRepositorySummary({
   const source = submission.source;
   const hasReadme = !!source?.readme;
   const readmeFetched = !!source?.readmeFetchedAt;
-  const hasScreenshots = (submission.screenshots?.length ?? 0) > 0;
   const screenshotStarted = !!source?.screenshotCaptureStartedAt;
   const screenshotCompleted = !!source?.screenshotCaptureCompletedAt;
-  const hasSiteUrl = !!submission.siteUrl;
 
   // Determine why summary wasn't generated
   const getNoSummaryReason = (): {
@@ -161,7 +168,7 @@ export function SubmissionRepositorySummary({
     }
 
     // Check if processing failed completely
-    if (hasProcessingError) {
+    if (hasBlockingProcessingError) {
       return {
         title: 'Repository Processing Failed',
         description:
@@ -389,7 +396,7 @@ export function SubmissionRepositorySummary({
             <AlertTitle>{noSummaryReason.title}</AlertTitle>
             <AlertDescription className="space-y-3">
               <p>{noSummaryReason.description}</p>
-              {hasProcessingError && (
+              {hasBlockingProcessingError && (
                 <Button
                   onClick={handleRetryProcessing}
                   disabled={isRetrying}

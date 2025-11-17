@@ -103,10 +103,13 @@ async function triggerAISearchSync(_ctx: ActionCtx): Promise<string | null> {
       return null;
     }
 
-    // For unexpected errors, log details for debugging
+    // For unexpected errors, log details for debugging (sanitize error response)
     console.error(`[AI Search] Sync trigger failed: ${response.status} ${response.statusText}`);
-    console.error(`[AI Search] Endpoint: ${syncUrl}`);
-    console.error(`[AI Search] Error response: ${errorText}`);
+    console.error(
+      `[AI Search] Endpoint: ${syncUrl.replace(/Bearer\s+[^&]*/, 'Bearer [REDACTED]')}`,
+    );
+    // Avoid logging full error response which may contain sensitive data
+    console.error(`[AI Search] Error response length: ${errorText.length} chars`);
 
     // For 404, check if instance ID is correct
     if (response.status === 404) {
@@ -116,7 +119,10 @@ async function triggerAISearchSync(_ctx: ActionCtx): Promise<string | null> {
     }
 
     // For other errors, log but don't throw - sync will happen automatically
-    console.warn(`[AI Search] Sync trigger failed: ${response.status} - ${errorText}`);
+    // Avoid logging full error response which may contain sensitive data
+    console.warn(
+      `[AI Search] Sync trigger failed: ${response.status} - Error response length: ${errorText.length} chars`,
+    );
     return null;
   }
 
@@ -164,7 +170,9 @@ export async function checkAISearchJobStatus(
         return null;
       }
       const errorText = await response.text();
-      console.error(`[AI Search] Job status check failed: ${response.status} - ${errorText}`);
+      console.error(
+        `[AI Search] Job status check failed: ${response.status} - Error response length: ${errorText.length} chars`,
+      );
       return null;
     }
 
@@ -194,7 +202,8 @@ export async function checkAISearchJobStatus(
     // Job exists but hasn't started yet - it's pending
     return 'pending';
   } catch (error) {
-    console.error(`[AI Search] Error checking job status for ${jobId}:`, error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error(`[AI Search] Error checking job status for ${jobId}: ${errorMessage}`);
     return null;
   }
 }
@@ -496,7 +505,17 @@ export async function downloadAndUploadRepoHelper(
         });
 
         if (archiveResponse.ok) {
-          archiveBuffer = Buffer.from(await archiveResponse.arrayBuffer());
+          const arrayBuffer = await archiveResponse.arrayBuffer();
+
+          // Check archive size limit (200MB for enterprise hackathons)
+          const MAX_ARCHIVE_SIZE = 200 * 1024 * 1024; // 200MB
+          if (arrayBuffer.byteLength > MAX_ARCHIVE_SIZE) {
+            throw new Error(
+              `Repository archive too large: ${Math.round(arrayBuffer.byteLength / (1024 * 1024))}MB (max ${MAX_ARCHIVE_SIZE / (1024 * 1024)}MB). Please remove large binaries or reduce the archive size and try again.`,
+            );
+          }
+
+          archiveBuffer = Buffer.from(arrayBuffer);
           usedBranch = branch;
           break;
         } else {
@@ -532,6 +551,36 @@ export async function downloadAndUploadRepoHelper(
       );
     }
     const zip = new AdmZip(archiveBuffer);
+
+    // Check archive complexity limits before extraction
+    const zipEntries = zip.getEntries();
+    const MAX_FILE_COUNT = 50000; // Maximum 50,000 files (enterprise scale)
+    const MAX_DEPTH = 15; // Maximum directory depth (deeper for enterprise structures)
+
+    if (zipEntries.length > MAX_FILE_COUNT) {
+      throw new Error(
+        `Repository too complex: ${zipEntries.length} files (max ${MAX_FILE_COUNT}). Remove build artifacts/vendor folders or split the project into a smaller repo and try again.`,
+      );
+    }
+
+    // Check directory depth
+    let maxDepth = 0;
+    for (const entry of zipEntries) {
+      const depth = entry.entryName.split('/').length - 1; // -1 because entry names don't start with /
+      maxDepth = Math.max(maxDepth, depth);
+    }
+
+    if (maxDepth > MAX_DEPTH) {
+      throw new Error(
+        `Repository structure too deep: ${maxDepth} levels (max ${MAX_DEPTH}). Flatten deeply nested folders before retrying.`,
+      );
+    }
+
+    console.log(
+      `[Repo Processing] Archive validation passed for submission ${args.submissionId}: ` +
+        `${archiveBuffer.length} bytes, ${zipEntries.length} files, max depth ${maxDepth}`,
+    );
+
     zip.extractAllTo(tempDir, true);
 
     // Determine the extracted root directory (GitHub archives include {repo}-{branch}/)
@@ -548,7 +597,9 @@ export async function downloadAndUploadRepoHelper(
 
     // Filter and collect code files
     const codeFiles: Array<{ path: string; content: string }> = [];
-    const maxFileSize = 100 * 1024; // 100KB per file
+    const maxFileSize = 500 * 1024; // 500KB per file (enterprise scale)
+    let processedFileCount = 0;
+    const MAX_PROCESSED_FILES = 20000; // Maximum files to actually process (enterprise scale)
 
     const { readdirSync, statSync, readFileSync: readFileSyncAsync } = await import('node:fs');
 
@@ -595,9 +646,18 @@ export async function downloadAndUploadRepoHelper(
             'less',
           ];
           if (ext && codeExtensions.includes(ext)) {
+            // Check if we've hit the processing limit
+            if (processedFileCount >= MAX_PROCESSED_FILES) {
+              console.warn(
+                `[Repo Processing] Hit processing limit of ${MAX_PROCESSED_FILES} files for submission ${args.submissionId}. Stopping file collection.`,
+              );
+              return; // Stop processing more files
+            }
+
             try {
               const content = readFileSyncAsync(fullPath, 'utf-8');
               codeFiles.push({ path: relativePath, content });
+              processedFileCount++;
             } catch {
               // Skip files that can't be read
             }
@@ -729,6 +789,11 @@ export async function downloadAndUploadRepoHelper(
     // Check if summary can be generated now that repo files are available
     await checkAllProcessesCompleteAndGenerateSummary(ctx, args.submissionId);
 
+    console.log(
+      `[Repo Processing] Completed processing for submission ${args.submissionId}: ` +
+        `${codeFiles.length} code files processed (${processedFileCount} total files examined)`,
+    );
+
     return { r2PathPrefix, uploadedAt: Date.now(), fileCount: codeFiles.length };
   } catch (error) {
     // Update submission state to error
@@ -839,11 +904,12 @@ export const testGitHubToken = internalAction({
         };
       }
     } catch (error) {
-      console.error('[GitHub Token Test] ❌ Error testing token:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error(`[GitHub Token Test] ❌ Error testing token: ${errorMessage}`);
       return {
         configured: true,
         valid: false,
-        message: `Error testing token: ${error instanceof Error ? error.message : String(error)}`,
+        message: `Error testing token: ${errorMessage}`,
       };
     }
   },

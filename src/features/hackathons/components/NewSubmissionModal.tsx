@@ -21,12 +21,116 @@ import { CREDIT_PACKAGES } from '~/features/ai/constants';
 import { FREE_SUBMISSION_LIMIT } from '~/features/hackathons/constants';
 import { AUTUMN_CREDIT_FEATURE_ID } from '~/lib/shared/autumn';
 
+/**
+ * Lightweight client-side URL validation that mirrors server-side logic
+ * Prevents obvious bad URLs without requiring server round-trip
+ */
+function validateClientUrl(urlString: string): { isValid: boolean; error?: string } {
+  if (!urlString || urlString.trim() === '') {
+    return { isValid: true }; // Empty is allowed
+  }
+
+  try {
+    const url = new URL(urlString);
+
+    // Only allow HTTP and HTTPS protocols
+    if (!['http:', 'https:'].includes(url.protocol)) {
+      return {
+        isValid: false,
+        error: 'Only HTTP and HTTPS URLs are allowed',
+      };
+    }
+
+    const hostname = url.hostname.toLowerCase();
+
+    // Block literal IP addresses (IPv4, IPv6, decimal)
+    const ipv4Match = hostname.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+    if (ipv4Match) {
+      return {
+        isValid: false,
+        error: 'IP addresses are not allowed',
+      };
+    }
+
+    // Block IPv6 addresses
+    if (hostname.includes(':') && hostname.match(/^[0-9a-f:.]+$/i)) {
+      return {
+        isValid: false,
+        error: 'IP addresses are not allowed',
+      };
+    }
+
+    // Block decimal IPv4
+    const decimalMatch = hostname.match(/^\d+$/);
+    if (decimalMatch) {
+      return {
+        isValid: false,
+        error: 'IP addresses are not allowed',
+      };
+    }
+
+    // Block localhost and common internal hostnames
+    const blockedHosts = [
+      'localhost',
+      'broadcasthost',
+      'local',
+      'internal',
+      'private',
+      'corp',
+      'company',
+      'lan',
+      'kubernetes.default.svc',
+    ];
+
+    if (blockedHosts.includes(hostname)) {
+      return {
+        isValid: false,
+        error: 'Internal hostnames are not allowed',
+      };
+    }
+
+    // Block custom ports
+    const port = url.port;
+    if (port && !['80', '443', ''].includes(port)) {
+      return {
+        isValid: false,
+        error: 'Custom ports are not allowed',
+      };
+    }
+
+    return { isValid: true };
+  } catch {
+    return {
+      isValid: false,
+      error: 'Invalid URL format',
+    };
+  }
+}
+
 const submissionSchema = z.object({
   title: z.string().min(1, 'Title is required').max(255, 'Title is too long'),
   team: z.string().min(1, 'Team name is required').max(255, 'Team name is too long'),
   repoUrl: z.string().url('Please enter a valid GitHub repository URL'),
-  siteUrl: z.string(),
-  videoUrl: z.string(),
+  siteUrl: z.string().refine(
+    (val: string) => {
+      if (!val || val.trim() === '') return true;
+      const validation = validateClientUrl(val.trim());
+      return validation.isValid;
+    },
+    {
+      message: 'Invalid site URL',
+    },
+  ),
+  videoUrl: z.string().refine(
+    (val: string) => {
+      if (!val || val.trim() === '') return true;
+      const validation = validateClientUrl(val.trim());
+      return validation.isValid;
+    },
+    {
+      message: 'Invalid video URL',
+    },
+  ),
 });
 
 interface NewSubmissionModalProps {

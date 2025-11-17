@@ -1,5 +1,6 @@
 import { v } from 'convex/values';
 import { mutation, query } from './_generated/server';
+import { validateSafeUrl } from './urlValidation';
 
 export type VibeAppsProject = {
   _id: string;
@@ -17,6 +18,29 @@ export type VibeAppsProject = {
   createdAt: number;
   updatedAt: number;
 };
+
+async function assertSafeUrl(value: string, fieldName: string): Promise<void> {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return;
+  }
+
+  const validation = await validateSafeUrl(trimmed);
+  if (!validation.isValid) {
+    throw new Error(`${fieldName}: ${validation.error}`);
+  }
+}
+
+// Helper function to normalize creator name by removing "by " prefix if present
+function normalizeCreatorName(creator: string | undefined | null): string | undefined {
+  if (!creator) {
+    return undefined;
+  }
+  const trimmed = creator.trim();
+  // Remove "by " prefix (case-insensitive) if present
+  const normalized = trimmed.replace(/^by\s+/i, '').trim();
+  return normalized || undefined;
+}
 
 // Query to get all vibeapps projects
 export const getAllVibeAppsProjects = query({
@@ -37,18 +61,27 @@ export const upsertVibeAppsProject = mutation({
     videoUrl: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    // Validate URLs to prevent SSRF attacks
+    if (args.websiteUrl) {
+      await assertSafeUrl(args.websiteUrl, 'websiteUrl');
+    }
+    if (args.videoUrl) {
+      await assertSafeUrl(args.videoUrl, 'videoUrl');
+    }
+
     const existing = await ctx.db
       .query('vibeAppsProjects')
       .withIndex('by_vibeappsUrl', (q) => q.eq('vibeappsUrl', args.vibeappsUrl))
       .first();
 
     const now = Date.now();
+    const normalizedCreator = normalizeCreatorName(args.creator);
 
     if (existing) {
       // Update existing project
       await ctx.db.patch(existing._id, {
         name: args.name,
-        creator: args.creator,
+        creator: normalizedCreator,
         githubUrl: args.githubUrl,
         websiteUrl: args.websiteUrl,
         videoUrl: args.videoUrl,
@@ -60,7 +93,7 @@ export const upsertVibeAppsProject = mutation({
       // Create new project - defaults to active
       return await ctx.db.insert('vibeAppsProjects', {
         name: args.name,
-        creator: args.creator,
+        creator: normalizedCreator,
         vibeappsUrl: args.vibeappsUrl,
         githubUrl: args.githubUrl,
         websiteUrl: args.websiteUrl,
@@ -88,15 +121,29 @@ export const updateVibeAppsProject = mutation({
   handler: async (ctx, args) => {
     const { id, ...updateFields } = args;
 
+    // Validate URLs to prevent SSRF attacks
+    if (updateFields.websiteUrl) {
+      await assertSafeUrl(updateFields.websiteUrl, 'websiteUrl');
+    }
+    if (updateFields.videoUrl) {
+      await assertSafeUrl(updateFields.videoUrl, 'videoUrl');
+    }
+
     // Verify the project exists
     const existing = await ctx.db.get(id);
     if (!existing) {
       throw new Error('Project not found');
     }
 
+    // Normalize creator name if provided
+    const normalizedCreator = updateFields.creator
+      ? normalizeCreatorName(updateFields.creator)
+      : updateFields.creator;
+
     // Update the project
     await ctx.db.patch(id, {
       ...updateFields,
+      creator: normalizedCreator,
       updatedAt: Date.now(),
     });
 

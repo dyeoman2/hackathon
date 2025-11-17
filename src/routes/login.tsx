@@ -197,6 +197,12 @@ function LoginPage() {
         ) {
           setError('Invalid email or password. Please check your credentials and try again.');
         } else if (errorMessage.includes('User not found') || errorCode === 'USER_NOT_FOUND') {
+          // For invite flows, redirect to register instead of showing error
+          if (redirectTarget.startsWith('/invite/')) {
+            const registerUrl = `/register?email=${encodeURIComponent(value.email)}&redirect=${encodeURIComponent(redirectTarget)}&message=${encodeURIComponent(`Create an account to accept your invitation to join ${message || 'the hackathon'}`)}`;
+            window.location.href = registerUrl;
+            return;
+          }
           setError(
             'No account found with this email address. Please check your email or create an account.',
           );

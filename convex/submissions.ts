@@ -20,6 +20,7 @@ import { guarded } from './authz/guardFactory';
 import { AUTUMN_NOT_CONFIGURED_ERROR, autumn, isAutumnConfigured } from './autumn';
 import { requireHackathonRole } from './hackathons';
 import { markProcessingErrorWithFallback } from './submissionsActions/processingError';
+import { validateSafeUrl } from './urlValidation';
 
 const submissionsInternalApi = internal as unknown as {
   submissions: {
@@ -43,6 +44,18 @@ type SchedulerContext = {
     ) => Promise<unknown>;
   };
 };
+
+async function assertHttpUrl(value: string, fieldName: 'siteUrl' | 'videoUrl'): Promise<void> {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return;
+  }
+
+  const validation = await validateSafeUrl(trimmed);
+  if (!validation.isValid) {
+    throw new Error(`${fieldName}: ${validation.error}`);
+  }
+}
 
 async function scheduleProcessingWatchdog(ctx: SchedulerContext, submissionId: Id<'submissions'>) {
   try {
@@ -408,6 +421,14 @@ export const createSubmission = action({
     videoUrl: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    // Validate URLs if provided
+    if (args.siteUrl) {
+      await assertHttpUrl(args.siteUrl, 'siteUrl');
+    }
+
+    if (args.videoUrl) {
+      await assertHttpUrl(args.videoUrl, 'videoUrl');
+    }
     // Get current user
     const authUser = await authComponent.getAuthUser(ctx);
     if (!authUser) {
@@ -1016,6 +1037,15 @@ export const updateSubmission = mutation({
     manualSummary: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    // Validate URLs if provided
+    if (args.siteUrl) {
+      await assertHttpUrl(args.siteUrl, 'siteUrl');
+    }
+
+    if (args.videoUrl) {
+      await assertHttpUrl(args.videoUrl, 'videoUrl');
+    }
+
     const submission = await ctx.db.get(args.submissionId);
     if (!submission) {
       throw new Error('Submission not found');

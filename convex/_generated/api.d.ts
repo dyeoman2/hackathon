@@ -30,6 +30,7 @@ import type * as submissionsActions_r2Cleanup from "../submissionsActions/r2Clea
 import type * as submissionsActions_repoProcessing from "../submissionsActions/repoProcessing.js";
 import type * as submissionsActions_screenshot from "../submissionsActions/screenshot.js";
 import type * as submissionsActions_types from "../submissionsActions/types.js";
+import type * as urlValidation from "../urlValidation.js";
 import type * as users from "../users.js";
 import type * as vibeApps from "../vibeApps.js";
 import type * as webhooks_resend from "../webhooks/resend.js";
@@ -64,6 +65,7 @@ declare const fullApi: ApiFromModules<{
   "submissionsActions/repoProcessing": typeof submissionsActions_repoProcessing;
   "submissionsActions/screenshot": typeof submissionsActions_screenshot;
   "submissionsActions/types": typeof submissionsActions_types;
+  urlValidation: typeof urlValidation;
   users: typeof users;
   vibeApps: typeof vibeApps;
   "webhooks/resend": typeof webhooks_resend;
