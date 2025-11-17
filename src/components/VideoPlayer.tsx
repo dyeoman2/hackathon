@@ -31,8 +31,10 @@ export function VideoPlayer({ url, title, className = '' }: VideoPlayerProps) {
 
   // For non-YouTube URLs, show a link to open in new tab
   return (
-    <div
-      className={`flex items-center justify-center rounded-lg border border-border bg-muted/20 p-8 text-center ${className}`}
+    <Button
+      variant="outline"
+      className={`flex h-auto flex-col items-center justify-center rounded-lg border border-border bg-muted/20 p-8 text-center ${className}`}
+      onClick={() => window.open(url, '_blank', 'noopener,noreferrer')}
     >
       <div className="space-y-4">
         <div className="flex items-center justify-center w-16 h-16 mx-auto rounded-full bg-primary/10">
@@ -40,16 +42,12 @@ export function VideoPlayer({ url, title, className = '' }: VideoPlayerProps) {
         </div>
         <div>
           <p className="font-medium mb-2">Demo Video</p>
-          <Button
-            variant="outline"
-            onClick={() => window.open(url, '_blank', 'noopener,noreferrer')}
-            className="gap-2"
-          >
+          <div className="flex items-center gap-2 text-sm">
             <ExternalLink className="w-4 h-4" />
             Open Video in New Tab
-          </Button>
+          </div>
         </div>
       </div>
-    </div>
+    </Button>
   );
 }

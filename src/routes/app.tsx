@@ -37,11 +37,6 @@ function resolveRedirectTarget(value?: string | null): string {
     return '/h';
   }
 
-  // Allow invite routes
-  if (path.startsWith('/invite/')) {
-    return value; // Return full URL for invites
-  }
-
   // Check other allowed routes
   const match = REDIRECT_TARGETS.find((route) => route === path || path.startsWith(`${route}/`));
   return match ? value : '/h'; // Return full URL if allowed, otherwise default to /h

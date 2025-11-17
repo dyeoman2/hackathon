@@ -109,14 +109,11 @@ export default defineSchema({
       v.literal('contestant'),
     ),
     status: v.union(v.literal('invited'), v.literal('active')),
-    tokenHash: v.optional(v.string()),
-    tokenExpiresAt: v.optional(v.number()),
     invitedByUserId: v.optional(v.string()),
     createdAt: v.number(),
   })
     .index('by_hackathonId', ['hackathonId'])
     .index('by_userId', ['userId'])
-    .index('by_tokenHash', ['tokenHash'])
     .index('by_invitedEmail', ['invitedEmail']),
 
   submissions: defineTable({

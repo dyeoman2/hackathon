@@ -1,7 +1,7 @@
 import { api } from '@convex/_generated/api';
 import type { Doc } from '@convex/_generated/dataModel';
 import { useAction } from 'convex/react';
-import { Edit, FileText, Loader2, MoreVertical, Zap } from 'lucide-react';
+import { ChevronDown, ChevronUp, Edit, FileText, Loader2, MoreVertical, Zap } from 'lucide-react';
 import { useCallback, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -26,12 +26,17 @@ import { EditSummaryModal } from './EditSummaryModal';
 function renderErrorMessageWithClickableLinks(message: string) {
   const urlRegex = /(https?:\/\/[^\s]+)/g;
   const parts = message.split(urlRegex);
+  let cursor = 0;
 
-  return parts.map((part, index) => {
-    if (urlRegex.test(part)) {
+  return parts.map((part) => {
+    const key = `${part}-${cursor}`;
+    cursor += part.length;
+    const isUrl = /^https?:\/\/\S+$/i.test(part);
+
+    if (isUrl) {
       return (
         <button
-          key={part}
+          key={key}
           type="button"
           onClick={() => window.open(part, '_blank', 'noopener,noreferrer')}
           className="text-primary hover:text-primary/80 underline cursor-pointer"
@@ -41,7 +46,7 @@ function renderErrorMessageWithClickableLinks(message: string) {
         </button>
       );
     }
-    return `${part}-${index}`;
+    return part;
   });
 }
 
@@ -262,6 +267,7 @@ export function SubmissionRepositorySummary({
   const [isGeneratingFull, setIsGeneratingFull] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isSummaryExpanded, setIsSummaryExpanded] = useState(false);
   const toast = useToast();
   const generateQuickSummary = useAction(api.submissionsActions.aiSummary.generateSummaryPublic);
   const generateFullSummary = useAction(api.submissionsActions.aiSummary.generateRepoSummary);
@@ -413,8 +419,34 @@ export function SubmissionRepositorySummary({
             description={earlyProcessingMessage.description}
           />
         ) : showSummary ? (
-          <div className="prose prose-sm max-w-none dark:prose-invert prose-headings:font-semibold prose-headings:text-foreground prose-headings:mt-6 prose-headings:mb-4 prose-h1:text-2xl prose-h2:text-xl prose-h3:text-lg prose-p:text-muted-foreground prose-p:leading-relaxed prose-strong:text-foreground prose-strong:font-semibold prose-code:text-foreground prose-code:bg-muted prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-xs prose-code:font-mono prose-pre:bg-muted prose-pre:border prose-pre:rounded-lg prose-pre:p-4 prose-ul:text-muted-foreground prose-ol:text-muted-foreground prose-li:text-muted-foreground prose-li:my-2 prose-a:text-primary prose-a:underline hover:prose-a:text-primary/80 prose-blockquote:border-l-4 prose-blockquote:border-primary prose-blockquote:pl-4 prose-blockquote:italic">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{summary}</ReactMarkdown>
+          <div className="space-y-4">
+            <div
+              className={`prose prose-sm max-w-none dark:prose-invert prose-headings:font-semibold prose-headings:text-foreground prose-headings:mt-6 prose-headings:mb-4 prose-h1:text-2xl prose-h2:text-xl prose-h3:text-lg prose-p:text-muted-foreground prose-p:leading-relaxed prose-strong:text-foreground prose-strong:font-semibold prose-code:text-foreground prose-code:bg-muted prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-xs prose-code:font-mono prose-pre:bg-muted prose-pre:border prose-pre:rounded-lg prose-pre:p-4 prose-ul:text-muted-foreground prose-ol:text-muted-foreground prose-li:text-muted-foreground prose-li:my-2 prose-a:text-primary prose-a:underline hover:prose-a:text-primary/80 prose-blockquote:border-l-4 prose-blockquote:border-primary prose-blockquote:pl-4 prose-blockquote:italic ${
+                !isSummaryExpanded ? 'line-clamp-4' : ''
+              }`}
+            >
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{summary}</ReactMarkdown>
+            </div>
+            {summary.length > 500 && ( // Show button if summary is reasonably long
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setIsSummaryExpanded(!isSummaryExpanded)}
+                className="h-auto p-0 text-muted-foreground hover:text-foreground"
+              >
+                {isSummaryExpanded ? (
+                  <>
+                    Show Less
+                    <ChevronUp className="ml-1 h-4 w-4" />
+                  </>
+                ) : (
+                  <>
+                    Show More
+                    <ChevronDown className="ml-1 h-4 w-4" />
+                  </>
+                )}
+              </Button>
+            )}
           </div>
         ) : noSummaryReason ? (
           <Alert variant="warning">

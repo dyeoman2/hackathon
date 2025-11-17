@@ -425,10 +425,6 @@ export function SubmissionScreenshots({ submission, canEdit = false }: Submissio
                         title={`Demo video for ${submission.title}`}
                         className="absolute inset-0 w-full h-full"
                       />
-                      <div className="hidden sm:block absolute bottom-0 left-0 right-0 bg-black/60 px-3 py-2 text-xs text-white">
-                        <div className="font-medium truncate">Demo Video</div>
-                        <div className="text-xs opacity-60 mt-1">Click to play</div>
-                      </div>
                     </div>
                   </CarouselItem>
                 )}

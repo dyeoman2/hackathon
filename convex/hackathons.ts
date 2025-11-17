@@ -34,8 +34,6 @@ interface RequireHackathonRoleResult {
     invitedEmail?: string;
     role: HackathonRole;
     status: 'invited' | 'active';
-    tokenHash?: string;
-    tokenExpiresAt?: number;
     invitedByUserId?: string;
     createdAt: number;
   };
@@ -744,31 +742,15 @@ export const inviteJudge = mutation({
       throw new Error('User already invited or is a member');
     }
 
-    // Generate invite token
-    // Create membership first to get ID for token
+    // Create membership with invited status
     const now = Date.now();
-    const tokenExpiresAt = Date.now() + 7 * 24 * 60 * 60 * 1000; // 7 days
-
-    // Create membership with invited status (temporary, will update with token)
     const membershipId = await ctx.db.insert('memberships', {
       hackathonId: args.hackathonId,
       invitedEmail: args.email,
       role: args.role,
       status: 'invited',
-      tokenExpiresAt,
       invitedByUserId: userId,
       createdAt: now,
-    });
-
-    // Generate token that includes membership ID for lookup
-    const inviteTokenSecret =
-      process.env.INVITE_TOKEN_SECRET || 'default-secret-change-in-production';
-    const token = `${membershipId}-${args.hackathonId}-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
-    const tokenHash = await hashToken(token, inviteTokenSecret);
-
-    // Update membership with token hash
-    await ctx.db.patch(membershipId, {
-      tokenHash,
     });
 
     // Get inviter name from Better Auth
@@ -808,7 +790,6 @@ export const inviteJudge = mutation({
       hackathonTitle: hackathon.title,
       role: args.role,
       inviterName,
-      inviteToken: token,
       appUrl: args.appUrl,
     });
 
@@ -852,19 +833,6 @@ export const resendInvite = mutation({
       throw new Error('Hackathon not found');
     }
 
-    // Generate new token
-    const tokenExpiresAt = Date.now() + 7 * 24 * 60 * 60 * 1000; // 7 days
-    const inviteTokenSecret =
-      process.env.INVITE_TOKEN_SECRET || 'default-secret-change-in-production';
-    const token = `${membership._id}-${membership.hackathonId}-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
-    const tokenHash = await hashToken(token, inviteTokenSecret);
-
-    // Update membership with new token
-    await ctx.db.patch(args.membershipId, {
-      tokenHash,
-      tokenExpiresAt,
-    });
-
     // Get current user name from Better Auth
     let inviterName = 'Hackathon Team';
     try {
@@ -902,7 +870,6 @@ export const resendInvite = mutation({
       hackathonTitle: hackathon.title,
       role: membership.role,
       inviterName,
-      inviteToken: token,
       appUrl: args.appUrl,
     });
 
@@ -975,239 +942,6 @@ export const removeJudge = mutation({
 });
 
 /**
- * Simple token hashing function (using Web Crypto API available in Convex)
- */
-async function hashToken(token: string, secret: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(token + secret);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
-}
-
-function parseInviteToken(token: string): {
-  membershipId: Id<'memberships'>;
-  hackathonId: Id<'hackathons'>;
-} | null {
-  const parts = token.split('-');
-  if (parts.length < 4) {
-    return null;
-  }
-
-  const [rawMembershipId, rawHackathonId] = parts;
-  if (!rawMembershipId || !rawHackathonId) {
-    return null;
-  }
-
-  return {
-    membershipId: rawMembershipId as Id<'memberships'>,
-    hackathonId: rawHackathonId as Id<'hackathons'>,
-  };
-}
-
-async function findMembershipForInvite(
-  ctx: QueryCtx | MutationCtx,
-  token: string,
-  tokenHash: string,
-): Promise<Doc<'memberships'> | null> {
-  const parsedToken = parseInviteToken(token);
-  let membership: Doc<'memberships'> | null = null;
-
-  if (parsedToken) {
-    membership = await ctx.db.get(parsedToken.membershipId);
-
-    if (membership?.hackathonId !== parsedToken.hackathonId) {
-      membership = null;
-    } else if (membership?.tokenHash !== tokenHash) {
-      membership = null;
-    }
-  }
-
-  if (!membership) {
-    membership = await ctx.db
-      .query('memberships')
-      .withIndex('by_tokenHash', (q) => q.eq('tokenHash', tokenHash))
-      .first();
-  }
-
-  return membership;
-}
-
-/**
- * Validate invite token (returns membership info if valid)
- */
-// Simple test query to check if Convex is working
-export const testQuery = query({
-  args: {},
-  handler: async (_ctx) => {
-    console.log('testQuery called - Convex is working!');
-    return { message: 'Convex is working', timestamp: Date.now() };
-  },
-});
-
-export const validateInviteToken = query({
-  args: {
-    token: v.string(),
-  },
-  handler: async (ctx, args) => {
-    console.log('validateInviteToken called with token:', args.token);
-
-    // Hash the provided token to compare with stored hash
-    const inviteTokenSecret =
-      process.env.INVITE_TOKEN_SECRET || 'default-secret-change-in-production';
-    console.log('Using token secret:', inviteTokenSecret ? 'configured' : 'default');
-
-    const tokenHash = await hashToken(args.token, inviteTokenSecret);
-    console.log('Generated token hash:', tokenHash);
-
-    const membership = await findMembershipForInvite(ctx, args.token, tokenHash);
-
-    console.log('Membership found:', membership ? 'YES' : 'NO');
-    if (membership) {
-      console.log('Membership details:', {
-        id: membership._id,
-        status: membership.status,
-        tokenExpiresAt: membership.tokenExpiresAt,
-        invitedEmail: membership.invitedEmail,
-      });
-    }
-
-    if (!membership) {
-      return { status: 'invalid' as const };
-    }
-
-    if (membership.status !== 'invited') {
-      return { status: 'used' as const };
-    }
-
-    if (membership.tokenExpiresAt && membership.tokenExpiresAt < Date.now()) {
-      return { status: 'expired' as const };
-    }
-
-    // Get hackathon info
-    const hackathon = await ctx.db.get(membership.hackathonId);
-    if (!hackathon) {
-      return { status: 'invalid' as const };
-    }
-
-    // Get inviter info from Better Auth
-    let inviterName = 'Hackathon Owner'; // Default fallback
-    if (membership.invitedByUserId) {
-      try {
-        // Query for the specific user by ID
-        const rawResult: unknown = await ctx.runQuery(components.betterAuth.adapter.findMany, {
-          model: 'user',
-          paginationOpts: {
-            cursor: null,
-            numItems: 1000,
-            id: 0,
-          },
-        });
-
-        const normalized = normalizeAdapterFindManyResult<BetterAuthAdapterUserDoc>(rawResult);
-        const { page } = normalized;
-
-        // Find the user with matching ID
-        const authUser = page.find((user) => {
-          try {
-            const userId = assertUserId(user, 'Better Auth user missing id');
-            return userId === membership.invitedByUserId;
-          } catch {
-            return false;
-          }
-        });
-
-        if (authUser?.name) {
-          inviterName = authUser.name;
-        }
-      } catch (error) {
-        console.error('Error fetching inviter info:', error);
-        // Keep default fallback
-      }
-    }
-
-    return {
-      status: 'valid' as const,
-      hackathonId: membership.hackathonId,
-      hackathonTitle: hackathon.title,
-      inviterName: inviterName || 'Hackathon Owner',
-      membershipId: membership._id,
-      invitedEmail: membership.invitedEmail,
-    };
-  },
-});
-
-/**
- * Accept invite - updates membership to active, sets userId, clears token
- */
-export const acceptInvite = mutation({
-  args: {
-    token: v.string(),
-  },
-  handler: async (ctx, args) => {
-    const authUser = await authComponent.getAuthUser(ctx);
-    if (!authUser) {
-      throw new Error('Authentication required');
-    }
-
-    const userId = assertUserId(authUser, 'User ID not found');
-
-    // Hash the provided token to compare with stored hash
-    const inviteTokenSecret =
-      process.env.INVITE_TOKEN_SECRET || 'default-secret-change-in-production';
-    const tokenHash = await hashToken(args.token, inviteTokenSecret);
-
-    // Find membership by token hash
-    let membership = await findMembershipForInvite(ctx, args.token, tokenHash);
-
-    if (!membership) {
-      const parsedToken = parseInviteToken(args.token);
-      if (parsedToken) {
-        const membershipById = await ctx.db.get(parsedToken.membershipId);
-        if (membershipById?.hackathonId === parsedToken.hackathonId) {
-          membership = membershipById;
-        }
-      }
-    }
-
-    if (!membership) {
-      throw new Error('Invalid invite token');
-    }
-
-    if (membership.status !== 'invited') {
-      if (membership.status === 'active' && membership.userId === userId) {
-        return { hackathonId: membership.hackathonId };
-      }
-
-      throw new Error('Invite already used');
-    }
-
-    if (membership.tokenExpiresAt && membership.tokenExpiresAt < Date.now()) {
-      throw new Error('Invite token expired');
-    }
-
-    // Validate that the authenticated user's email matches the invited email (case-insensitive)
-    if (
-      membership.invitedEmail &&
-      authUser.email &&
-      authUser.email.toLowerCase() !== membership.invitedEmail.toLowerCase()
-    ) {
-      throw new Error('This invite is for a different email address');
-    }
-
-    // Update membership to active
-    await ctx.db.patch(membership._id, {
-      userId,
-      status: 'active',
-      tokenHash: undefined,
-      tokenExpiresAt: undefined,
-    });
-
-    return { hackathonId: membership.hackathonId };
-  },
-});
-
-/**
  * Accept a pending invite by membership id (used for in-app notifications)
  */
 export const acceptPendingInvite = mutation({
@@ -1241,15 +975,9 @@ export const acceptPendingInvite = mutation({
       throw new Error('This invite is for a different email address');
     }
 
-    if (membership.tokenExpiresAt && membership.tokenExpiresAt < Date.now()) {
-      throw new Error('Invite token expired');
-    }
-
     await ctx.db.patch(membership._id, {
       userId,
       status: 'active',
-      tokenHash: undefined,
-      tokenExpiresAt: undefined,
     });
 
     return { hackathonId: membership.hackathonId };

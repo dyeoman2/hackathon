@@ -46,11 +46,6 @@ function resolveRedirectTarget(value?: string | null): string {
 
   const [path] = value.split('?');
 
-  // Allow invite routes
-  if (path.startsWith('/invite/')) {
-    return path;
-  }
-
   // Allow hackathon routes (for contestant registration)
   if (path.startsWith('/h/')) {
     return value; // Preserve query params like ?newSubmission=true
@@ -70,7 +65,6 @@ function RegisterPage() {
   const { isAuthenticated, isPending } = useAuthState();
   const navigate = useNavigate();
   const router = useRouter();
-  const acceptInvite = useMutation(api.hackathons.acceptInvite);
   const createContestantMembership = useMutation(api.hackathons.createContestantMembership);
 
   // Use Convex query directly instead of server function wrapper
@@ -169,42 +163,7 @@ function RegisterPage() {
           }
 
           if (data) {
-            // Handle invite redirects specially - accept invite and redirect to hackathon
-            if (redirectTarget.startsWith('/invite/')) {
-              try {
-                // Extract token from invite URL
-                const token = redirectTarget.replace('/invite/', '');
-                const decodedToken = decodeURIComponent(token);
-
-                // Accept the invite
-                const inviteResult = await acceptInvite({ token: decodedToken });
-
-                hasHandledAuthRedirectRef.current = true;
-                setTimeout(() => {
-                  void (async () => {
-                    if (inviteResult?.hackathonId) {
-                      await navigate({
-                        to: '/h/$id',
-                        params: { id: inviteResult.hackathonId },
-                      });
-                    } else {
-                      await navigate({ to: '/h' });
-                    }
-                    void router.invalidate();
-                  })();
-                }, 2000);
-              } catch (inviteError) {
-                console.error('Failed to accept invite after registration:', inviteError);
-                // Fallback to regular redirect if invite acceptance fails
-                hasHandledAuthRedirectRef.current = true;
-                setTimeout(() => {
-                  void (async () => {
-                    await navigate({ to: '/h' });
-                    void router.invalidate();
-                  })();
-                }, 2000);
-              }
-            } else if (redirectTarget.startsWith('/h/')) {
+            if (redirectTarget.startsWith('/h/')) {
               // Handle hackathon redirects - create contestant membership
               try {
                 const hackathonId = extractHackathonIdFromPath(redirectTarget);

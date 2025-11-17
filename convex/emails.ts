@@ -213,7 +213,6 @@ export const sendJudgeInviteEmailMutation = internalMutation({
     hackathonTitle: v.string(),
     role: v.union(v.literal('admin'), v.literal('judge')),
     inviterName: v.string(),
-    inviteToken: v.string(),
     appUrl: v.string(),
   },
   handler: async (ctx, args) => {
@@ -221,45 +220,53 @@ export const sendJudgeInviteEmailMutation = internalMutation({
     validateRequiredEnvVars();
     const appName = process.env.VITE_APP_NAME as string;
     const emailSender = process.env.RESEND_EMAIL_SENDER || 'onboarding@resend.dev';
-    const inviteLink = `${args.appUrl}/invite/${encodeURIComponent(args.inviteToken)}`;
+    const loginUrl = `${args.appUrl}/login?email=${encodeURIComponent(args.email)}&message=${encodeURIComponent(`Sign in to accept your invitation to ${args.hackathonTitle}`)}`;
+    const registerUrl = `${args.appUrl}/register?email=${encodeURIComponent(args.email)}&message=${encodeURIComponent(`Create an account to accept your invitation to ${args.hackathonTitle}`)}`;
 
     // In local development (when using npx convex dev), log the invite link instead of sending email
     // Development deployments have URLs ending in .convex.site
     if (process.env.ENVIRONMENT !== 'production') {
-      console.log(`[LOCAL DEV] Judge invite link: ${inviteLink}`);
+      console.log(
+        `[LOCAL DEV] Judge invite for ${args.email}. Login: ${loginUrl} Register: ${registerUrl}`,
+      );
       return;
     }
 
     const htmlContent = `
     <div style="background: #f8fafc; padding: 30px; border-radius: 8px; margin-bottom: 20px;">
-      <h2 style="color: #1f2937; margin: 0 0 15px 0; font-size: 20px;">Invitation to judge ${args.hackathonTitle}</h2>
+      <h2 style="color: #1f2937; margin: 0 0 15px 0; font-size: 20px;">Invitation to ${args.role === 'admin' ? 'help run' : 'judge'} ${args.hackathonTitle}</h2>
       <p style="margin: 0 0 15px 0; color: #4b5563;">Hi there,</p>
       <p style="margin: 0 0 20px 0; color: #4b5563;">
-        You have been invited by ${args.inviterName} to judge ${args.hackathonTitle}.
+        You have been invited by ${args.inviterName} to join ${args.hackathonTitle} as a ${args.role}.
         If you did not expect this invitation, you can safely ignore this email.
       </p>
       <p style="margin: 0 0 25px 0; color: #4b5563;">
-        Click the button below to accept your invitation. This link will expire in 7 days for security reasons.
+        Sign in with this email to see and accept your invitation from the notifications menu.
       </p>
 
       <div style="text-align: center; margin: 30px 0;">
-        <a href="${inviteLink}"
+        <a href="${loginUrl}"
            style="background-color: ${EMAIL_THEME.primary}; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; font-weight: 500; display: inline-block;">
           Accept Invitation
         </a>
       </div>
 
-      <p style="margin: 25px 0 15px 0; color: #6b7280; font-size: 14px;">
-        If the button doesn't work, you can copy and paste this link into your browser:
-      </p>
-      <p style="margin: 0; color: ${EMAIL_THEME.primary}; word-break: break-all; font-size: 14px;">
-        ${inviteLink}
+      <div style="text-align: center; color: #6b7280; font-size: 14px; margin-bottom: 12px;">or</div>
+
+      <div style="text-align: center; margin: 0 0 25px 0;">
+        <a href="${registerUrl}"
+           style="background-color: #111827; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; font-weight: 500; display: inline-block;">
+          Register & Accept Invite
+        </a>
+      </div>
+
+      <p style="margin: 0 0 15px 0; color: #6b7280; font-size: 14px;">
+        Use this email (${args.email}) so we can match your invitation.
       </p>
     </div>
 
     <div style="border-top: 1px solid #e5e7eb; padding-top: 20px; margin-top: 30px;">
       <p style="margin: 0; color: #6b7280; font-size: 12px; text-align: center;">
-        This invitation link will expire in 7 days.<br>
         If you did not expect this invitation, please ignore this email.
       </p>
     </div>
@@ -268,12 +275,13 @@ export const sendJudgeInviteEmailMutation = internalMutation({
     const textContent = `
 Hi there,
 
-You have been invited by ${args.inviterName} to judge ${args.hackathonTitle}.
-If you did not expect this invitation, you can safely ignore this email.
+You have been invited by ${args.inviterName} to join ${args.hackathonTitle} as a ${args.role}.
+Sign in with this email to see and accept your invitation from the notifications menu.
 
-To accept your invitation, please visit: ${inviteLink}
+Accept your invitation by signing in: ${loginUrl}
+If you need to create an account, register here: ${registerUrl}
 
-This link will expire in 7 days for security reasons.
+Use this email (${args.email}) so we can match your invitation.
 
 If you did not expect this invitation, please ignore this email.
   `;
@@ -303,7 +311,6 @@ export const sendJudgeInviteEmail = internalAction({
     hackathonTitle: v.string(),
     role: v.union(v.literal('admin'), v.literal('judge')),
     inviterName: v.string(),
-    inviteToken: v.string(),
     appUrl: v.string(),
   },
   handler: async (ctx, args) => {

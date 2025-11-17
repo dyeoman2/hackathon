@@ -1,7 +1,5 @@
-import { api } from '@convex/_generated/api';
 import { useForm } from '@tanstack/react-form';
 import { createFileRoute, Link, useNavigate, useRouter } from '@tanstack/react-router';
-import { useMutation } from 'convex/react';
 import { Lock, Mail } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
 import { z } from 'zod';
@@ -63,11 +61,6 @@ function resolveRedirectTarget(value?: string | null): string {
     return '/h';
   }
 
-  // Allow invite routes
-  if (path.startsWith('/invite/')) {
-    return value; // Return full URL for invites
-  }
-
   // Check other allowed routes
   const match = REDIRECT_TARGETS.find((route) => route === path || path.startsWith(`${route}/`));
   return match ? value : '/h'; // Return full URL if allowed, otherwise default to /h
@@ -79,7 +72,6 @@ function LoginPage() {
   const navigate = useNavigate();
   const router = useRouter();
   const { isAuthenticated, isPending } = useAuthState();
-  const acceptInvite = useMutation(api.hackathons.acceptInvite);
 
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState(message || '');
@@ -144,39 +136,8 @@ function LoginPage() {
         }
 
         if (data) {
-          // Handle invite redirects specially - accept invite and redirect to hackathon
-          if (redirectTarget.startsWith('/invite/')) {
-            hasHandledAuthRedirectRef.current = true;
-            try {
-              // Extract token from invite URL
-              const token = redirectTarget.replace('/invite/', '');
-              const decodedToken = decodeURIComponent(token);
-
-              // Accept the invite
-              const result = await acceptInvite({ token: decodedToken });
-
-              // Navigate directly to the invited hackathon if available
-              if (result?.hackathonId) {
-                await navigate({
-                  to: '/h/$id',
-                  params: { id: result.hackathonId },
-                });
-              } else {
-                await navigate({ to: '/h' });
-              }
-
-              void router.invalidate();
-            } catch (inviteError) {
-              console.error('Failed to accept invite after login:', inviteError);
-              // Fallback to regular redirect if invite acceptance fails
-              await navigate({ to: '/h' });
-              void router.invalidate();
-            }
-          } else {
-            // Navigate to the redirect target and refresh queries in the background
-            await navigate({ to: redirectTarget });
-            void router.invalidate();
-          }
+          await navigate({ to: redirectTarget });
+          void router.invalidate();
         } else {
           setError('An unexpected error occurred. Please try again.');
         }
@@ -197,12 +158,6 @@ function LoginPage() {
         ) {
           setError('Invalid email or password. Please check your credentials and try again.');
         } else if (errorMessage.includes('User not found') || errorCode === 'USER_NOT_FOUND') {
-          // For invite flows, redirect to register instead of showing error
-          if (redirectTarget.startsWith('/invite/')) {
-            const registerUrl = `/register?email=${encodeURIComponent(value.email)}&redirect=${encodeURIComponent(redirectTarget)}&message=${encodeURIComponent(`Create an account to accept your invitation to join ${message || 'the hackathon'}`)}`;
-            window.location.href = registerUrl;
-            return;
-          }
           setError(
             'No account found with this email address. Please check your email or create an account.',
           );

@@ -19,6 +19,36 @@ import { Input } from '~/components/ui/input';
 import { ProcessingLoader } from '~/components/ui/processing-loader';
 import { useToast } from '~/components/ui/toast';
 
+/**
+ * Parses error messages and makes URLs clickable, opening in new tabs
+ */
+function renderErrorMessageWithClickableLinks(message: string) {
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+  const parts = message.split(urlRegex);
+  let cursor = 0;
+
+  return parts.map((part) => {
+    const key = `${part}-${cursor}`;
+    cursor += part.length;
+    const isUrl = /^https?:\/\/\S+$/i.test(part);
+
+    if (isUrl) {
+      return (
+        <button
+          key={key}
+          type="button"
+          onClick={() => window.open(part, '_blank', 'noopener,noreferrer')}
+          className="text-primary hover:text-primary/80 underline cursor-pointer"
+          title={`Open ${part} in new tab`}
+        >
+          {part}
+        </button>
+      );
+    }
+    return part;
+  });
+}
+
 interface SubmissionRepoChatProps {
   submission: Doc<'submissions'>;
 }
@@ -567,7 +597,7 @@ export function SubmissionRepoChat({ submission }: SubmissionRepoChatProps) {
           <Alert variant="warning">
             <AlertTitle>{errorMessage.title}</AlertTitle>
             <AlertDescription className="space-y-3">
-              <p>{errorMessage.description}</p>
+              <p>{renderErrorMessageWithClickableLinks(errorMessage.description)}</p>
               <Button
                 onClick={handleRetryProcessing}
                 disabled={isRetrying}

@@ -1,8 +1,9 @@
 import { api } from '@convex/_generated/api';
 import type { Id } from '@convex/_generated/dataModel';
+import { useNavigate } from '@tanstack/react-router';
 import { useMutation, useQuery } from 'convex/react';
 import { Bell, Loader2 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '~/components/ui/button';
 import {
   DropdownMenu,
@@ -18,6 +19,7 @@ type InviteAction = 'accept' | 'decline';
 export function NotificationsMenu() {
   const { isAuthenticated } = useAuthState();
   const toast = useToast();
+  const navigate = useNavigate();
 
   const invitations = useQuery(
     api.hackathons.listPendingInvitesForUser,
@@ -30,6 +32,8 @@ export function NotificationsMenu() {
   const [pendingActions, setPendingActions] = useState<
     Partial<Record<Id<'memberships'>, InviteAction>>
   >({});
+  const [isOpen, setIsOpen] = useState(false);
+  const hasAutoOpenedForInvitesRef = useRef(false);
 
   const invitationList = invitations ?? [];
   const isLoadingInvites = isAuthenticated && invitations === undefined;
@@ -39,10 +43,6 @@ export function NotificationsMenu() {
     () => new Set(Object.keys(pendingActions) as Id<'memberships'>[]),
     [pendingActions],
   );
-
-  if (!isAuthenticated) {
-    return null;
-  }
 
   const setActionPending = (membershipId: Id<'memberships'>, action: InviteAction) => {
     setPendingActions((previous) => ({
@@ -59,11 +59,36 @@ export function NotificationsMenu() {
     });
   };
 
+  useEffect(() => {
+    if (hasNotifications && !hasAutoOpenedForInvitesRef.current && !isLoadingInvites) {
+      setIsOpen(true);
+      hasAutoOpenedForInvitesRef.current = true;
+    }
+
+    if (!hasNotifications && !isLoadingInvites) {
+      hasAutoOpenedForInvitesRef.current = false;
+    }
+  }, [hasNotifications, isLoadingInvites]);
+
+  if (!isAuthenticated) {
+    return null;
+  }
+
   const handleAccept = (membershipId: Id<'memberships'>, hackathonTitle: string) => {
     setActionPending(membershipId, 'accept');
     void acceptInvite({ membershipId })
-      .then(() => {
+      .then((result) => {
         toast.showToast(`Joined ${hackathonTitle}`, 'success');
+        setIsOpen(false);
+        const hackathonId = result?.hackathonId;
+        if (hackathonId) {
+          void navigate({
+            to: '/h/$id',
+            params: { id: hackathonId },
+          });
+          return;
+        }
+        void navigate({ to: '/h' });
       })
       .catch((error: unknown) => {
         const message = error instanceof Error ? error.message : 'Failed to accept invite';
@@ -125,7 +150,19 @@ export function NotificationsMenu() {
             <div key={invite.membershipId} className="rounded-md border p-3">
               <div className="flex items-start justify-between gap-3">
                 <div className="space-y-1">
-                  <p className="text-sm font-semibold leading-none">{invite.hackathonTitle}</p>
+                  <button
+                    type="button"
+                    className="text-left text-sm font-semibold leading-none hover:underline"
+                    onClick={() => {
+                      void navigate({
+                        to: '/h/$id',
+                        params: { id: invite.hackathonId },
+                      });
+                      setIsOpen(false);
+                    }}
+                  >
+                    {invite.hackathonTitle}
+                  </button>
                   <p className="text-xs text-muted-foreground">
                     Invited as {invite.role}
                     {invite.invitedByName ? ` by ${invite.invitedByName}` : ''}
@@ -178,7 +215,7 @@ export function NotificationsMenu() {
   };
 
   return (
-    <DropdownMenu>
+    <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" size="icon" className="relative" aria-label="Notifications">
           <Bell className="h-4 w-4" />
