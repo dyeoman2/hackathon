@@ -285,8 +285,10 @@ export const monitorSubmissionProcessing = internalAction({
 
     const source = submission.source ?? {};
     const state = (source.processingState as string | undefined) ?? 'downloading';
+    const aiSearchSyncCompletedAt = source.aiSearchSyncCompletedAt;
 
-    if (state === 'complete' || state === 'error') {
+    // If processing is complete or errored, or if AI Search indexing has completed, stop monitoring
+    if (state === 'complete' || state === 'error' || aiSearchSyncCompletedAt) {
       return;
     }
 
