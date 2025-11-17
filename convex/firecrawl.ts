@@ -118,7 +118,8 @@ export const getVibeAppsProjects = guarded.action(
     try {
       // Get existing projects from database
       const existingProjects = await ctx.runQuery(api.vibeApps.getAllVibeAppsProjects);
-      const existingUrls = new Set(existingProjects.map((p: VibeAppsProject) => p.vibeappsUrl));
+      const normalizeUrl = (url: string) => url.split('#')[0];
+      const existingUrls = new Set(existingProjects.map((p: VibeAppsProject) => normalizeUrl(p.vibeappsUrl)));
 
       console.log(`Found ${existingProjects.length} existing projects in database`);
 
@@ -193,11 +194,11 @@ export const getVibeAppsProjects = guarded.action(
 
         const name = nameMatch[1];
 
-        // Extract URL from this section
-        const sectionUrlMatch = section.match(/https:\/\/vibeapps\.dev\/s\/[^)\s#]+/);
+        // Extract URL from this section (clean URL without fragments)
+        const sectionUrlMatch = section.match(/https:\/\/vibeapps\.dev\/s\/[^)\s]+/);
         if (!sectionUrlMatch) continue;
 
-        const vibeappsUrl = sectionUrlMatch[0];
+        const vibeappsUrl = sectionUrlMatch[0].split('#')[0]; // Remove any fragments
 
         // Extract creator (usually appears as "by [Creator Name]")
         const creatorMatch = section.match(/by ([^\n]+)/);
@@ -256,10 +257,11 @@ export const getVibeAppsProjects = guarded.action(
       );
 
       // Combine JSON projects with markdown projects
-      const jsonUrls = new Set(jsonProjects.map(p => p.vibeappsUrl as string));
+      // Normalize URLs by removing fragments for consistent comparison
+      const jsonUrls = new Set(jsonProjects.map((p) => normalizeUrl(p.vibeappsUrl as string)));
       const combinedProjects = [
         ...jsonProjects,
-        ...markdownProjects.filter(p => !jsonUrls.has(p.vibeappsUrl as string))
+        ...markdownProjects.filter((p) => !jsonUrls.has(normalizeUrl(p.vibeappsUrl as string))),
       ];
 
       console.log(`Total projects after combining JSON and markdown: ${combinedProjects.length}`);
@@ -279,7 +281,7 @@ export const getVibeAppsProjects = guarded.action(
       // Step 2: Filter out projects we already have in the database
       const newProjects = allProjects.filter((project) => {
         const vibeappsUrl = (project.vibeappsUrl as string | undefined)?.trim();
-        return vibeappsUrl && !existingUrls.has(vibeappsUrl);
+        return vibeappsUrl && !existingUrls.has(normalizeUrl(vibeappsUrl));
       });
 
       console.log(`${newProjects.length} new projects to scrape`);
