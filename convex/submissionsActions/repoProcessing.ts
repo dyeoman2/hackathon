@@ -286,6 +286,8 @@ export async function downloadAndUploadRepoHelper(
     console.warn(
       `[Repo Download] No GITHUB_TOKEN configured - private repositories will not be accessible`,
     );
+  } else {
+    console.log(`[Repo Download] ✅ GITHUB_TOKEN is configured (length: ${githubToken.length})`);
   }
 
   // Get R2 credentials from env
@@ -746,6 +748,61 @@ export async function downloadAndUploadRepoHelper(
 }
 
 /**
+ * Test action to verify GITHUB_TOKEN is configured
+ */
+export const testGitHubToken = internalAction({
+  args: {},
+  handler: async () => {
+    const githubToken = process.env.GITHUB_TOKEN;
+    if (!githubToken) {
+      console.error('[GitHub Token Test] ❌ GITHUB_TOKEN is NOT configured');
+      return { configured: false, message: 'GITHUB_TOKEN not found in environment' };
+    }
+
+    console.log(
+      `[GitHub Token Test] ✅ GITHUB_TOKEN is configured (length: ${githubToken.length})`,
+    );
+
+    // Test the token with a simple GitHub API call
+    try {
+      const testResponse = await fetch('https://api.github.com/rate_limit', {
+        headers: {
+          'User-Agent': 'tanstack-hackathon',
+          Authorization: `Bearer ${githubToken}`,
+        },
+      });
+
+      if (testResponse.ok) {
+        const rateLimitData = await testResponse.json();
+        console.log(
+          `[GitHub Token Test] ✅ Token is valid. Rate limit: ${rateLimitData.rate.remaining}/${rateLimitData.rate.limit} remaining`,
+        );
+        return {
+          configured: true,
+          valid: true,
+          rateLimit: rateLimitData.rate,
+          message: `Token configured and valid (${rateLimitData.rate.remaining}/${rateLimitData.rate.limit} requests remaining)`,
+        };
+      } else {
+        console.error(`[GitHub Token Test] ❌ Token appears invalid (HTTP ${testResponse.status})`);
+        return {
+          configured: true,
+          valid: false,
+          message: `Token configured but invalid (HTTP ${testResponse.status})`,
+        };
+      }
+    } catch (error) {
+      console.error('[GitHub Token Test] ❌ Error testing token:', error);
+      return {
+        configured: true,
+        valid: false,
+        message: `Error testing token: ${error instanceof Error ? error.message : String(error)}`,
+      };
+    }
+  },
+});
+
+/**
  * Internal action to fetch README from GitHub
  * Fetches README directly from GitHub before repo is uploaded to R2
  */
@@ -780,6 +837,11 @@ export const fetchReadmeFromGitHub = internalAction({
       const headers: Record<string, string> = { 'User-Agent': 'tanstack-hackathon' };
       if (githubToken) {
         headers.Authorization = `Bearer ${githubToken}`;
+        console.log(`[README Fetch] ✅ GITHUB_TOKEN is configured for README fetching`);
+      } else {
+        console.warn(
+          `[README Fetch] No GITHUB_TOKEN configured - README fetching may be rate limited`,
+        );
       }
 
       // Try to get default branch first
