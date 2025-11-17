@@ -421,6 +421,7 @@ export const checkCloudflareIndexing = internalAction({
               body: JSON.stringify({
                 query: `files in path ${r2PathPrefix} for submission ${args.submissionId}`,
                 max_num_results: 50,
+                model: '@cf/meta/llama-3.1-8b-instruct-fast',
                 filters: folderFilter,
               }),
             });
@@ -485,6 +486,7 @@ export const checkCloudflareIndexing = internalAction({
                 body: JSON.stringify({
                   query: `files in path ${r2PathPrefix} for submission ${submissionIdInQuery}`,
                   max_num_results: 50,
+                  model: '@cf/meta/llama-3.1-8b-instruct-fast',
                 }),
               });
 

@@ -1177,7 +1177,7 @@ async function queryAISearchHelper(options: AISearchQueryOptions): Promise<AISea
     };
   } = {
     query: options.query,
-    model: options.model ?? '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+    model: options.model ?? '@cf/meta/llama-3.1-8b-instruct-fast',
     max_num_results: options.maxNumResults ?? 20,
     rewrite_query: options.rewriteQuery ?? false,
   };
@@ -1418,7 +1418,7 @@ export const streamAISearchForRepoChat = guarded.action(
       requestKey: args.requestId,
       method: 'direct',
       provider: 'cloudflare-ai-search',
-      model: args.model ?? '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+      model: args.model ?? '@cf/meta/llama-3.1-8b-instruct-fast',
     })) as { responseId: Id<'aiResponses'> };
 
     const markError = async (message: string) => {
@@ -1456,7 +1456,7 @@ export const streamAISearchForRepoChat = guarded.action(
       await ctx.runMutation(internal.aiResponses.updateMetadata, {
         responseId,
         provider: 'cloudflare-ai-search',
-        model: args.model ?? '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+        model: args.model ?? '@cf/meta/llama-3.1-8b-instruct-fast',
       });
 
       // Simulate streaming by chunking the response
