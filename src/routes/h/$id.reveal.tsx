@@ -3,16 +3,22 @@ import type { Id } from '@convex/_generated/dataModel';
 import { createFileRoute } from '@tanstack/react-router';
 import { useQuery } from 'convex/react';
 import { useEffect } from 'react';
+import { z } from 'zod';
 import { RevealStage } from '~/features/reveal/components/RevealStage';
 import { useRevealSync } from '~/features/reveal/hooks/useRevealSync';
 
+const revealSearchSchema = z.object({
+  autostart: z
+    .preprocess(
+      (val) => (val === undefined ? undefined : val === true || val === 'true'),
+      z.boolean(),
+    )
+    .optional(),
+});
+
 export const Route = createFileRoute('/h/$id/reveal')({
   component: RevealPageComponent,
-  validateSearch: (search: Record<string, unknown>) => {
-    return {
-      autostart: search.autostart === true || search.autostart === 'true',
-    };
-  },
+  validateSearch: (search) => revealSearchSchema.parse(search),
 });
 
 function RevealPageComponent() {

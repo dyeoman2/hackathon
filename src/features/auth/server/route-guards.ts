@@ -13,7 +13,7 @@ export async function routeAdminGuard({
   try {
     // Add timeout to prevent hanging requests
     const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('Auth check timeout')), 10000),
+      setTimeout(() => reject(new Error('Auth check timeout')), 5000),
     );
 
     const authPromise = getCurrentUserServerFn();

@@ -9,6 +9,8 @@ const convex = new ConvexHttpClient(import.meta.env.VITE_CONVEX_URL ?? '');
 
 export const Route = createFileRoute('/vibe-apps')({
   beforeLoad: routeAdminGuard,
+  staleTime: 30_000, // Semi-static data, allow caching between navigations
+  gcTime: 5 * 60_000,
   loader: async () => {
     try {
       // Only load existing projects from database, don't trigger scraping

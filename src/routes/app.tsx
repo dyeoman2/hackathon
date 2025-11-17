@@ -1,5 +1,5 @@
 import { createFileRoute, Outlet, useNavigate } from '@tanstack/react-router';
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { z } from 'zod';
 import { NotFound } from '~/components/NotFound';
 import { DashboardErrorBoundary } from '~/components/RouteErrorBoundaries';
@@ -63,67 +63,24 @@ function AppLayout() {
   const navigate = useNavigate();
   const { redirect } = Route.useSearch();
   const { isAuthenticated, isPending } = useAuth();
-  const redirectRef = useRef(false);
-  const redirectTimerRef = useRef<number | null>(null);
 
-  // Resolve the redirect target safely
   const redirectTarget = resolveRedirectTarget(redirect);
-  // Only redirect if an explicit redirect parameter was provided
   const hasExplicitRedirect = redirect != null;
 
   useEffect(() => {
-    if (isPending) {
-      if (redirectTimerRef.current !== null) {
-        window.clearTimeout(redirectTimerRef.current);
-        redirectTimerRef.current = null;
-      }
-      return;
-    }
+    if (isPending || isAuthenticated) return;
 
-    if (!isAuthenticated) {
-      if (redirectTimerRef.current === null) {
-        redirectTimerRef.current = window.setTimeout(() => {
-          redirectTimerRef.current = null;
-
-          if (redirectRef.current) {
-            return;
-          }
-
-          redirectRef.current = true;
-
-          void navigate({
-            to: '/login',
-            search: { redirect: redirectTarget },
-            replace: true,
-          }).catch(() => {
-            redirectRef.current = false;
-          });
-        }, 400);
-      }
-    } else {
-      if (redirectTimerRef.current !== null) {
-        window.clearTimeout(redirectTimerRef.current);
-        redirectTimerRef.current = null;
-      }
-
-      // Authenticated user - redirect to target if an explicit redirect was provided
-      if (!redirectRef.current && hasExplicitRedirect) {
-        redirectRef.current = true;
-        void navigate({ to: redirectTarget, replace: true });
-      } else {
-        redirectRef.current = false;
-      }
-    }
-  }, [isAuthenticated, isPending, navigate, redirectTarget, hasExplicitRedirect]);
+    void navigate({
+      to: '/login',
+      search: { redirect: redirectTarget },
+      replace: true,
+    });
+  }, [isAuthenticated, isPending, navigate, redirectTarget]);
 
   useEffect(() => {
-    return () => {
-      if (redirectTimerRef.current !== null) {
-        window.clearTimeout(redirectTimerRef.current);
-        redirectTimerRef.current = null;
-      }
-    };
-  }, []);
+    if (isPending || !isAuthenticated || !hasExplicitRedirect) return;
+    void navigate({ to: redirectTarget, replace: true });
+  }, [hasExplicitRedirect, isAuthenticated, isPending, navigate, redirectTarget]);
 
   if (isPending || !isAuthenticated) {
     return <AppLayoutSkeleton />;
