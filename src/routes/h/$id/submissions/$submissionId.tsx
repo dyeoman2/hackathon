@@ -69,6 +69,7 @@ function SubmissionDetailComponent() {
   const indexingRefreshRef = useRef<Id<'submissions'> | null>(null);
   const currentSubmissionId = submission?._id as Id<'submissions'> | undefined;
   const submissionProcessingState = authenticatedSubmission?.source?.processingState;
+  const submissionAiSearchSyncStartedAt = authenticatedSubmission?.source?.aiSearchSyncStartedAt;
   const submissionAiSearchSyncCompletedAt =
     authenticatedSubmission?.source?.aiSearchSyncCompletedAt;
   const submissionR2Key = authenticatedSubmission?.source?.r2Key;
@@ -227,9 +228,14 @@ function SubmissionDetailComponent() {
       return;
     }
 
+    // Check if indexing started but never completed (may have timed out)
+    const indexingStartedButNotCompleted =
+      !!submissionAiSearchSyncStartedAt && !submissionAiSearchSyncCompletedAt;
+
     const shouldRefreshIndexing =
       !!submissionR2Key &&
-      ((submissionProcessingState === 'indexing' && !submissionAiSearchSyncCompletedAt) ||
+      (indexingStartedButNotCompleted ||
+        (submissionProcessingState === 'indexing' && !submissionAiSearchSyncCompletedAt) ||
         (submissionProcessingState === 'complete' && !submissionAiSearchSyncCompletedAt));
 
     if (shouldRefreshIndexing) {
@@ -256,6 +262,7 @@ function SubmissionDetailComponent() {
   }, [
     currentSubmissionId,
     submissionProcessingState,
+    submissionAiSearchSyncStartedAt,
     submissionAiSearchSyncCompletedAt,
     submissionR2Key,
     refreshIndexingStatus,
