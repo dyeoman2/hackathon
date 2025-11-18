@@ -85,6 +85,7 @@ export type UpdateSubmissionSourceInternalRef = FunctionReference<
       | 'generating'
       | 'complete'
       | 'error';
+    processingError?: string;
   },
   { success: boolean }
 >;

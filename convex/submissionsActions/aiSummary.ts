@@ -220,6 +220,7 @@ export const checkCloudflareIndexing = internalAction({
           {
             submissionId: args.submissionId,
             processingState: 'complete',
+            processingError: '', // Clear any previous processing errors since indexing completed successfully
           },
         );
         return; // State fixed, we're done
@@ -346,6 +347,7 @@ export const checkCloudflareIndexing = internalAction({
             {
               submissionId: args.submissionId,
               aiSearchSyncCompletedAt: completedAt,
+              processingError: '', // Clear any previous processing errors since indexing completed successfully
             },
           );
         } else if (jobStatus === 'failed') {
@@ -377,6 +379,7 @@ export const checkCloudflareIndexing = internalAction({
               {
                 submissionId: args.submissionId,
                 aiSearchSyncCompletedAt: completedAt,
+                processingError: '', // Clear any previous processing errors since indexing completed successfully
               },
             );
           }
@@ -659,6 +662,7 @@ export const checkCloudflareIndexing = internalAction({
           {
             submissionId: args.submissionId,
             aiSearchSyncCompletedAt: completedAt,
+            processingError: '', // Clear any previous processing errors since indexing completed successfully
           },
         );
       }
@@ -684,6 +688,7 @@ export const checkCloudflareIndexing = internalAction({
           {
             submissionId: args.submissionId,
             processingState: 'complete',
+            processingError: '', // Clear any previous processing errors since indexing completed successfully
           },
         );
       }
@@ -1070,6 +1075,7 @@ export const continueCloudflareIndexing = internalAction({
               submissionId: args.submissionId,
               aiSearchSyncCompletedAt: completedAt,
               processingState: 'complete',
+              processingError: '', // Clear any previous processing errors since indexing completed successfully
             },
           );
           return;

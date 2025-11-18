@@ -469,7 +469,9 @@ export function SubmissionRepoChat({ submission }: SubmissionRepoChatProps) {
   }, [streamingResponse, currentRequestId]);
 
   // Treat repo as processing until we have an indexed path prefix or an explicit error
-  const hasProcessingError = processingState === 'error' || !!processingError;
+  // Don't show error if indexing completed successfully (aiSearchSyncCompletedAt is set)
+  const hasProcessingError =
+    (processingState === 'error' || !!processingError) && !aiSearchSyncCompletedAt;
 
   // Treat repo as processing until we have an indexed path prefix or an explicit error
   const isAwaitingRepoUpload = !!submission.repoUrl && !r2PathPrefix && !hasProcessingError;

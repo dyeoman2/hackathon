@@ -1350,7 +1350,13 @@ export const updateSubmissionSourceInternal = internalMutation({
       readmeFilename: args.readmeFilename ?? submission.source?.readmeFilename,
       readmeFetchedAt: args.readmeFetchedAt ?? submission.source?.readmeFetchedAt,
       processingState: args.processingState ?? submission.source?.processingState,
-      processingError: args.processingError ?? submission.source?.processingError,
+      // Clear processingError if explicitly set to empty string, otherwise keep existing or use new value
+      processingError:
+        args.processingError !== undefined
+          ? args.processingError === ''
+            ? undefined
+            : args.processingError
+          : submission.source?.processingError,
     };
 
     await ctx.db.patch(args.submissionId, {
